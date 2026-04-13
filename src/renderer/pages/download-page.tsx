@@ -31,8 +31,7 @@ function extractUrls(text: string): string[] {
 
 function normalizeUrls(text: string): string {
   const urls = extractUrls(text);
-  // Join URLs with spaces - they display on one line if they fit
-  return urls.join(" ");
+  return urls.join("\n");
 }
 
 export function DownloadPage() {
@@ -122,8 +121,12 @@ export function DownloadPage() {
                 onPaste={handlePaste}
                 onBlur={handleBlur}
                 placeholder="Paste link..."
-                className="w-full bg-transparent border-none pl-6 pr-14 py-3 text-sm text-text-primary placeholder-text-tertiary outline-none resize-none overflow-y-auto"
-                style={{ height: "48px", maxHeight: "120px" }}
+                className="w-full bg-transparent border-none pl-6 pr-14 py-3 text-sm text-text-primary placeholder-text-tertiary outline-none resize-none"
+                style={{
+                  height: url
+                    ? `${Math.min(Math.max(url.split("\n").length * 24, 48), 120)}px`
+                    : "48px",
+                }}
               />
               <button
                 onClick={handleIconClick}

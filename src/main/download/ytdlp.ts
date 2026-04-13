@@ -400,18 +400,11 @@ export async function startDownload(item: any, mainWindow: any) {
     child.stdout.on("data", (data) => {
       const output = data.toString();
 
-      // Capture --print after_move:filepath lines (exact final path)
       const lines = output.split("\n");
       for (const line of lines) {
         const trimmed = line.trim();
-        // --print outputs the final file path as its own line
-        // It won't start with [ and won't be empty
-        if (trimmed && !trimmed.startsWith("[") && !trimmed.match(/^\d/)) {
-          // Ensure path is absolute and normalized
-          const resolvedPath = path.isAbsolute(trimmed)
-            ? path.normalize(trimmed)
-            : path.resolve(trimmed);
-          finalFilePath = resolvedPath;
+        if (trimmed && path.isAbsolute(trimmed) && fs.existsSync(trimmed)) {
+          finalFilePath = trimmed;
         }
       }
 
@@ -462,10 +455,10 @@ export async function startDownload(item: any, mainWindow: any) {
 
       // Look for final destination files
       const destMatch = output.match(
-        /Destination:\s*([^\n]+)|Merging formats into\s*"([^"]+)"/,
+        /Destination:\s*([^\n]+)|Merging formats into\s*"([^"]+)"|\[Move\] Moving\s+([^\n]+)/,
       );
       if (destMatch) {
-        const potentialPath = destMatch[1] || destMatch[2];
+        const potentialPath = destMatch[1] || destMatch[2] || destMatch[3];
         if (potentialPath) {
           finalFilePath = potentialPath.trim();
         }

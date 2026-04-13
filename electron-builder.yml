@@ -2,7 +2,7 @@ appId: com.prism.desktop
 productName: Prism
 directories:
   output: dist
-  buildResources: build
+  buildResources: resources
 files:
   - out/**/*
   - resources/**/*

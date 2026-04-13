@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+  --color-progress-track: var(--progress-track);
+  --color-progress-fill: var(--progress-fill);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-queue-bg: var(--queue-bg);
+  --color-queue-shadow: var(--queue-shadow);
+
+  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+}
+
+@layer base {
+  :root {
+    --bg: #ffffff;
+    --bg-subtle: #f7f7f7;
+    --bg-elevated: #f0f0f0;
+    --border: #e4e4e4;
+    --border-subtle: #efefef;
+
+    --text-primary: #111111;
+    --text-secondary: #666666;
+    --text-tertiary: #999999;
+
+    --accent: #111111;
+    --accent-fg: #ffffff;
+
+    --success: #16a34a;
+    --error: #dc2626;
+    --warning: #d97706;
+
+    --progress-track: #e4e4e4;
+    --progress-fill: #111111;
+
+    --sidebar-bg: #f7f7f7;
+    --sidebar-border: #e4e4e4;
+
+    --queue-bg: #ffffff;
+    --queue-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+
+  [data-theme="dark"] {
+    --bg: #0a0a0a;
+    --bg-subtle: #111111;
+    --bg-elevated: #1a1a1a;
+    --border: #222222;
+    --border-subtle: #1a1a1a;
+
+    --text-primary: #f0f0f0;
+    --text-secondary: #888888;
+    --text-tertiary: #555555;
+
+    --accent: #f0f0f0;
+    --accent-fg: #0a0a0a;
+
+    --success: #22c55e;
+    --error: #ef4444;
+    --warning: #f59e0b;
+
+    --progress-track: #222222;
+    --progress-fill: #f0f0f0;
+
+    --sidebar-bg: #0f0f0f;
+    --sidebar-border: #1e1e1e;
+
+    --queue-bg: #111111;
+    --queue-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+
+  body {
+    @apply bg-bg text-text-primary font-sans antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-subtle);
+    border-radius: 4px;
+    border: 2px solid var(--bg);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-tertiary);
+  }
+}

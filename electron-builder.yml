@@ -1,0 +1,21 @@
+appId: com.prism.desktop
+productName: Prism
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - resources/**/*
+publish:
+  provider: github
+  owner: clivingston33
+  repo: prism
+mac:
+  target: dmg
+  hardenedRuntime: true
+  gatekeeperAssess: false
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

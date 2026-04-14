@@ -5,7 +5,18 @@ directories:
   buildResources: resources
 files:
   - out/**/*
-  - resources/**/*
+  - package.json
+extraResources:
+  - from: resources/bin
+    to: bin
+    filter:
+      - "**/*"
+  - from: resources/prism-light.png
+  - from: resources/prism-dark.png
+  - from: resources/icon.ico
+asar: true
+asarUnpack:
+  - node_modules/ffmpeg-static/**/*
 publish:
   provider: github
   owner: clivingston33

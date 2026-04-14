@@ -28,21 +28,19 @@ export function setupSettingsIPC() {
 
   ipcMain.handle("settings:checkForUpdates", async () => {
     try {
-      console.log("[updater] Checking for updates...");
       const result = await autoUpdater.checkForUpdates();
-      console.log("[updater] checkForUpdates result:", JSON.stringify(result));
       if (result?.updateInfo?.version) {
         return {
+          isUpdateAvailable: true,
           version: result.updateInfo.version,
           releaseDate: result.updateInfo.releaseDate,
           releaseNotes: result.updateInfo.releaseNotes,
         };
       }
-      console.log("[updater] No update available");
-      return null;
+      return { isUpdateAvailable: false };
     } catch (err: any) {
-      console.error("[updater] Update check failed:", err.message, err.stack);
-      return { error: err.message };
+      console.error("[updater] Update check failed:", err.message);
+      return { isUpdateAvailable: false, error: err.message };
     }
   });
 

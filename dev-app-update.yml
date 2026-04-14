@@ -1,0 +1,5 @@
+owner: clivingston33
+repo: prism
+provider: github
+releaseType: release
+updaterCacheDirName: prism-updater

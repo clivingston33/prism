@@ -13,9 +13,14 @@ export function SettingsPage() {
     setCheckingUpdates(true);
     try {
       const result = await window.prism.settings.checkForUpdates();
-      if (result?.version) {
+      console.log("[settings] checkForUpdates result:", JSON.stringify(result));
+      if (result?.isUpdateAvailable === false) {
+        // No update available - show up to date card
+        setShowUpToDate(true);
+      } else if (result?.version) {
         setUpdateAvailable(result.version);
       } else {
+        // Unexpected result - treat as no update
         setShowUpToDate(true);
       }
     } finally {

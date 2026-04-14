@@ -77,7 +77,8 @@ interface PrismAPI {
     update(settings: Partial<Settings>): Promise<Settings>;
     selectDirectory(): Promise<string | null>;
     checkForUpdates(): Promise<{
-      version: string;
+      isUpdateAvailable: boolean;
+      version?: string;
       releaseDate?: string;
     } | null>;
     downloadUpdate?(): void;

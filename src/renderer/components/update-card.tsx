@@ -19,7 +19,7 @@ export function UpdateCard({
 }: UpdateCardProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-[380px] rounded-lg border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+      <div className="w-[380px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-subtle transition-colors"
@@ -88,7 +88,7 @@ interface UpdateStatusCardProps {
 export function UpToDateCard({ onClose }: UpdateStatusCardProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-[340px] rounded-lg border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+      <div className="w-[340px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-subtle transition-colors"

@@ -111,8 +111,8 @@ export function DownloadPage() {
         </div>
 
         <div className="w-full flex flex-col gap-2">
-          <div className="w-full bg-bg-subtle rounded-2xl border border-border flex flex-col shadow-sm">
-            <div className="relative w-full">
+          <div className="w-full bg-bg-subtle rounded-xl border border-border flex flex-col shadow-sm">
+            <div className="relative w-full flex items-center">
               <textarea
                 ref={textareaRef}
                 value={url}
@@ -121,7 +121,7 @@ export function DownloadPage() {
                 onPaste={handlePaste}
                 onBlur={handleBlur}
                 placeholder="Paste link..."
-                className="w-full bg-transparent border-none pl-6 pr-14 py-3 text-sm text-text-primary placeholder-text-tertiary outline-none resize-none"
+                className="w-full bg-transparent border-none pl-6 pr-14 py-3 text-sm text-text-primary placeholder-text-tertiary outline-none resize-none text-center"
                 style={{
                   height: url
                     ? `${Math.min(Math.max(url.split("\n").length * 24, 48), 120)}px`
@@ -144,7 +144,7 @@ export function DownloadPage() {
           <button
             onClick={handleSubmit}
             disabled={!url || isSubmitting}
-            className="w-full h-12 flex items-center justify-center rounded-2xl bg-accent text-accent-fg font-medium transition-all disabled:opacity-30 hover:opacity-90 shadow-sm"
+            className="w-full h-12 flex items-center justify-center rounded-xl bg-accent text-accent-fg font-medium transition-all disabled:opacity-30 hover:opacity-90 shadow-sm"
           >
             {isSubmitting ? "Queuing..." : "Add to Queue"}
           </button>

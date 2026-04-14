@@ -98,7 +98,7 @@ export function HistoryPage() {
       {/* Clear Confirmation Modal */}
       {showClearModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-[380px] rounded border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+          <div className="w-[380px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3 mb-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-error/10 text-error">
                 <AlertTriangle size={20} strokeWidth={1.5} />

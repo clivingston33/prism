@@ -392,7 +392,16 @@ export async function startDownload(item: any, mainWindow: any) {
     console.log(
       `[yt-dlp] ffmpeg path: ${ffmpeg}, exists: ${fs.existsSync(ffmpeg)}`,
     );
-    const child = spawn(ytdlp, args);
+    console.log(`[yt-dlp] is file: ${fs.statSync(ytdlp).isFile()}`);
+
+    let child: any;
+    try {
+      child = spawn(ytdlp, args, { shell: true });
+    } catch (err: any) {
+      console.error(`[yt-dlp] spawn error: ${err.message}`);
+      resolve();
+      return;
+    }
     activeProcesses.set(item.id, child);
 
     let lastProgress = 0;

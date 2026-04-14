@@ -5,9 +5,7 @@ import {
   Settings2,
   LayoutGrid,
   PanelLeft,
-  List,
 } from "lucide-react";
-import { QueuePopup } from "./queue-popup";
 import { useAppStore } from "../stores/app-store";
 
 export function Shell() {
@@ -18,10 +16,8 @@ export function Shell() {
       <aside
         className={`flex h-full flex-col border-r border-sidebar-border bg-sidebar-bg transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.32,1)] z-40 [app-region:no-drag] shrink-0 ${sidebarExpanded ? "w-[160px]" : "w-[40px]"}`}
       >
-        {/* Titlebar spacer */}
         <div className="h-10 shrink-0" />
 
-        {/* Brand + Collapse toggle */}
         <div className="px-3 h-8 flex items-center justify-between mb-3 shrink-0">
           <span
             className={`text-base font-bold text-text-primary tracking-tighter transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 overflow-hidden"}`}
@@ -39,18 +35,11 @@ export function Shell() {
           </button>
         </div>
 
-        {/* Nav items */}
         <nav className="flex flex-1 flex-col gap-1 px-2">
           <NavItem
             to="/"
             icon={<ArrowDown size={16} strokeWidth={1.5} />}
             label="Download"
-            expanded={sidebarExpanded}
-          />
-          <NavItem
-            to="/queue"
-            icon={<List size={16} strokeWidth={1.5} />}
-            label="Queue"
             expanded={sidebarExpanded}
           />
           <NavItem
@@ -73,7 +62,6 @@ export function Shell() {
           />
         </nav>
 
-        {/* Version */}
         <div
           className={`px-3 pb-3 transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "opacity-0 overflow-hidden"}`}
         >
@@ -87,8 +75,6 @@ export function Shell() {
         <div className="absolute top-0 left-0 right-0 h-10 [app-region:drag] z-50 pointer-events-none" />
         <Outlet />
       </div>
-
-      <QueuePopup />
     </div>
   );
 }

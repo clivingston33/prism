@@ -64,7 +64,7 @@ export function DownloadPage() {
       }
       setUrl("");
       setIsSubmitting(false);
-      navigate({ to: "/queue" });
+      navigate({ to: "/history" });
       return;
     }
 

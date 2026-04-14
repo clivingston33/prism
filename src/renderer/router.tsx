@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-router";
 import { Shell } from "./components/shell";
 import { DownloadPage } from "./pages/download-page";
-import { QueuePage } from "./pages/queue-page";
 import { HistoryPage } from "./pages/history-page";
 import { LibraryPage } from "./pages/library-page";
 import { SettingsPage } from "./pages/settings-page";
@@ -19,12 +18,6 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   component: DownloadPage,
-});
-
-const queueRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/queue",
-  component: QueuePage,
 });
 
 const historyRoute = createRoute({
@@ -47,7 +40,6 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  queueRoute,
   historyRoute,
   libraryRoute,
   settingsRoute,

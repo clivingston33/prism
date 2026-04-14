@@ -69,11 +69,8 @@ export function OptionsDrawer({
         muteAudio: mode === "video" ? muteAudio : undefined,
       });
 
-      // Navigate first so queue popup knows to hide
-      navigate({ to: "/queue" });
-
-      // Auto-expand queue just to update state, even if hidden in history view
-      useAppStore.getState().setQueueExpanded(true);
+      // Navigate first so state updates
+      navigate({ to: "/history" });
 
       setUrl("");
       onClose();

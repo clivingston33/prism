@@ -29,7 +29,6 @@ class DownloadQueue {
     const history = store.get("history", []) as any[];
     store.set("history", [item, ...history]);
 
-    // Async fetch metadata
     getMetadata(options.url)
       .then((meta) => {
         const h = store.get("history", []) as any[];
@@ -47,7 +46,6 @@ class DownloadQueue {
       })
       .catch(() => {});
 
-    // Try to start this download immediately if there's capacity
     const settings = store.get("settings") as any;
     const max = settings.maxConcurrentDownloads || 2;
     if (this.activeCount < max) {
@@ -74,50 +72,48 @@ class DownloadQueue {
   }
 
   cancel(id: string) {
-    cancelDownload(id);
     const history = store.get("history", []) as any[];
-    const updated = history.map((h) =>
-      h.id === id ? { ...h, status: "failed", error: "Cancelled by user" } : h,
-    );
-    store.set("history", updated);
+    const item = history.find((h) => h.id === id);
+    if (!item) return false;
+
+    if (["queued", "paused"].includes(item.status)) {
+      store.set(
+        "history",
+        history.filter((h) => h.id !== id),
+      );
+      return true;
+    }
+
+    cancelDownload(id);
     return true;
   }
 
   cancelAll() {
     const history = store.get("history", []) as any[];
-    const updated = history.map((h) => {
-      if (["pending", "downloading", "converting"].includes(h.status)) {
-        cancelDownload(h.id);
-        return { ...h, status: "failed", error: "Cancelled by user" };
+    const active = history.filter((h: any) =>
+      ["downloading", "converting", "queued", "paused"].includes(h.status),
+    );
+    for (const item of active) {
+      cancelDownload(item.id);
+    }
+  }
+
+  private processQueue(mainWindow: any) {
+    const history = store.get("history", []) as any[];
+    const settings = store.get("settings") as any;
+    const max = settings.maxConcurrentDownloads || 2;
+    const queued = history.filter((h: any) => h.status === "queued");
+
+    while (this.activeCount < max && queued.length > 0) {
+      const next = queued.shift();
+      if (next) {
+        this.start(next.id, mainWindow);
       }
-      return h;
-    });
-    store.set("history", updated);
+    }
   }
 
   getActiveCount() {
     return this.activeCount;
-  }
-
-  private processQueue(mainWindow: any) {
-    const settings = store.get("settings") as any;
-    const max = settings.maxConcurrentDownloads || 2;
-
-    if (this.activeCount >= max) return;
-
-    const history = store.get("history", []) as any[];
-    const nextPending = history.find((h) => h.status === "pending");
-
-    if (nextPending) {
-      this.activeCount++;
-      nextPending.status = "downloading";
-      store.set("history", history);
-
-      startDownload(nextPending, mainWindow).finally(() => {
-        this.activeCount--;
-        this.processQueue(mainWindow);
-      });
-    }
   }
 }
 

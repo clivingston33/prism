@@ -111,8 +111,8 @@ export function DownloadPage() {
         </div>
 
         <div className="w-full flex flex-col gap-2">
-          <div className="w-full bg-bg-subtle rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="relative flex items-center min-h-[32px] max-h-[192px]">
+          <div className="w-full bg-bg-subtle rounded-xl border border-border shadow-sm">
+            <div className="relative flex items-center">
               <textarea
                 ref={textareaRef}
                 value={url}
@@ -121,21 +121,24 @@ export function DownloadPage() {
                 onPaste={handlePaste}
                 onBlur={handleBlur}
                 placeholder="Paste link..."
-                className="w-full bg-transparent border-none pl-6 pr-14 py-2 text-sm text-text-primary placeholder-text-tertiary outline-none resize-none overflow-y-auto"
+                className="w-full bg-transparent border-none pl-6 pr-14 py-3 text-sm leading-[22px] text-text-primary placeholder-text-tertiary outline-none resize-none"
                 rows={1}
                 style={{
-                  height: "auto",
-                  minHeight: "32px",
-                  maxHeight: "192px",
+                  height: "44px",
+                  minHeight: "44px",
+                  maxHeight: "132px",
+                  overflowY:
+                    url && url.split("\n").length > 3 ? "auto" : "hidden",
                 }}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
-                  target.style.height = "auto";
+                  target.style.height = "44px";
                   const newHeight = Math.min(
-                    Math.max(target.scrollHeight, 32),
-                    192,
+                    Math.max(target.scrollHeight, 44),
+                    132,
                   );
                   target.style.height = `${newHeight}px`;
+                  target.style.overflowY = newHeight >= 132 ? "auto" : "hidden";
                 }}
               />
               <button
@@ -143,9 +146,9 @@ export function DownloadPage() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-text-tertiary hover:text-text-primary transition-colors rounded-xl"
               >
                 {url ? (
-                  <X size={20} strokeWidth={1.5} />
+                  <X size={18} strokeWidth={1.5} />
                 ) : (
-                  <Clipboard size={20} strokeWidth={1.5} />
+                  <Clipboard size={18} strokeWidth={1.5} />
                 )}
               </button>
             </div>
@@ -154,7 +157,7 @@ export function DownloadPage() {
           <button
             onClick={handleSubmit}
             disabled={!url || isSubmitting}
-            className="w-full h-12 flex items-center justify-center rounded-xl bg-accent text-accent-fg font-medium transition-all disabled:opacity-30 hover:opacity-90 shadow-sm"
+            className="w-full h-11 flex items-center justify-center rounded-xl bg-accent text-accent-fg font-medium text-sm transition-all disabled:opacity-30 hover:opacity-90 shadow-sm"
           >
             {isSubmitting ? "Queuing..." : "Add to Queue"}
           </button>

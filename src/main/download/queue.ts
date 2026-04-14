@@ -4,9 +4,9 @@ import fs from "fs";
 import { store } from "../store";
 import { startDownload, getMetadata, cancelDownload } from "./ytdlp";
 
-const ACTIVE_DOWNLOADS = new Map<string, { child: any; startedAt: number }>();
-const MAX_CONCURRENT = 3;
-const DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+const ACTIVE_DOWNLOADS = new Map<string, { startedAt: number }>();
+const MAX_CONCURRENT = 2;
+const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
 function getBinPaths() {
   const platform = process.platform === "win32" ? "win" : "mac";
@@ -15,41 +15,41 @@ function getBinPaths() {
     : path.join(__dirname, "../../resources/bin", platform);
 
   return {
-    ytdlp: path.join(
-      binDir,
-      process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
-    ),
     ffmpeg: path.join(
       binDir,
       process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
     ),
-    deno: path.join(binDir, process.platform === "win32" ? "deno.exe" : "deno"),
   };
 }
 
-class DownloadQueue {
+class DownloadManager {
   private activeCount = 0;
 
   constructor() {
-    this.startTimeoutMonitor();
+    setInterval(() => this.checkTimeouts(), 15000);
   }
 
-  private startTimeoutMonitor() {
-    setInterval(() => {
-      const now = Date.now();
-      for (const [id, data] of ACTIVE_DOWNLOADS.entries()) {
-        if (now - data.startedAt > DOWNLOAD_TIMEOUT_MS) {
-          console.log(
-            `[queue] Download ${id} timed out after ${DOWNLOAD_TIMEOUT_MS}ms`,
-          );
-          this.cancel(id);
+  private checkTimeouts() {
+    const now = Date.now();
+    for (const [id, data] of ACTIVE_DOWNLOADS.entries()) {
+      if (now - data.startedAt > DOWNLOAD_TIMEOUT_MS) {
+        console.log(
+          `[download] ${id} timed out after ${DOWNLOAD_TIMEOUT_MS}ms`,
+        );
+        this.cancel(id);
+        const history = store.get("history", []) as any[];
+        const idx = history.findIndex((h: any) => h.id === id);
+        if (idx !== -1) {
+          history[idx].status = "failed";
+          history[idx].error = "Download timed out";
+          store.set("history", history);
         }
       }
-    }, 30000);
+    }
   }
 
   async add(options: any, mainWindow: any): Promise<string> {
-    const id = Date.now().toString() + Math.random().toString(36).slice(2, 8);
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     const item = {
       id,
@@ -79,87 +79,80 @@ class DownloadQueue {
           h[i].title = meta?.title || h[i].title;
           h[i].platform = meta?.platform || h[i].platform;
           h[i].thumbnail = meta?.thumbnail || h[i].thumbnail;
-          if (h[i].quality === "best" && meta?.height) {
-            h[i].quality = meta.height;
-          }
           store.set("history", h);
           mainWindow.webContents.send("history:update", h);
         }
       })
       .catch(() => {});
 
-    this.scheduleNext(mainWindow);
+    this.processQueue(mainWindow);
     return id;
   }
 
-  private scheduleNext(mainWindow: any) {
-    if (this.activeCount >= MAX_CONCURRENT) return;
+  private processQueue(mainWindow: any) {
+    while (this.activeCount < MAX_CONCURRENT) {
+      const history = store.get("history", []) as any[];
+      const next = history.find(
+        (h: any) => h.status === "pending" && !ACTIVE_DOWNLOADS.has(h.id),
+      );
 
-    const history = store.get("history", []) as any[];
-    const next = history.find(
-      (h: any) => h.status === "pending" && !this.isActive(h.id),
-    );
-
-    if (next) {
-      this.start(next.id, mainWindow);
+      if (!next) break;
+      this.startDownload(next.id, mainWindow);
     }
   }
 
-  private isActive(id: string): boolean {
-    return ACTIVE_DOWNLOADS.has(id);
-  }
-
-  async start(id: string, mainWindow: any) {
+  private async startDownload(id: string, mainWindow: any) {
     const history = store.get("history", []) as any[];
-    const item = history.find((h: any) => h.id === id);
-    if (!item || this.isActive(id)) return;
-    if (["downloading", "processing"].includes(item.status)) return;
+    const idx = history.findIndex((h: any) => h.id === id);
+    if (idx === -1) return;
 
-    item.status = "pending";
-    item.startedAt = Date.now();
+    const { ffmpeg } = getBinPaths();
+    if (!fs.existsSync(ffmpeg)) {
+      console.log(`[download] ${id} ffmpeg not found`);
+      history[idx].status = "failed";
+      history[idx].error = "ffmpeg not installed";
+      store.set("history", history);
+      mainWindow.webContents.send("history:update", history);
+      mainWindow.webContents.send("download:error", {
+        id,
+        error: "ffmpeg not installed",
+        retryCount: 0,
+      });
+      return;
+    }
+
+    history[idx].status = "downloading";
     store.set("history", history);
     mainWindow.webContents.send("history:update", history);
 
     this.activeCount++;
+    ACTIVE_DOWNLOADS.set(id, { startedAt: Date.now() });
 
-    const { ffmpeg } = getBinPaths();
-    if (!fs.existsSync(ffmpeg)) {
-      console.log("[queue] ffmpeg not found, marking download as failed");
+    try {
+      await startDownload(history[idx], mainWindow);
+    } catch (err) {
+      console.error(`[download] ${id} error:`, err);
       const h = store.get("history", []) as any[];
       const i = h.findIndex((x: any) => x.id === id);
       if (i !== -1) {
         h[i].status = "failed";
-        h[i].error =
-          "ffmpeg not installed. Please install ffmpeg to download videos.";
+        h[i].error = String(err);
         store.set("history", h);
         mainWindow.webContents.send("history:update", h);
-        mainWindow.webContents.send("download:error", {
-          id,
-          error: h[i].error,
-          retryCount: 0,
-        });
       }
-      this.activeCount--;
-      this.scheduleNext(mainWindow);
-      return;
-    }
-
-    const child = startDownload(item, mainWindow);
-    ACTIVE_DOWNLOADS.set(id, { child, startedAt: Date.now() });
-
-    child.finally(() => {
+    } finally {
       ACTIVE_DOWNLOADS.delete(id);
       this.activeCount--;
-      this.scheduleNext(mainWindow);
-    });
+      this.processQueue(mainWindow);
+    }
   }
 
   cancel(id: string): boolean {
     const history = store.get("history", []) as any[];
-    const item = history.find((h: any) => h.id === id);
-    if (!item) return false;
+    const idx = history.findIndex((h: any) => h.id === id);
+    if (idx === -1) return false;
 
-    if (item.status === "pending") {
+    if (history[idx].status === "pending") {
       store.set(
         "history",
         history.filter((h: any) => h.id !== id),
@@ -167,20 +160,23 @@ class DownloadQueue {
       return true;
     }
 
-    cancelDownload(id);
-    ACTIVE_DOWNLOADS.delete(id);
+    if (ACTIVE_DOWNLOADS.has(id)) {
+      cancelDownload(id);
+      ACTIVE_DOWNLOADS.delete(id);
+      this.activeCount--;
+    }
     return true;
   }
 
   cancelAll() {
-    for (const [id] of ACTIVE_DOWNLOADS) {
+    for (const id of ACTIVE_DOWNLOADS.keys()) {
       this.cancel(id);
     }
   }
 
-  getActiveCount(): number {
+  getActiveCount() {
     return this.activeCount;
   }
 }
 
-export const queueManager = new DownloadQueue();
+export const queueManager = new DownloadManager();

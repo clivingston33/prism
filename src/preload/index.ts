@@ -33,7 +33,6 @@ const prismAPI = {
   download: {
     addToQueue: (options: DownloadOptions) =>
       ipcRenderer.invoke("download:addToQueue", options),
-    startItem: (id: string) => ipcRenderer.invoke("download:startItem", id),
     cancel: (id: string) => ipcRenderer.invoke("download:cancel", id),
     cancelAll: () => ipcRenderer.invoke("download:cancelAll"),
     getMetadata: (url: string) =>

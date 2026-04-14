@@ -7,10 +7,6 @@ export function setupDownloadIPC(mainWindow: Electron.BrowserWindow) {
     return await queueManager.add(options, mainWindow);
   });
 
-  ipcMain.handle("download:startItem", async (_, id: string) => {
-    return await queueManager.start(id, mainWindow);
-  });
-
   ipcMain.handle("download:cancel", (_, id: string) => {
     return queueManager.cancel(id);
   });

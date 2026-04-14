@@ -86,7 +86,6 @@ interface PrismAPI {
   };
   download: {
     addToQueue(options: DownloadOptions): Promise<string>;
-    startItem(id: string): Promise<void>;
     cancel(id: string): Promise<boolean>;
     cancelAll(): Promise<void>;
     getMetadata(url: string): Promise<VideoMetadata | null>;

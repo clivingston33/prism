@@ -386,19 +386,18 @@ export async function startDownload(item: any, mainWindow: any) {
     args.push(item.url);
 
     console.log(`[yt-dlp] starting download: ${args.join(" ")}`);
-    console.log(
-      `[yt-dlp] binary path: ${ytdlp}, exists: ${fs.existsSync(ytdlp)}`,
-    );
-    console.log(
-      `[yt-dlp] ffmpeg path: ${ffmpeg}, exists: ${fs.existsSync(ffmpeg)}`,
-    );
-    console.log(`[yt-dlp] is file: ${fs.statSync(ytdlp).isFile()}`);
+    console.log(`[yt-dlp] binary: ${ytdlp}, ffmpeg: ${ffmpeg}`);
 
     let child: any;
     try {
       child = spawn(ytdlp, args, { shell: true });
     } catch (err: any) {
-      console.error(`[yt-dlp] spawn error: ${err.message}`);
+      console.error(`[yt-dlp] spawn failed: ${err.message}`);
+      mainWindow.webContents.send("download:error", {
+        id: item.id,
+        error: `Spawn failed: ${err.message}`,
+        retryCount: 0,
+      });
       resolve();
       return;
     }
@@ -408,30 +407,27 @@ export async function startDownload(item: any, mainWindow: any) {
     let finalFilePath = "";
     let stderrOutput = "";
     let hasReportedError = false;
+    let downloadStarted = false;
 
     child.stderr.on("data", (data) => {
       const text = data.toString();
       stderrOutput += text;
-      // Log all stderr output for debugging
-      console.log(`[yt-dlp] stderr: ${text.slice(0, 300)}`);
-      // Detect and log yt-dlp errors
-      if (
-        (!hasReportedError && text.includes("[error]")) ||
-        text.includes("ERROR")
-      ) {
-        console.log(`[yt-dlp] ERROR detected: ${text.slice(0, 500)}`);
+      console.log(`[yt-dlp] stderr: ${text.slice(0, 200)}`);
+      if (!hasReportedError && text.includes("ERROR")) {
         hasReportedError = true;
-      }
-      // Also log any warning messages
-      if (text.includes("[warning]") || text.includes("WARNING")) {
-        console.log(`[yt-dlp] warning: ${text.slice(0, 300)}`);
+        console.log(`[yt-dlp] ERROR: ${text.slice(0, 300)}`);
       }
     });
 
     child.stdout.on("data", (data) => {
       const output = data.toString();
+      console.log(`[yt-dlp] stdout: ${output.slice(0, 200)}`);
 
-      // Look for download progress
+      if (!downloadStarted && output.includes("[download]")) {
+        downloadStarted = true;
+        console.log(`[yt-dlp] ${item.id} download started`);
+      }
+
       const progressMatch = output.match(/\[download\]\s+([\d.]+)%/);
       if (progressMatch) {
         const currentProgress = parseFloat(progressMatch[1]);
@@ -448,43 +444,21 @@ export async function startDownload(item: any, mainWindow: any) {
           );
           store.set("history", updated);
         }
-      } else if (
-        output.includes("[ExtractAudio] Destination:") ||
-        output.includes("[Merger] Merging formats")
-      ) {
-        // Bump progress so it doesn't just sit at 0 for long ffmpeg ops
-        if (lastProgress < 95) {
-          lastProgress = 95;
+      }
+
+      if (output.includes("[ffmpeg]") || output.includes("Merging")) {
+        if (lastProgress < 90) {
+          lastProgress = 90;
           mainWindow.webContents.send("download:progress", {
             id: item.id,
-            progress: lastProgress,
-          });
-          const history = store.get("history", []) as any[];
-          store.set(
-            "history",
-            history.map((h) => (h.id === item.id ? { ...h, progress: 95 } : h)),
-          );
-        }
-      } else if (item.trimStart || item.trimEnd) {
-        // FFmpeg download sections fallback
-        if (output.includes("[ffmpeg] Downloaded")) {
-          lastProgress = 99;
-          mainWindow.webContents.send("download:progress", {
-            id: item.id,
-            progress: 99,
+            progress: 90,
           });
         }
       }
 
-      // Look for final destination files
-      const destMatch = output.match(
-        /Destination:\s*([^\n]+)|Merging formats into\s*"([^"]+)"|\[Move\] Moving\s+([^\n]+)/,
-      );
+      const destMatch = output.match(/Destination:\s*([^\n]+)/);
       if (destMatch) {
-        const potentialPath = destMatch[1] || destMatch[2] || destMatch[3];
-        if (potentialPath) {
-          finalFilePath = potentialPath.trim();
-        }
+        finalFilePath = destMatch[1].trim();
       }
     });
 

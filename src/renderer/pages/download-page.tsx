@@ -97,8 +97,9 @@ export function DownloadPage() {
     setUrl(normalizeUrls(url));
   };
 
-  const lineCount = url ? url.split("\n").length : 0;
+  const lineCount = url ? url.split("\n").length : 1;
   const textareaHeight = Math.min(Math.max(lineCount * 22 + 24, 48), 168);
+  const needsScroll = lineCount > 5;
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-4">
@@ -114,7 +115,7 @@ export function DownloadPage() {
 
         <div className="w-full flex flex-col gap-2">
           <div className="w-full bg-bg-subtle rounded-xl border border-border shadow-sm">
-            <div className="relative" style={{ height: textareaHeight }}>
+            <div className="relative">
               <textarea
                 ref={textareaRef}
                 value={url}
@@ -123,13 +124,17 @@ export function DownloadPage() {
                 onPaste={handlePaste}
                 onBlur={handleBlur}
                 placeholder="Paste link..."
-                rows={1}
-                className="w-full h-full bg-transparent border-none pl-6 pr-14 py-3 text-sm leading-[22px] text-text-primary placeholder-text-tertiary outline-none resize-none overflow-hidden"
-                style={{ height: textareaHeight }}
+                className="w-full bg-transparent border-none pl-6 pr-14 py-3 text-sm leading-[22px] text-text-primary placeholder-text-tertiary outline-none resize-none"
+                style={{
+                  height: textareaHeight,
+                  minHeight: "48px",
+                  maxHeight: "168px",
+                  overflowY: needsScroll ? "auto" : "hidden",
+                }}
               />
               <button
                 onClick={handleIconClick}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-text-tertiary hover:text-text-primary transition-colors rounded-xl"
+                className="absolute right-3 top-3 p-2 text-text-tertiary hover:text-text-primary transition-colors rounded-xl"
               >
                 {url ? (
                   <X size={18} strokeWidth={1.5} />

@@ -79,6 +79,23 @@ class DownloadManager {
           h[i].title = meta?.title || h[i].title;
           h[i].platform = meta?.platform || h[i].platform;
           h[i].thumbnail = meta?.thumbnail || h[i].thumbnail;
+
+          let dur = meta?.duration;
+          if (options.trimStart || options.trimEnd) {
+            const parseTime = (t: string) => {
+              const parts = t.split(":").map(Number);
+              if (parts.length === 3)
+                return parts[0] * 3600 + parts[1] * 60 + parts[2];
+              if (parts.length === 2) return parts[0] * 60 + parts[1];
+              return parts[0];
+            };
+            const s = options.trimStart ? parseTime(options.trimStart) : 0;
+            const e = options.trimEnd ? parseTime(options.trimEnd) : dur || s;
+            dur = Math.max(0, e - s);
+          }
+
+          h[i].duration = dur;
+          h[i].resolution = meta?.height || meta?.resolution;
           store.set("history", h);
           mainWindow.webContents.send("history:update", h);
         }

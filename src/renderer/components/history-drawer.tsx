@@ -64,7 +64,11 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
             <div className="w-full aspect-video bg-bg rounded border border-border-subtle flex items-center justify-center overflow-hidden">
               {item.thumbnail ? (
                 <img
-                  src={item.thumbnail}
+                  src={
+                    item.thumbnail.startsWith("http")
+                      ? item.thumbnail
+                      : `local://${item.thumbnail}`
+                  }
                   alt={item.title}
                   className="w-full h-full object-cover"
                 />

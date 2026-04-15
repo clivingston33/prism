@@ -34,15 +34,15 @@ export function HistoryPage() {
         </h1>
 
         <div className="mb-6 flex items-center justify-between">
-          <div className="flex gap-1 rounded border border-border p-1 bg-bg-subtle">
+          <div className="flex gap-2">
             {(["all", "completed", "failed"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`rounded px-4 py-1.5 text-xs font-medium capitalize transition-colors ${
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold capitalize transition-all border ${
                   filter === f
-                    ? "bg-accent shadow-sm text-accent-fg"
-                    : "text-text-secondary hover:text-text-primary"
+                    ? "bg-accent border-accent text-accent-fg shadow-sm"
+                    : "bg-bg-subtle border-border text-text-secondary hover:text-text-primary hover:border-border-subtle"
                 }`}
               >
                 {f}

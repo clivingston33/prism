@@ -25,6 +25,9 @@ interface DownloadItem {
   error?: string;
   retryCount: number;
   thumbnail?: string;
+  size?: number;
+  duration?: number;
+  resolution?: string;
 }
 
 interface DownloadOptions {

@@ -1,10 +1,23 @@
-import { app, shell, BrowserWindow } from "electron";
+import { app, shell, BrowserWindow, protocol, net } from "electron";
 import path from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { setupSettingsIPC } from "./ipc/settings";
 import { setupHistoryIPC } from "./ipc/history";
 import { setupDownloadIPC } from "./ipc/download";
 import { setupUpdater, setUpdaterMainWindow } from "./updater";
+
+// Register custom protocol scheme
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "local",
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      bypassCSP: true,
+    },
+  },
+]);
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -57,6 +70,16 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.prism.desktop");
+
+  protocol.handle("local", (request) => {
+    let filePath = request.url.slice("local://".length);
+    // On Windows, filePath might be C:/... so we need file:///C:/...
+    if (process.platform === "win32" && !filePath.startsWith("/")) {
+      filePath = "/" + filePath;
+    }
+    return net.fetch("file://" + filePath);
+  });
+
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });

@@ -21,7 +21,7 @@
   --color-queue-bg: var(--queue-bg);
   --color-queue-shadow: var(--queue-shadow);
 
-  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono:
     "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     monospace;

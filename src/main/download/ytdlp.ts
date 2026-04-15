@@ -320,14 +320,7 @@ export async function startDownload(item: any, mainWindow: any) {
     // Output template - avoid special chars that shell might interpret
     const outTemplate = path.join(dest, `%(title)s.%(ext)s`);
 
-    const args = [
-      "--newline",
-      "--no-playlist",
-      "-o",
-      outTemplate,
-      "--print",
-      "after_move:filepath",
-    ];
+    const args = ["--newline", "--no-playlist", "-o", outTemplate];
 
     const jsRuntime = getJsRuntimeArg();
     if (jsRuntime) {
@@ -390,7 +383,7 @@ export async function startDownload(item: any, mainWindow: any) {
 
     let child: any;
     try {
-      child = spawn(ytdlp, args, { shell: true });
+      child = spawn(ytdlp, args);
     } catch (err: any) {
       console.error(`[yt-dlp] spawn failed: ${err.message}`);
       mainWindow.webContents.send("download:error", {
@@ -406,6 +399,7 @@ export async function startDownload(item: any, mainWindow: any) {
     let lastProgress = 0;
     let finalFilePath = "";
     let stderrOutput = "";
+    let stdoutBuffer = "";
     let hasReportedError = false;
     let downloadStarted = false;
 
@@ -420,45 +414,59 @@ export async function startDownload(item: any, mainWindow: any) {
     });
 
     child.stdout.on("data", (data) => {
-      const output = data.toString();
-      console.log(`[yt-dlp] stdout: ${output.slice(0, 200)}`);
+      stdoutBuffer += data.toString();
+      const lines = stdoutBuffer.split(/\r?\n/);
+      // Keep the last incomplete line in the buffer
+      stdoutBuffer = lines.pop() || "";
 
-      if (!downloadStarted && output.includes("[download]")) {
-        downloadStarted = true;
-        console.log(`[yt-dlp] ${item.id} download started`);
-      }
-
-      const progressMatch = output.match(/\[download\]\s+([\d.]+)%/);
-      if (progressMatch) {
-        const currentProgress = parseFloat(progressMatch[1]);
-        if (currentProgress > lastProgress) {
-          lastProgress = currentProgress;
-          mainWindow.webContents.send("download:progress", {
-            id: item.id,
-            progress: currentProgress,
-          });
-
-          const history = store.get("history", []) as any[];
-          const updated = history.map((h) =>
-            h.id === item.id ? { ...h, progress: currentProgress } : h,
-          );
-          store.set("history", updated);
+      for (const output of lines) {
+        if (!downloadStarted && output.includes("[download]")) {
+          downloadStarted = true;
+          console.log(`[yt-dlp] ${item.id} download started`);
         }
-      }
 
-      if (output.includes("[ffmpeg]") || output.includes("Merging")) {
-        if (lastProgress < 90) {
-          lastProgress = 90;
-          mainWindow.webContents.send("download:progress", {
-            id: item.id,
-            progress: 90,
-          });
+        const progressMatch = output.match(/\[download\]\s+([\d.]+)%/);
+        if (progressMatch) {
+          const currentProgress = parseFloat(progressMatch[1]);
+          // Allow progress to reset if it drops significantly (e.g. starting a new stream like audio)
+          if (
+            currentProgress > lastProgress ||
+            lastProgress - currentProgress > 50
+          ) {
+            lastProgress = currentProgress;
+            mainWindow.webContents.send("download:progress", {
+              id: item.id,
+              progress: currentProgress,
+            });
+
+            const history = store.get("history", []) as any[];
+            const updated = history.map((h) =>
+              h.id === item.id ? { ...h, progress: currentProgress } : h,
+            );
+            store.set("history", updated);
+          }
         }
-      }
 
-      const destMatch = output.match(/Destination:\s*([^\n]+)/);
-      if (destMatch) {
-        finalFilePath = destMatch[1].trim();
+        if (output.includes("[ffmpeg]") || output.includes("Merging")) {
+          if (lastProgress < 90) {
+            lastProgress = 90;
+            mainWindow.webContents.send("download:progress", {
+              id: item.id,
+              progress: 90,
+            });
+          }
+        }
+
+        const destMatch = output.match(
+          /Destination:\s*([^\n]+)|Merging formats into\s*"([^"]+)"|\[Move\] Moving\s+.*to\s+"([^"]+)"|\[download\]\s+(.*)\s+has already been downloaded/,
+        );
+        if (destMatch) {
+          const potentialPath =
+            destMatch[1] || destMatch[2] || destMatch[3] || destMatch[4];
+          if (potentialPath) {
+            finalFilePath = potentialPath.trim();
+          }
+        }
       }
     });
 
@@ -473,6 +481,13 @@ export async function startDownload(item: any, mainWindow: any) {
       if (code === 0 || lastProgress >= 99 || finalFilePath !== "") {
         // Success
         const fPath = finalFilePath || "Download finished";
+        let fileSize: number | undefined = undefined;
+        try {
+          if (finalFilePath && fs.existsSync(finalFilePath)) {
+            fileSize = fs.statSync(finalFilePath).size;
+          }
+        } catch (e) {}
+
         mainWindow.webContents.send("download:complete", {
           id: item.id,
           filePath: fPath,
@@ -481,7 +496,13 @@ export async function startDownload(item: any, mainWindow: any) {
         const history = store.get("history", []) as any[];
         const updated = history.map((h) =>
           h.id === item.id
-            ? { ...h, status: "completed", progress: 100, filePath: fPath }
+            ? {
+                ...h,
+                status: "completed",
+                progress: 100,
+                filePath: fPath,
+                size: fileSize,
+              }
             : h,
         );
         store.set("history", updated);

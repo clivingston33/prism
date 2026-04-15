@@ -10,6 +10,7 @@ export function LibraryPage() {
     id: string;
   } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
 
   const completed = downloads.filter(
     (d) => d.status === "completed" && d.filePath,
@@ -43,7 +44,7 @@ export function LibraryPage() {
           Library
         </h1>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pb-20">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pb-20">
           {completed.map((item) => (
             <div
               key={item.id}
@@ -52,37 +53,70 @@ export function LibraryPage() {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, id: item.id });
               }}
-              className="group relative flex flex-col rounded-xl border border-border bg-bg-subtle overflow-hidden transition-all duration-150 hover:border-text-tertiary cursor-pointer"
+              className="group relative flex flex-col rounded-xl border border-border bg-bg-subtle overflow-hidden transition-all duration-300 hover:border-text-tertiary cursor-pointer hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/5"
             >
-              {/* Thumbnail/Icon section - same as before */}
-              <div className="aspect-video bg-bg flex items-center justify-center relative overflow-hidden">
+              <div className="aspect-video bg-bg flex items-center justify-center relative overflow-hidden group-hover:brightness-110 transition-all duration-300">
                 {item.thumbnail ? (
-                  <img
-                    src={
-                      item.thumbnail.startsWith("http")
-                        ? item.thumbnail
-                        : `file://${item.thumbnail}`
-                    }
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                ) : null}
-                {!item.thumbnail && (
+                  <>
+                    <div
+                      className={`absolute inset-0 bg-bg-elevated animate-pulse ${imageLoaded[item.id] ? "opacity-0" : "opacity-100"} transition-opacity duration-300`}
+                    />
+                    <img
+                      src={
+                        item.thumbnail.startsWith("http")
+                          ? item.thumbnail
+                          : `local://${item.thumbnail}`
+                      }
+                      alt={item.title}
+                      onLoad={() =>
+                        setImageLoaded((prev) => ({ ...prev, [item.id]: true }))
+                      }
+                      className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${imageLoaded[item.id] ? "opacity-100" : "opacity-0"}`}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </>
+                ) : (
                   <Play
                     size={24}
-                    className="text-border-subtle"
+                    className="text-border-subtle transition-transform duration-300 group-hover:scale-110 group-hover:text-text-secondary"
                     strokeWidth={1}
                   />
                 )}
+                {/* Badges Overlay */}
+                <div className="absolute bottom-2 right-2 flex gap-1.5 z-10 pointer-events-none">
+                  {item.duration && (
+                    <span className="bg-black/70 backdrop-blur-md text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 shadow-sm">
+                      {Math.floor(item.duration / 60)}:
+                      {(item.duration % 60).toString().padStart(2, "0")}
+                    </span>
+                  )}
+                  {(item.resolution || item.quality) && (
+                    <span className="bg-black/70 backdrop-blur-md text-white text-[10px] font-medium px-1.5 py-0.5 rounded border border-white/10 shadow-sm">
+                      {item.resolution || item.quality}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="p-3">
-                <h3 className="text-[13px] font-medium text-text-primary line-clamp-1">
+                <h3 className="text-[13px] font-medium text-text-primary line-clamp-1 group-hover:text-accent transition-colors">
                   {item.title}
                 </h3>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-text-tertiary">
+                  <span className="uppercase">{item.format}</span>
+                  {item.size && (
+                    <>
+                      <span>·</span>
+                      <span>{(item.size / (1024 * 1024)).toFixed(1)} MB</span>
+                    </>
+                  )}
+                  <span>·</span>
+                  <span className="truncate">
+                    {new Date(item.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
               </div>
             </div>
           ))}

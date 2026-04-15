@@ -314,7 +314,7 @@ export function extractThumbnail(
 export async function startDownload(item: any, mainWindow: any) {
   return new Promise<void>((resolve) => {
     const { ytdlp, ffmpeg } = getBinPaths();
-    const settings = store.get("settings") as any;
+    const settings = (store.get("settings") || {}) as any;
     const dest = settings.downloadLocation || app.getPath("downloads");
 
     // Output template - avoid special chars that shell might interpret

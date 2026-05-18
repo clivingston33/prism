@@ -8,6 +8,7 @@ import {
   Download,
   Palette,
   Info,
+  KeyRound,
 } from "lucide-react";
 
 export function SettingsPage() {
@@ -15,6 +16,7 @@ export function SettingsPage() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [showUpToDate, setShowUpToDate] = useState(false);
+  const [geminiApiKeyDraft, setGeminiApiKeyDraft] = useState("");
 
   const handleCheckUpdates = async () => {
     setCheckingUpdates(true);
@@ -119,6 +121,7 @@ export function SettingsPage() {
                   <option value="mov">MOV</option>
                   <option value="webm">WebM</option>
                   <option value="mkv">MKV</option>
+                  <option value="prores">ProRes</option>
                 </select>
               </SettingRow>
 
@@ -136,6 +139,57 @@ export function SettingsPage() {
                   <option value="flac">FLAC</option>
                 </select>
               </SettingRow>
+            </div>
+          </section>
+
+          {/* AI Transcripts */}
+          <section className="grid grid-cols-1 md:grid-cols-[180px_1fr] gap-6 md:gap-10">
+            <div className="flex flex-col pt-1">
+              <h2 className="flex items-center gap-2 text-[13px] font-bold uppercase tracking-wide text-text-primary">
+                <KeyRound size={14} className="text-accent" />
+                AI Transcripts
+              </h2>
+              <p className="text-[11px] text-text-tertiary mt-2">
+                Configure Gemini transcription for local media files.
+              </p>
+            </div>
+            <div className="flex flex-col bg-bg-subtle border border-border rounded-xl p-2 px-4 shadow-sm">
+              <SettingRow label="Transcript model">
+                <input
+                  type="text"
+                  value={settings.aiTranscriptModel || "Gemini 3.1 Flash Lite"}
+                  onChange={(e) =>
+                    updateSetting("aiTranscriptModel", e.target.value)
+                  }
+                  placeholder="Gemini 3.1 Flash Lite"
+                  className="h-8 w-[280px] rounded border border-border-subtle bg-bg px-2 font-mono text-[11px] text-text-secondary outline-none focus:border-border shadow-sm"
+                />
+              </SettingRow>
+
+              <SettingRow label="Gemini API key">
+                <input
+                  type="password"
+                  value={geminiApiKeyDraft}
+                  onChange={(e) => {
+                    setGeminiApiKeyDraft(e.target.value);
+                    updateSetting("geminiApiKey", e.target.value);
+                  }}
+                  placeholder={
+                    settings.hasGeminiApiKey
+                      ? "Gemini API key saved"
+                      : "Google AI Studio key"
+                  }
+                  autoComplete="off"
+                  className="h-8 w-[280px] rounded border border-border-subtle bg-bg px-2 font-mono text-[11px] text-text-secondary outline-none focus:border-border shadow-sm"
+                />
+              </SettingRow>
+
+              <p className="px-1 py-2 text-[10px] leading-relaxed text-text-tertiary">
+                Prism extracts audio with FFmpeg and sends it to Gemini. If AI
+                transcription fails for a downloaded URL, Prism falls back to
+                platform captions when possible. Saved API keys are hidden in
+                the app UI.
+              </p>
             </div>
           </section>
 

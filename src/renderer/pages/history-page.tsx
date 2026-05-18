@@ -13,6 +13,9 @@ export function HistoryPage() {
   const [selectedItem, setSelectedItem] = useState<DownloadItem | null>(null);
 
   const historyItems = downloads;
+  const selectedLiveItem = selectedItem
+    ? downloads.find((item) => item.id === selectedItem.id) || selectedItem
+    : null;
 
   const filteredItems = historyItems.filter((item) => {
     if (filter === "all") return true;
@@ -133,7 +136,7 @@ export function HistoryPage() {
 
       {/* History Detail Drawer */}
       <HistoryDrawer
-        item={selectedItem}
+        item={selectedLiveItem}
         onClose={() => setSelectedItem(null)}
       />
     </div>

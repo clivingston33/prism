@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useAppStore } from "../stores/app-store";
-import { Play, FolderOpen, Trash2 } from "lucide-react";
+import { Play, FolderOpen, Trash2, Info } from "lucide-react";
+import { HistoryDrawer } from "../components/history-drawer";
 
 export function LibraryPage() {
   const { downloads, setDownloads } = useAppStore();
@@ -11,10 +12,15 @@ export function LibraryPage() {
   } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
+  const [selectedItem, setSelectedItem] = useState<DownloadItem | null>(null);
 
-  const completed = downloads.filter(
-    (d) => d.status === "completed" && d.filePath,
+  const completed = useMemo(
+    () => downloads.filter((d) => d.status === "completed" && d.filePath),
+    [downloads],
   );
+  const selectedLiveItem = selectedItem
+    ? downloads.find((item) => item.id === selectedItem.id) || selectedItem
+    : null;
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -24,6 +30,15 @@ export function LibraryPage() {
 
   const handleOpen = async (filePath: string) => {
     await window.prism.history.openFile(filePath);
+  };
+
+  const handleCardOpen = async (item: DownloadItem) => {
+    if (!item.filePath) return;
+    if (item.format === "images") {
+      await window.prism.history.openFolder(item.filePath);
+      return;
+    }
+    await handleOpen(item.filePath);
   };
 
   const handleReveal = async (filePath: string) => {
@@ -48,7 +63,7 @@ export function LibraryPage() {
           {completed.map((item) => (
             <div
               key={item.id}
-              onClick={() => item.filePath && handleOpen(item.filePath)}
+              onClick={() => handleCardOpen(item)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, id: item.id });
@@ -74,7 +89,12 @@ export function LibraryPage() {
                       className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${imageLoaded[item.id] ? "opacity-100" : "opacity-0"}`}
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = "none";
+                        setImageLoaded((prev) => ({
+                          ...prev,
+                          [item.id]: true,
+                        }));
                       }}
+                      loading="lazy"
                     />
                   </>
                 ) : (
@@ -105,7 +125,15 @@ export function LibraryPage() {
                   {item.title}
                 </h3>
                 <div className="mt-1 flex items-center gap-1.5 text-[11px] text-text-tertiary">
-                  <span className="uppercase">{item.format}</span>
+                  <span className="uppercase">
+                    {item.mode === "split" ? "split" : item.format}
+                  </span>
+                  {item.transcriptPath && (
+                    <>
+                      <span>·</span>
+                      <span>Transcript</span>
+                    </>
+                  )}
                   {item.size && (
                     <>
                       <span>·</span>
@@ -129,6 +157,16 @@ export function LibraryPage() {
           className="fixed z-50 w-40 rounded-xl border border-border bg-bg-elevated p-1 shadow-xl animate-in fade-in zoom-in-95 duration-100"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
+          <button
+            onClick={() => {
+              const item = completed.find((d) => d.id === contextMenu.id);
+              if (item) setSelectedItem(item);
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-bg-subtle text-text-primary"
+          >
+            <Info size={14} /> Details
+          </button>
           <button
             onClick={() => {
               const item = completed.find((d) => d.id === contextMenu.id);
@@ -158,6 +196,11 @@ export function LibraryPage() {
           </button>
         </div>
       )}
+
+      <HistoryDrawer
+        item={selectedLiveItem}
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   );
 }

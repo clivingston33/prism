@@ -9,6 +9,8 @@ import { DownloadPage } from "./pages/download-page";
 import { HistoryPage } from "./pages/history-page";
 import { LibraryPage } from "./pages/library-page";
 import { SettingsPage } from "./pages/settings-page";
+import { TranscriptsPage } from "./pages/transcripts-page";
+import { ConvertPage } from "./pages/convert-page";
 
 const rootRoute = createRootRoute({
   component: Shell,
@@ -32,6 +34,18 @@ const libraryRoute = createRoute({
   component: LibraryPage,
 });
 
+const transcriptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/transcript",
+  component: TranscriptsPage,
+});
+
+const convertRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/convert",
+  component: ConvertPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -42,6 +56,8 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   historyRoute,
   libraryRoute,
+  transcriptsRoute,
+  convertRoute,
   settingsRoute,
 ]);
 

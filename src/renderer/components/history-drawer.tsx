@@ -1,9 +1,12 @@
+import { useState } from "react";
 import {
   X,
   FolderOpen,
   RefreshCw,
   Trash2,
   Image as ImageIcon,
+  FileText,
+  Copy,
 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 
@@ -14,6 +17,11 @@ interface HistoryDrawerProps {
 
 export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   const { setDownloads } = useAppStore();
+  const [conversionFormat, setConversionFormat] = useState<
+    "mp4" | "mov" | "webm" | "prores" | "mp3"
+  >("mov");
+  const [isConverting, setIsConverting] = useState(false);
+  const [copiedTranscript, setCopiedTranscript] = useState(false);
 
   if (!item) return null;
 
@@ -27,7 +35,11 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
     await window.prism.download.addToQueue({
       url: item.url,
       format: item.format as any,
+      mode: item.mode,
+      audioFormat: item.audioFormat as any,
       quality: item.quality as any,
+      transcript: item.transcript,
+      transcriptFormat: item.transcriptFormat,
     });
     const updatedHistory = await window.prism.history.get();
     setDownloads(updatedHistory);
@@ -39,6 +51,37 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
     const updatedHistory = await window.prism.history.get();
     setDownloads(updatedHistory);
     onClose();
+  };
+
+  const handleConvert = async () => {
+    if (!item.filePath || isConverting) return;
+    setIsConverting(true);
+    try {
+      await window.prism.download.convertFile({
+        sourceItemId: item.id,
+        filePath: item.filePath,
+        format: conversionFormat,
+      });
+      const updatedHistory = await window.prism.history.get();
+      setDownloads(updatedHistory);
+    } catch (err) {
+      console.error("Conversion failed", err);
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  const handleCopyTranscript = async () => {
+    if (!item.transcriptText) return;
+    await navigator.clipboard.writeText(item.transcriptText);
+    setCopiedTranscript(true);
+    window.setTimeout(() => setCopiedTranscript(false), 1200);
+  };
+
+  const handleOpenTranscript = async () => {
+    if (item.transcriptPath) {
+      await window.prism.history.openFolder(item.transcriptPath);
+    }
   };
 
   return (
@@ -119,7 +162,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                   Format
                 </span>
                 <span className="text-xs font-mono text-text-secondary">
-                  {item.format.toUpperCase()}
+                  {item.mode === "split" ? "SPLIT" : item.format.toUpperCase()}
                 </span>
               </div>
               {item.quality && (
@@ -140,8 +183,103 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                   {new Date(item.createdAt).toLocaleDateString()}
                 </span>
               </div>
+              {item.mode && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase text-text-tertiary">
+                    Mode
+                  </span>
+                  <span className="text-xs font-mono text-text-secondary">
+                    {item.mode.replace("_", " ")}
+                  </span>
+                </div>
+              )}
+              {item.filePaths && item.filePaths.length > 1 && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <span className="text-[10px] uppercase text-text-tertiary">
+                    Files
+                  </span>
+                  <span className="text-xs font-mono text-text-secondary">
+                    {item.filePaths.length} saved files
+                  </span>
+                </div>
+              )}
             </div>
           </div>
+
+          {(item.transcriptText ||
+            item.transcriptPath ||
+            item.transcriptError) && (
+            <div className="flex flex-col gap-3">
+              <h4 className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary border-b border-border-subtle pb-2">
+                Transcript
+              </h4>
+              {item.transcriptText ? (
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-bg p-3 text-xs leading-relaxed text-text-secondary whitespace-pre-wrap">
+                  {item.transcriptText}
+                </div>
+              ) : item.transcriptError ? (
+                <p className="rounded-lg border border-error/20 bg-error/5 p-3 text-xs text-error">
+                  {item.transcriptError}
+                </p>
+              ) : (
+                <p className="text-xs text-text-tertiary">
+                  Transcript saved with the downloaded file.
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyTranscript}
+                  disabled={!item.transcriptText}
+                  className="flex h-8 flex-1 items-center justify-center gap-2 rounded border border-border bg-bg text-xs font-medium text-text-primary hover:bg-bg-subtle disabled:opacity-50"
+                >
+                  <Copy size={13} />
+                  {copiedTranscript ? "Copied" : "Copy"}
+                </button>
+                <button
+                  onClick={handleOpenTranscript}
+                  disabled={!item.transcriptPath}
+                  className="flex h-8 flex-1 items-center justify-center gap-2 rounded border border-border bg-bg text-xs font-medium text-text-primary hover:bg-bg-subtle disabled:opacity-50"
+                >
+                  <FileText size={13} />
+                  Reveal
+                </button>
+              </div>
+            </div>
+          )}
+
+          {item.status === "completed" &&
+            item.filePath &&
+            item.format !== "images" && (
+              <div className="flex flex-col gap-3">
+                <h4 className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary border-b border-border-subtle pb-2">
+                  Convert File
+                </h4>
+                <div className="flex gap-2">
+                  <select
+                    value={conversionFormat}
+                    onChange={(e) => setConversionFormat(e.target.value as any)}
+                    className="h-9 flex-1 rounded border border-border bg-bg px-2 text-xs text-text-primary outline-none"
+                  >
+                    <option value="mp4">H.264 MP4</option>
+                    <option value="mov">H.264 MOV</option>
+                    <option value="prores">ProRes</option>
+                    <option value="webm">WebM</option>
+                    <option value="mp3">MP3 audio</option>
+                  </select>
+                  <button
+                    onClick={handleConvert}
+                    disabled={isConverting}
+                    className="h-9 rounded border border-border bg-bg px-3 text-xs font-medium text-text-primary hover:bg-bg-subtle disabled:opacity-50"
+                  >
+                    {isConverting ? "Converting..." : "Convert"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-text-tertiary">
+                  Conversion creates a new file and never overwrites the
+                  original.
+                </p>
+              </div>
+            )}
 
           <div className="flex flex-col gap-2 mt-auto">
             {item.status === "completed" && item.filePath && (

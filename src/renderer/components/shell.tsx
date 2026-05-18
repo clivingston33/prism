@@ -5,6 +5,8 @@ import {
   Settings2,
   LayoutGrid,
   PanelLeft,
+  FileText,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 
@@ -56,6 +58,18 @@ export function Shell() {
             to="/library"
             icon={<LayoutGrid size={16} strokeWidth={1.5} />}
             label="Library"
+            expanded={sidebarExpanded}
+          />
+          <NavItem
+            to="/transcript"
+            icon={<FileText size={16} strokeWidth={1.5} />}
+            label="Transcript"
+            expanded={sidebarExpanded}
+          />
+          <NavItem
+            to="/convert"
+            icon={<ArrowRightLeft size={16} strokeWidth={1.5} />}
+            label="File Swap"
             expanded={sidebarExpanded}
           />
           <NavItem

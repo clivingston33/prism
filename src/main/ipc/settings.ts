@@ -2,16 +2,45 @@ import { ipcMain, dialog, BrowserWindow } from "electron";
 import { store, defaultSettings } from "../store";
 import { autoUpdater } from "electron-updater";
 
+function cleanSettings(settings: Record<string, any>) {
+  return Object.fromEntries(
+    Object.keys(defaultSettings).map((key) => [key, settings[key]]),
+  );
+}
+
+function hasGeminiApiKey(settings: Record<string, any>) {
+  return Boolean(
+    String(settings.geminiApiKey || "").trim() ||
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY,
+  );
+}
+
+function settingsForRenderer(settings: Record<string, any>) {
+  const clean = cleanSettings(settings);
+  return {
+    ...clean,
+    geminiApiKey: "",
+    hasGeminiApiKey: hasGeminiApiKey(settings),
+  };
+}
+
 export function setupSettingsIPC() {
   ipcMain.handle("settings:get", () => {
-    return store.get("settings", defaultSettings);
+    return settingsForRenderer({
+      ...defaultSettings,
+      ...(store.get("settings", {}) as any),
+    });
   });
 
   ipcMain.handle("settings:update", (_, partialSettings) => {
-    const current = store.get("settings", defaultSettings) as any;
-    const updated = { ...current, ...partialSettings };
+    const current = {
+      ...defaultSettings,
+      ...(store.get("settings", {}) as any),
+    };
+    const updated = cleanSettings({ ...current, ...partialSettings });
     store.set("settings", updated);
-    return updated;
+    return settingsForRenderer(updated);
   });
 
   ipcMain.handle("settings:selectDirectory", async (event) => {

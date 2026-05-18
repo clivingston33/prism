@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Clipboard, Link as LinkIcon } from "lucide-react";
 import { OptionsDrawer } from "../components/options-drawer";
-import { useNavigate } from "@tanstack/react-router";
 
 function detectPlatform(url: string): string | null {
   try {
@@ -35,18 +34,14 @@ function normalizeUrls(text: string): string {
 
 export function DownloadPage() {
   const [url, setUrl] = useState("");
-  const [mode, setMode] = useState<"video" | "audio">("video");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const navigate = useNavigate();
 
   const [clipboardUrl, setClipboardUrl] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<any>(null);
   const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
 
   const urls = extractUrls(url);
-  const isMultiple = urls.length > 1;
   const platform = url ? detectPlatform(urls[0] || url.trim()) : null;
 
   useEffect(() => {
@@ -98,25 +93,6 @@ export function DownloadPage() {
 
   const handleSubmit = async () => {
     if (urls.length === 0) return;
-
-    if (isMultiple) {
-      setIsSubmitting(true);
-      for (const u of urls) {
-        try {
-          await window.prism.download.addToQueue({
-            url: u,
-            format: mode === "video" ? "mp4" : "mp3",
-            quality: mode === "video" ? "best" : undefined,
-          });
-        } catch (e) {
-          console.error("Download failed for", u, e);
-        }
-      }
-      setUrl("");
-      setIsSubmitting(false);
-      navigate({ to: "/history" });
-      return;
-    }
 
     setDrawerOpen(true);
   };
@@ -275,10 +251,10 @@ export function DownloadPage() {
 
           <button
             onClick={handleSubmit}
-            disabled={!url || isSubmitting}
+            disabled={!url}
             className="w-full h-[48px] flex items-center justify-center rounded-xl bg-accent text-accent-fg font-medium text-sm transition-all disabled:opacity-50 hover:bg-accent/90 shadow-md active:scale-[0.98]"
           >
-            {isSubmitting ? "Starting downloads..." : "Add to Queue"}
+            Add to Queue
           </button>
         </div>
 
@@ -297,17 +273,13 @@ export function DownloadPage() {
         )}
       </div>
 
-      {!isMultiple && (
-        <OptionsDrawer
-          isOpen={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          url={urls[0] || url}
-          mode={mode}
-          setMode={setMode}
-          platform={platform || "Unknown"}
-          setUrl={setUrl}
-        />
-      )}
+      <OptionsDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        urls={urls}
+        platform={platform || "Unknown"}
+        setUrl={setUrl}
+      />
     </div>
   );
 }

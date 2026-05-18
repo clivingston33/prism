@@ -2,17 +2,58 @@ import { contextBridge, ipcRenderer } from "electron";
 
 interface DownloadOptions {
   url: string;
-  format: "mp4" | "mp3" | "wav" | "mov" | "webm" | "mkv" | "aac" | "flac";
-  quality?: "best" | "1080p" | "720p" | "480p" | "360p";
+  mode?: "video_audio" | "video_only" | "audio_only" | "split";
+  format:
+    | "mp4"
+    | "mp3"
+    | "wav"
+    | "mov"
+    | "webm"
+    | "mkv"
+    | "aac"
+    | "flac"
+    | "prores";
+  audioFormat?: "mp3" | "wav" | "aac" | "flac";
+  quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
   transcript?: boolean;
+  transcriptFormat?: "txt" | "srt" | "vtt";
   trimStart?: string;
   trimEnd?: string;
-  muteAudio?: boolean;
+}
+
+interface ConversionOptions {
+  sourceItemId?: string;
+  filePath: string;
+  format:
+    | "mp4"
+    | "mov"
+    | "webm"
+    | "mkv"
+    | "prores"
+    | "gif"
+    | "mp3"
+    | "m4a"
+    | "wav"
+    | "aac"
+    | "flac"
+    | "ogg";
+  videoCodec?: string;
+  audioCodec?: string;
+  videoHeight?: number | null;
+  crf?: number;
+  audioBitrate?: string;
+  fps?: string;
+}
+
+interface ConversionResult {
+  id: string;
+  filePath: string;
+  title: string;
 }
 
 // Custom APIs for renderer
 const prismAPI = {
-  version: "1.0.1",
+  version: "1.1.3",
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     update: (settings: any) => ipcRenderer.invoke("settings:update", settings),
@@ -42,6 +83,14 @@ const prismAPI = {
     getActiveCount: () => ipcRenderer.invoke("download:getActiveCount"),
     getTranscript: (url: string, format: string) =>
       ipcRenderer.invoke("download:getTranscript", url, format),
+    convertFile: (options: ConversionOptions) =>
+      ipcRenderer.invoke("download:convertFile", options) as Promise<ConversionResult>,
+    selectFile: () => ipcRenderer.invoke("download:selectFile"),
+    selectVideoFile: () => ipcRenderer.invoke("download:selectVideoFile"),
+    getTranscriptFromFile: (filePath: string, format: string) =>
+      ipcRenderer.invoke("download:getTranscriptFromFile", filePath, format),
+    transcribeFile: (filePath: string, format: string) =>
+      ipcRenderer.invoke("download:transcribeFile", filePath, format),
   },
   on: (channel: string, callback: (...args: any[]) => void) => {
     const subscription = (_event: any, ...args: any[]) => callback(...args);

@@ -13,9 +13,12 @@ export function App() {
 
     // Subscriptions
     const unsubProgress = window.prism.on("download:progress", (data) => {
+      const current = useAppStore
+        .getState()
+        .downloads.find((item) => item.id === data.id);
       updateDownload(data.id, {
         progress: data.progress,
-        status: "downloading",
+        status: current?.status === "processing" ? "processing" : "downloading",
       });
     });
 
@@ -24,6 +27,7 @@ export function App() {
         status: "completed",
         progress: 100,
         filePath: data.filePath,
+        filePaths: data.filePaths,
       });
     });
 

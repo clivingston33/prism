@@ -1,13 +1,16 @@
 /// <reference types="vite/client" />
 
 interface Settings {
-  defaultVideoFormat: "mp4" | "mov" | "webm" | "mkv";
+  defaultVideoFormat: "mp4" | "mov" | "webm" | "mkv" | "prores";
   defaultAudioFormat: "mp3" | "wav" | "aac" | "flac";
   maxConcurrentDownloads: 1 | 2 | 3;
   downloadLocation: string;
   historyRetentionDays: number;
   videoAutoDeleteDays: number;
   theme: "dark" | "light" | "system";
+  aiTranscriptModel?: string;
+  geminiApiKey?: string;
+  hasGeminiApiKey?: boolean;
 }
 
 interface DownloadItem {
@@ -16,28 +19,48 @@ interface DownloadItem {
   platform: string;
   title: string;
   format: string;
+  mode?: "video_audio" | "video_only" | "audio_only" | "split";
+  audioFormat?: string;
   quality?: string;
   status: "pending" | "downloading" | "processing" | "completed" | "failed";
   progress: number;
   createdAt: string;
   completedAt?: string;
   filePath?: string;
+  filePaths?: string[];
   error?: string;
   retryCount: number;
   thumbnail?: string;
   size?: number;
   duration?: number;
   resolution?: string;
+  transcript?: boolean;
+  transcriptFormat?: "txt" | "srt" | "vtt";
+  transcriptPath?: string;
+  transcriptText?: string;
+  transcriptError?: string;
+  imageCount?: number;
 }
 
 interface DownloadOptions {
   url: string;
-  format: "mp4" | "mp3" | "wav" | "mov" | "webm" | "mkv" | "aac" | "flac";
-  quality?: "best" | "1080p" | "720p" | "480p" | "360p";
+  mode?: "video_audio" | "video_only" | "audio_only" | "split";
+  format:
+    | "mp4"
+    | "mp3"
+    | "wav"
+    | "mov"
+    | "webm"
+    | "mkv"
+    | "aac"
+    | "flac"
+    | "prores";
+  audioFormat?: "mp3" | "wav" | "aac" | "flac";
+  quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
   transcript?: boolean;
+  transcriptFormat?: "txt" | "srt" | "vtt";
   trimStart?: string;
   trimEnd?: string;
-  muteAudio?: boolean;
 }
 
 interface VideoMetadata {
@@ -46,6 +69,9 @@ interface VideoMetadata {
   duration?: number;
   thumbnail?: string;
   formats: string[];
+  qualities?: string[];
+  mediaType?: "video" | "image";
+  imageCount?: number;
 }
 
 interface DownloadProgress {
@@ -58,6 +84,7 @@ interface DownloadProgress {
 interface DownloadComplete {
   id: string;
   filePath: string;
+  filePaths?: string[];
 }
 
 interface DownloadError {
@@ -95,6 +122,40 @@ interface PrismAPI {
     isUrlSupported(url: string): Promise<boolean>;
     getActiveCount(): Promise<number>;
     getTranscript(url: string, format: string): Promise<string>;
+    convertFile(options: {
+      sourceItemId?: string;
+      filePath: string;
+      format:
+        | "mp4"
+        | "mov"
+        | "webm"
+        | "mkv"
+        | "prores"
+        | "gif"
+        | "mp3"
+        | "m4a"
+        | "wav"
+        | "aac"
+        | "flac"
+        | "ogg";
+      videoCodec?: string;
+      audioCodec?: string;
+      videoHeight?: number | null;
+      crf?: number;
+      audioBitrate?: string;
+      fps?: string;
+    }): Promise<{ id: string; filePath: string; title: string }>;
+    selectFile(): Promise<string | null>;
+    selectVideoFile(): Promise<string | null>;
+    getTranscriptFromFile(filePath: string, format: string): Promise<string>;
+    transcribeFile(
+      filePath: string,
+      format: "txt" | "srt" | "vtt",
+    ): Promise<{
+      id: string;
+      transcriptText: string;
+      transcriptError?: string;
+    }>;
   };
   on(
     event: "download:progress",

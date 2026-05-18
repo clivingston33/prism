@@ -9,6 +9,8 @@ export const defaultSettings: any = {
   historyRetentionDays: -1,
   videoAutoDeleteDays: 0,
   theme: "system",
+  aiTranscriptModel: "Gemini 3.1 Flash Lite",
+  geminiApiKey: "",
 };
 
 export const store = new Store({

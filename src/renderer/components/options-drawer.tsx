@@ -1,77 +1,194 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, Video, Music } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { useNavigate } from "@tanstack/react-router";
 
+type DownloadMode = "video_audio" | "video_only" | "audio_only" | "split";
+type VideoFormat = "mp4" | "mov" | "webm" | "mkv" | "prores";
+type AudioFormat = "mp3" | "wav" | "aac" | "flac";
+
 interface OptionsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  url: string;
-  mode: "video" | "audio";
-  setMode: (mode: "video" | "audio") => void;
+  urls: string[];
   platform: string;
   setUrl: (v: string) => void;
+}
+
+interface QueueOptions {
+  url: string;
+  mode: DownloadMode;
+  format: VideoFormat;
+  audioFormat: AudioFormat;
+  quality: string;
+  trimEnabled: boolean;
+  trimStart: string;
+  trimEnd: string;
+}
+
+const VIDEO_FORMATS: { value: VideoFormat; label: string }[] = [
+  { value: "mp4", label: "MP4" },
+  { value: "mov", label: "MOV" },
+  { value: "webm", label: "WebM" },
+  { value: "mkv", label: "MKV" },
+  { value: "prores", label: "ProRes" },
+];
+
+const AUDIO_FORMATS: { value: AudioFormat; label: string }[] = [
+  { value: "mp3", label: "MP3" },
+  { value: "wav", label: "WAV" },
+  { value: "aac", label: "AAC" },
+  { value: "flac", label: "FLAC" },
+];
+
+const MODE_OPTIONS: {
+  value: DownloadMode;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "video_audio",
+    label: "Video + audio",
+    description: "One playable file",
+  },
+  { value: "video_only", label: "Video only", description: "No audio track" },
+  { value: "audio_only", label: "Audio only", description: "Extract audio" },
+  { value: "split", label: "Split A/V", description: "Separate files" },
+];
+
+function defaultOptions(settings: Settings | null, url: string): QueueOptions {
+  return {
+    url,
+    mode: "video_audio",
+    format: settings?.defaultVideoFormat || "mp4",
+    audioFormat: settings?.defaultAudioFormat || "mp3",
+    quality: "best",
+    trimEnabled: false,
+    trimStart: "00:00:00",
+    trimEnd: "00:00:00",
+  };
+}
+
+function formatSummary(item: QueueOptions) {
+  if (item.mode === "audio_only")
+    return `${item.audioFormat.toUpperCase()} audio`;
+  if (item.mode === "video_only")
+    return `${item.format.toUpperCase()} video only`;
+  if (item.mode === "split") {
+    return `${item.format.toUpperCase()} + ${item.audioFormat.toUpperCase()}`;
+  }
+  return `${item.format.toUpperCase()} ${item.quality === "best" ? "best" : item.quality}`;
 }
 
 export function OptionsDrawer({
   isOpen,
   onClose,
-  url,
-  mode,
-  setMode,
+  urls,
   platform,
   setUrl,
 }: OptionsDrawerProps) {
   const { settings } = useAppStore();
   const navigate = useNavigate();
+  const urlsKey = urls.join("\n");
 
-  const [format, setFormat] = useState<string>(
-    settings?.defaultVideoFormat || "mp4",
-  );
-  const [audioFormat, setAudioFormat] = useState<string>(
-    settings?.defaultAudioFormat || "mp3",
-  );
-  const [quality, setQuality] = useState("best");
-  const [trimEnabled, setTrimEnabled] = useState(false);
-  const [trimStart, setTrimStart] = useState("00:00:00");
-  const [trimEnd, setTrimEnd] = useState("00:00:00");
-  const [transcriptEnabled, setTranscriptEnabled] = useState(false);
-  const [transcriptFormat, setTranscriptFormat] = useState("srt");
-  const [muteAudio, setMuteAudio] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [queueOptions, setQueueOptions] = useState<QueueOptions[]>([]);
+  const [metadataCache, setMetadataCache] = useState<
+    Record<string, { loading: boolean; data?: VideoMetadata | null }>
+  >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCopying, setIsCopying] = useState(false);
 
   useEffect(() => {
-    if (mode === "video" && ["mp3", "wav", "aac", "flac"].includes(format)) {
-      setFormat(settings?.defaultVideoFormat || "mp4");
-    } else if (
-      mode === "audio" &&
-      ["mp4", "mov", "webm", "mkv"].includes(format)
-    ) {
-      setFormat(settings?.defaultAudioFormat || "mp3");
-    }
-  }, [mode, format, settings]);
+    if (!isOpen) return;
+    setSelectedIndex(0);
+    setQueueOptions(urls.map((itemUrl) => defaultOptions(settings, itemUrl)));
+  }, [
+    isOpen,
+    urlsKey,
+    settings?.defaultVideoFormat,
+    settings?.defaultAudioFormat,
+  ]);
 
-  const handleStart = async () => {
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      await window.prism.download.addToQueue({
-        url,
-        format: (mode === "video" ? format : audioFormat) as any,
-        quality: mode === "video" ? (quality as any) : undefined,
-        transcript:
-          mode === "video" && platform === "YouTube"
-            ? transcriptEnabled
-            : undefined,
-        trimStart: trimEnabled ? trimStart : undefined,
-        trimEnd: trimEnabled ? trimEnd : undefined,
-        muteAudio: mode === "video" ? muteAudio : undefined,
+  const current = queueOptions[selectedIndex];
+  const currentUrl = current?.url;
+  const metadataState = currentUrl ? metadataCache[currentUrl] : undefined;
+  const metadata = metadataState?.data;
+
+  useEffect(() => {
+    if (!isOpen || !currentUrl || metadataCache[currentUrl]) return;
+
+    setMetadataCache((prev) => ({
+      ...prev,
+      [currentUrl]: { loading: true },
+    }));
+
+    let isCurrent = true;
+    window.prism.download
+      .getMetadata(currentUrl)
+      .then((data) => {
+        if (!isCurrent) return;
+        setMetadataCache((prev) => ({
+          ...prev,
+          [currentUrl]: { loading: false, data },
+        }));
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setMetadataCache((prev) => ({
+          ...prev,
+          [currentUrl]: { loading: false, data: null },
+        }));
       });
 
-      // Navigate first so state updates
-      navigate({ to: "/history" });
+    return () => {
+      isCurrent = false;
+    };
+  }, [isOpen, currentUrl, metadataCache]);
 
+  const qualityOptions = useMemo(() => {
+    const defaults = ["1080p", "720p", "480p", "360p"];
+    const available = metadata?.qualities?.length
+      ? metadata.qualities
+      : defaults;
+    return ["best", ...available.filter((quality) => quality !== "best")];
+  }, [metadata?.qualities]);
+
+  const updateCurrent = (partial: Partial<QueueOptions>) => {
+    setQueueOptions((items) =>
+      items.map((item, index) =>
+        index === selectedIndex ? { ...item, ...partial } : item,
+      ),
+    );
+  };
+
+  const handleModeChange = (mode: DownloadMode) => {
+    if (!current) return;
+    updateCurrent({ mode });
+  };
+
+  const handleStart = async () => {
+    if (isSubmitting || queueOptions.length === 0) return;
+    setIsSubmitting(true);
+
+    try {
+      for (const item of queueOptions) {
+        await window.prism.download.addToQueue({
+          url: item.url,
+          mode: item.mode,
+          format: (item.mode === "audio_only"
+            ? item.audioFormat
+            : item.format) as DownloadOptions["format"],
+          audioFormat: item.audioFormat,
+          quality:
+            item.mode === "audio_only"
+              ? undefined
+              : (item.quality as DownloadOptions["quality"]),
+          trimStart: item.trimEnabled ? item.trimStart : undefined,
+          trimEnd: item.trimEnabled ? item.trimEnd : undefined,
+        });
+      }
+
+      navigate({ to: "/history" });
       setUrl("");
       onClose();
     } catch (e) {
@@ -81,21 +198,9 @@ export function OptionsDrawer({
     }
   };
 
-  const handleCopyTranscript = async () => {
-    if (isCopying) return;
-    setIsCopying(true);
-    try {
-      const text = await window.prism.download.getTranscript(
-        url,
-        transcriptFormat,
-      );
-      await navigator.clipboard.writeText(text);
-    } catch (e) {
-      console.error("Failed to copy transcript", e);
-    } finally {
-      setIsCopying(false);
-    }
-  };
+  if (!current) {
+    return null;
+  }
 
   return (
     <>
@@ -104,7 +209,7 @@ export function OptionsDrawer({
         onClick={onClose}
       />
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-[360px] bg-bg-elevated border-l border-border-subtle shadow-2xl transition-transform duration-180 ease-out flex flex-col ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 z-50 w-[390px] bg-bg-elevated border-l border-border-subtle shadow-2xl transition-transform duration-180 ease-out flex flex-col ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         <div className="flex items-center justify-between p-6 pb-4">
           <h2 className="text-sm font-semibold text-text-primary">
@@ -118,93 +223,150 @@ export function OptionsDrawer({
           </button>
         </div>
 
-        <div className="px-6 pb-6 border-b border-border-subtle flex flex-col gap-4">
+        <div className="px-6 pb-5 border-b border-border-subtle flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <span className="shrink-0 rounded bg-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-secondary border border-border">
-              {platform}
+              {metadata?.platform || platform}
             </span>
             <span className="truncate text-xs text-text-secondary font-mono">
-              {url || "No URL provided"}
+              {current.url}
             </span>
           </div>
 
-          <div className="flex bg-bg-subtle p-1 rounded-lg border border-border">
-            <button
-              onClick={() => setMode("video")}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors ${
-                mode === "video"
-                  ? "bg-accent text-accent-fg shadow-sm"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <Video size={14} /> Video
-            </button>
-            <button
-              onClick={() => setMode("audio")}
-              className={`flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors ${
-                mode === "audio"
-                  ? "bg-accent text-accent-fg shadow-sm"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <Music size={14} /> Audio
-            </button>
-          </div>
+          {queueOptions.length > 1 && (
+            <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-bg p-1">
+              {queueOptions.map((item, index) => (
+                <button
+                  key={`${item.url}-${index}`}
+                  onClick={() => setSelectedIndex(index)}
+                  className={`flex flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors ${
+                    selectedIndex === index
+                      ? "bg-accent text-accent-fg"
+                      : "text-text-secondary hover:bg-bg-subtle hover:text-text-primary"
+                  }`}
+                >
+                  <span className="w-full truncate text-[11px] font-medium">
+                    {index + 1}. {item.url}
+                  </span>
+                  <span className="text-[10px] opacity-80">
+                    {formatSummary(item)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {metadataState?.loading && (
+            <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+              <Loader2 size={12} className="animate-spin" /> Loading formats...
+            </div>
+          )}
+          {metadata?.mediaType === "image" && (
+            <div className="rounded-lg border border-border bg-bg px-3 py-2 text-[11px] text-text-secondary">
+              TikTok image post detected. Prism will save all detected images
+              into a new folder.
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <label className="text-xs font-medium text-text-secondary">
-              Format
+              Download mode
             </label>
-            <div className="grid grid-cols-4 gap-1">
-              {(mode === "video"
-                ? ["mp4", "mov", "webm", "mkv"]
-                : ["mp3", "wav", "aac", "flac"]
-              ).map((f) => (
+            <div className="grid grid-cols-2 gap-2">
+              {MODE_OPTIONS.map((option) => (
                 <button
-                  key={f}
-                  onClick={() =>
-                    mode === "video" ? setFormat(f) : setAudioFormat(f)
-                  }
-                  className={`rounded-lg py-1.5 text-xs font-medium transition-colors border ${
-                    (mode === "video" ? format === f : audioFormat === f)
+                  key={option.value}
+                  onClick={() => handleModeChange(option.value)}
+                  className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                    current.mode === option.value
                       ? "border-accent bg-accent text-accent-fg"
                       : "border-border bg-bg text-text-secondary hover:text-text-primary"
                   }`}
                 >
-                  {f.toUpperCase()}
+                  <div className="flex items-center gap-2 text-xs font-semibold">
+                    {option.value === "audio_only" ? (
+                      <Music size={14} />
+                    ) : (
+                      <Video size={14} />
+                    )}
+                    {option.label}
+                  </div>
+                  <div className="mt-0.5 text-[10px] opacity-75">
+                    {option.description}
+                  </div>
                 </button>
               ))}
             </div>
           </div>
 
-          {mode === "video" && (
+          {current.mode !== "audio_only" && (
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-text-secondary">
+                Video format
+              </label>
+              <div className="grid grid-cols-5 gap-1">
+                {VIDEO_FORMATS.map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => updateCurrent({ format: f.value })}
+                    className={`rounded-lg py-1.5 text-[11px] font-medium transition-colors border ${
+                      current.format === f.value
+                        ? "border-accent bg-accent text-accent-fg"
+                        : "border-border bg-bg text-text-secondary hover:text-text-primary"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-text-tertiary">
+                MP4 and MOV are exported with standard H.264/AAC. ProRes exports
+                a true MOV with ProRes video.
+              </p>
+            </div>
+          )}
+
+          {(current.mode === "audio_only" || current.mode === "split") && (
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-text-secondary">
+                Audio format
+              </label>
+              <div className="grid grid-cols-4 gap-1">
+                {AUDIO_FORMATS.map((f) => (
+                  <button
+                    key={f.value}
+                    onClick={() => updateCurrent({ audioFormat: f.value })}
+                    className={`rounded-lg py-1.5 text-xs font-medium transition-colors border ${
+                      current.audioFormat === f.value
+                        ? "border-accent bg-accent text-accent-fg"
+                        : "border-border bg-bg text-text-secondary hover:text-text-primary"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {current.mode !== "audio_only" && (
             <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-text-secondary">
                 Quality
               </label>
               <select
-                value={quality}
-                onChange={(e) => setQuality(e.target.value)}
+                value={current.quality}
+                onChange={(e) => updateCurrent({ quality: e.target.value })}
                 className="h-9 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text-primary outline-none focus:border-text-primary"
               >
-                <option value="best">Best available</option>
-                <option value="1080p">1080p</option>
-                <option value="720p">720p</option>
-                <option value="480p">480p</option>
-                <option value="360p">360p</option>
+                {qualityOptions.map((quality) => (
+                  <option key={quality} value={quality}>
+                    {quality === "best" ? "Best available" : quality}
+                  </option>
+                ))}
               </select>
-
-              <label className="flex items-center justify-between text-xs font-medium text-text-secondary cursor-pointer mt-2">
-                <span>Video only (no audio)</span>
-                <input
-                  type="checkbox"
-                  checked={muteAudio}
-                  onChange={(e) => setMuteAudio(e.target.checked)}
-                  className="accent-accent rounded-lg border-border"
-                />
-              </label>
             </div>
           )}
 
@@ -213,78 +375,48 @@ export function OptionsDrawer({
               <span>Trim clip</span>
               <input
                 type="checkbox"
-                checked={trimEnabled}
-                onChange={(e) => setTrimEnabled(e.target.checked)}
+                checked={current.trimEnabled}
+                onChange={(e) =>
+                  updateCurrent({ trimEnabled: e.target.checked })
+                }
                 className="accent-accent rounded-lg border-border"
               />
             </label>
-            {trimEnabled && (
+            {current.trimEnabled && (
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  value={trimStart}
-                  onChange={(e) => setTrimStart(e.target.value)}
-                  className="h-8 w-20 rounded-lg border border-border bg-bg px-2 text-center font-mono text-[13px] text-text-primary outline-none focus:border-text-primary flex-shrink-0"
+                  value={current.trimStart}
+                  onChange={(e) => updateCurrent({ trimStart: e.target.value })}
+                  className="h-8 w-24 rounded-lg border border-border bg-bg px-2 text-center font-mono text-[13px] text-text-primary outline-none focus:border-text-primary"
                 />
-                <span className="text-text-tertiary flex-shrink-0">to</span>
+                <span className="text-text-tertiary">to</span>
                 <input
                   type="text"
-                  value={trimEnd}
-                  onChange={(e) => setTrimEnd(e.target.value)}
-                  className="h-8 w-20 rounded-lg border border-border bg-bg px-2 text-center font-mono text-[13px] text-text-primary outline-none focus:border-text-primary flex-shrink-0"
+                  value={current.trimEnd}
+                  onChange={(e) => updateCurrent({ trimEnd: e.target.value })}
+                  className="h-8 w-24 rounded-lg border border-border bg-bg px-2 text-center font-mono text-[13px] text-text-primary outline-none focus:border-text-primary"
                 />
               </div>
             )}
           </div>
-
-          {mode === "video" && platform === "YouTube" && (
-            <div className="flex flex-col gap-3 border-t border-border-subtle pt-4">
-              <label className="flex items-center justify-between text-xs font-medium text-text-secondary cursor-pointer">
-                <span>Save transcript</span>
-                <input
-                  type="checkbox"
-                  checked={transcriptEnabled}
-                  onChange={(e) => setTranscriptEnabled(e.target.checked)}
-                  className="accent-accent rounded-lg border-border"
-                />
-              </label>
-              {transcriptEnabled && (
-                <div className="flex items-center justify-between gap-2">
-                  <select
-                    value={transcriptFormat}
-                    onChange={(e) => setTranscriptFormat(e.target.value)}
-                    className="h-8 flex-1 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
-                  >
-                    <option value="srt">.srt (SubRip)</option>
-                    <option value="vtt">.vtt (WebVTT)</option>
-                    <option value="txt">.txt (Plain Text)</option>
-                  </select>
-                  <button
-                    onClick={handleCopyTranscript}
-                    disabled={isCopying}
-                    className="h-8 px-3 rounded-lg border border-border bg-bg-subtle text-xs font-medium text-text-primary hover:bg-border-subtle transition-colors disabled:opacity-50"
-                  >
-                    {isCopying ? "Copying..." : "Copy"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="p-6 pt-0 mt-auto">
           <button
             onClick={handleStart}
-            disabled={isSubmitting}
+            disabled={isSubmitting || queueOptions.length === 0}
             className="flex h-10 w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
                 <Loader2 size={16} className="animate-spin mr-2" />
-                Preparing download...
+                Adding to queue...
               </>
+            ) : queueOptions.length > 1 ? (
+              `Add ${queueOptions.length} Items to Queue`
             ) : (
-              "Start Download"
+              "Add to Queue"
             )}
           </button>
         </div>

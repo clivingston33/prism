@@ -38,7 +38,11 @@ export function RowCard({
       await window.prism.download.addToQueue({
         url: item.url,
         format: item.format as DownloadOptions["format"],
+        mode: item.mode,
+        audioFormat: item.audioFormat as DownloadOptions["audioFormat"],
         quality: item.quality as DownloadOptions["quality"],
+        transcript: item.transcript,
+        transcriptFormat: item.transcriptFormat,
       });
     } catch (err) {
       console.error("Retry failed", err);
@@ -144,8 +148,14 @@ export function RowCard({
       <div className="mt-1 flex items-center justify-between text-[11px] text-text-secondary opacity-80 group-hover:opacity-100 transition-opacity">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-text-secondary">
-            {item.format.toUpperCase()}
+            {item.mode === "split" ? "SPLIT" : item.format.toUpperCase()}
           </span>
+          {item.transcriptPath && (
+            <>
+              <span className="text-text-tertiary/50">•</span>
+              <span className="font-medium text-text-tertiary">Transcript</span>
+            </>
+          )}
           {(item.resolution || (item.quality && item.quality !== "best")) && (
             <>
               <span className="text-text-tertiary/50">•</span>

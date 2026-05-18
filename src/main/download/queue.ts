@@ -1,29 +1,23 @@
-import { app } from "electron";
-import path from "path";
-import fs from "fs";
 import { store } from "../store";
 import { startDownload, getMetadata, cancelDownload } from "./ytdlp";
+import {
+  describeExecutableProblem,
+  getBinPaths,
+  isAudioFormat,
+  isUsableExecutable,
+} from "./utils";
 
 const ACTIVE_DOWNLOADS = new Map<string, { startedAt: number }>();
-const MAX_CONCURRENT = 2;
-const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
-function getBinPaths() {
-  const platform = process.platform === "win32" ? "win" : "mac";
-  const binDir = app.isPackaged
-    ? path.join(process.resourcesPath, "bin", platform)
-    : path.join(__dirname, "../../resources/bin", platform);
-
-  return {
-    ffmpeg: path.join(
-      binDir,
-      process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
-    ),
-  };
+function getMaxConcurrentDownloads() {
+  const settings = (store.get("settings") || {}) as any;
+  return Math.max(1, Math.min(3, Number(settings.maxConcurrentDownloads) || 2));
 }
 
 class DownloadManager {
   private activeCount = 0;
+  private mainWindow: any = null;
 
   constructor() {
     setInterval(() => this.checkTimeouts(), 15000);
@@ -49,19 +43,35 @@ class DownloadManager {
   }
 
   async add(options: any, mainWindow: any): Promise<string> {
+    this.mainWindow = mainWindow;
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const settings = (store.get("settings") || {}) as any;
+    const mode =
+      options.mode ||
+      (isAudioFormat(options.format)
+        ? "audio_only"
+        : options.muteAudio
+          ? "video_only"
+          : "video_audio");
+    const format =
+      options.format ||
+      (mode === "audio_only"
+        ? settings.defaultAudioFormat || "mp3"
+        : settings.defaultVideoFormat || "mp4");
 
     const item = {
       id,
       url: options.url,
       platform: "Unknown",
       title: options.url,
-      format: options.format,
+      mode,
+      format,
+      audioFormat: options.audioFormat || settings.defaultAudioFormat || "mp3",
       quality: options.quality || "best",
       transcript: options.transcript,
+      transcriptFormat: options.transcriptFormat || "txt",
       trimStart: options.trimStart,
       trimEnd: options.trimEnd,
-      muteAudio: options.muteAudio,
       status: "pending",
       progress: 0,
       createdAt: new Date().toISOString(),
@@ -69,7 +79,9 @@ class DownloadManager {
     };
 
     const history = store.get("history", []) as any[];
-    store.set("history", [item, ...history]);
+    const updatedHistory = [item, ...history];
+    store.set("history", updatedHistory);
+    mainWindow.webContents.send("history:update", updatedHistory);
 
     getMetadata(options.url)
       .then((meta) => {
@@ -107,7 +119,7 @@ class DownloadManager {
   }
 
   private processQueue(mainWindow: any) {
-    while (this.activeCount < MAX_CONCURRENT) {
+    while (this.activeCount < getMaxConcurrentDownloads()) {
       const history = store.get("history", []) as any[];
       const next = history.find(
         (h: any) => h.status === "pending" && !ACTIVE_DOWNLOADS.has(h.id),
@@ -123,21 +135,6 @@ class DownloadManager {
     const idx = history.findIndex((h: any) => h.id === id);
     if (idx === -1) return;
 
-    const { ffmpeg } = getBinPaths();
-    if (!fs.existsSync(ffmpeg)) {
-      console.log(`[download] ${id} ffmpeg not found`);
-      history[idx].status = "failed";
-      history[idx].error = "ffmpeg not installed";
-      store.set("history", history);
-      mainWindow.webContents.send("history:update", history);
-      mainWindow.webContents.send("download:error", {
-        id,
-        error: "ffmpeg not installed",
-        retryCount: 0,
-      });
-      return;
-    }
-
     history[idx].status = "downloading";
     store.set("history", history);
     mainWindow.webContents.send("history:update", history);
@@ -146,20 +143,30 @@ class DownloadManager {
     ACTIVE_DOWNLOADS.set(id, { startedAt: Date.now() });
 
     try {
+      const { ffmpeg } = getBinPaths();
+      if (!isUsableExecutable(ffmpeg)) {
+        throw new Error(describeExecutableProblem("FFmpeg", ffmpeg));
+      }
       await startDownload(history[idx], mainWindow);
     } catch (err) {
       console.error(`[download] ${id} error:`, err);
+      const message = err instanceof Error ? err.message : String(err);
       const h = store.get("history", []) as any[];
       const i = h.findIndex((x: any) => x.id === id);
       if (i !== -1) {
         h[i].status = "failed";
-        h[i].error = String(err);
+        h[i].error = message.slice(0, 500);
         store.set("history", h);
         mainWindow.webContents.send("history:update", h);
       }
+      mainWindow.webContents.send("download:error", {
+        id,
+        error: message.slice(0, 500),
+        retryCount: h[i]?.retryCount || 0,
+      });
     } finally {
       ACTIVE_DOWNLOADS.delete(id);
-      this.activeCount--;
+      this.activeCount = Math.max(0, this.activeCount - 1);
       this.processQueue(mainWindow);
     }
   }
@@ -170,17 +177,18 @@ class DownloadManager {
     if (idx === -1) return false;
 
     if (history[idx].status === "pending") {
-      store.set(
-        "history",
-        history.filter((h: any) => h.id !== id),
-      );
+      const updated = history.filter((h: any) => h.id !== id);
+      store.set("history", updated);
+      this.mainWindow?.webContents.send("history:update", updated);
       return true;
     }
 
     if (ACTIVE_DOWNLOADS.has(id)) {
       cancelDownload(id);
-      ACTIVE_DOWNLOADS.delete(id);
-      this.activeCount--;
+      history[idx].status = "failed";
+      history[idx].error = "Download cancelled";
+      store.set("history", history);
+      this.mainWindow?.webContents.send("history:update", history);
     }
     return true;
   }

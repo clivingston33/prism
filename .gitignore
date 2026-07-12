@@ -10,3 +10,4 @@ out/
 .native-downloads/
 .e2e-artifacts/
 .e2e-install/
+.claude/

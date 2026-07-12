@@ -12,10 +12,10 @@ The most important verified code fix was transcription failure recovery. A faile
 
 ### Critical
 
-| ID      | Finding                                                                                                                                                          | Impact                                                                                                      | Status                  |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------- |
-| PKG-001 | Release resources are incomplete: `yt-dlp.exe` and `ffmpeg.exe` are Git LFS pointers, `ffprobe.exe` is missing, and macOS/Linux resource directories are absent. | Published installers cannot reliably download, probe, remux, or transcribe without developer-machine tools. | Open release blocker    |
-| PKG-002 | The project folder has an empty `.git` directory, so Git resolves to `C:\Users\Caleb\.git` with an unrelated `github-bot` remote and no commits.                 | Changes cannot be safely reviewed, tagged, or published from this checkout.                                 | Open repository blocker |
+| ID      | Finding                                                                                                                                                          | Impact                                                                                                      | Status               |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------- |
+| PKG-001 | Release resources are incomplete: `yt-dlp.exe` and `ffmpeg.exe` are Git LFS pointers, `ffprobe.exe` is missing, and macOS/Linux resource directories are absent. | Published installers cannot reliably download, probe, remux, or transcribe without developer-machine tools. | Open release blocker |
+| PKG-002 | The project folder had an empty `.git` directory, so Git resolved to a parent user-profile repository with an unrelated remote and no commits.                   | Changes could not be safely reviewed, tagged, or published from that checkout.                              | Resolved             |
 
 ### High
 
@@ -95,7 +95,7 @@ README, MIT license, third-party notices, contributing guide, code of conduct, s
 
 ### Repository repair
 
-- Original cause: `C:\Users\Caleb\downloads\development\prism\.git` was an empty directory. Git ignored it as repository metadata and walked upward to unrelated `C:\Users\Caleb\.git`, inheriting the `github-bot.git` remote.
+- Original cause: the project-local `.git` directory was empty. Git ignored it as repository metadata and walked upward to an unrelated repository under the user profile, inheriting that repository's remote.
 - Resolution: fetched the named Prism upstream repository without checking out over the workspace, moved only its valid `.git` metadata into the Prism root, and populated the index with `git reset --mixed HEAD`. The parent repository was not changed or deleted.
 - Current root: `C:/Users/Caleb/Downloads/Development/prism`.
 - Current remote: `origin https://github.com/clivingston33/prism.git` for fetch and push.

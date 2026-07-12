@@ -74,18 +74,23 @@ jobs:
               throw "Expected an unsigned artifact but $artifact reported $($signature.Status)."
             }
           }
-          @"
-          Signing status: UNSIGNED
-          Tag: ${{ github.ref_name }}
-          Commit: ${{ github.sha }}
-
-          Windows SmartScreen may warn or block this installer. Verify its SHA-256 checksum before running it.
-          "@ | Set-Content dist/SIGNING-STATUS.txt
+          @(
+            "Signing status: UNSIGNED",
+            "Tag: ${{ github.ref_name }}",
+            "Commit: ${{ github.sha }}",
+            "",
+            "Windows SmartScreen may warn or block this installer. Verify its SHA-256 checksum before running it."
+          ) | Set-Content dist/SIGNING-STATUS.txt
 
       - name: Record signed artifact status
         if: steps.signing.outputs.status == 'signed'
         shell: pwsh
-        run: "Signing status: SIGNED`nTag: ${{ github.ref_name }}`nCommit: ${{ github.sha }}" | Set-Content dist/SIGNING-STATUS.txt
+        run: |
+          @(
+            "Signing status: SIGNED",
+            "Tag: ${{ github.ref_name }}",
+            "Commit: ${{ github.sha }}"
+          ) | Set-Content dist/SIGNING-STATUS.txt
 
       - name: Write artifact checksums
         shell: pwsh

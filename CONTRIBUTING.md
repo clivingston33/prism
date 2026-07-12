@@ -5,7 +5,7 @@ Thank you for helping improve Prism. Please read the [Code of Conduct](CODE_OF_C
 ## Development setup
 
 1. Clone the repository and confirm the remote points to `clivingston33/prism`.
-2. Install Node.js 20+ and pnpm 9.
+2. Install Node.js 22+ and pnpm 9.
 3. Run `pnpm install --frozen-lockfile`.
 4. Run `pnpm run prepare:resources:win` to hydrate pinned Windows x64 yt-dlp, FFmpeg/ffprobe, and whisper.cpp resources. The deterministic unit suite does not require live internet or native binaries.
 5. Run `pnpm dev`.

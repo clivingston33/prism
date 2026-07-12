@@ -64,7 +64,7 @@ Useful commands:
 - `src/renderer` — React routes, stores, and UI components
 - `resources/bin` — platform-native runtime resources
 - `test` — Node test-runner tests that do not require live internet access
-- `docs` — architecture, audit, privacy, and release documentation
+- `docs` — privacy, real-media verification, and release documentation
 
 ## Local transcription and privacy
 

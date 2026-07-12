@@ -15,8 +15,6 @@ extraResources:
   - from: resources/prism-dark.png
   - from: resources/icon.ico
 asar: true
-asarUnpack:
-  - node_modules/ffmpeg-static/**/*
 publish:
   provider: github
   owner: clivingston33

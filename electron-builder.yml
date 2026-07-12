@@ -22,14 +22,13 @@ publish:
   owner: clivingston33
   repo: prism
   releaseType: release
-mac:
-  target: dmg
-  hardenedRuntime: true
-  gatekeeperAssess: false
 win:
   target: nsis
-  sign: false
+  artifactName: Prism-Setup-${version}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  deleteAppDataOnUninstall: true
+  # Prism stores settings, history, thumbnails, transcripts, and Whisper
+  # models below app.getPath("userData"). Never remove those user files as a
+  # side effect of uninstalling the application.
+  deleteAppDataOnUninstall: false

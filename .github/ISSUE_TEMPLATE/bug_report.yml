@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible Prism problem
+title: "[Bug]: "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Prism version
+      description: Include the installed version or commit.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include OS version and architecture.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: List the smallest safe sequence that reproduces the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs and diagnostics
+      description: Redact cookies, tokens, private URLs, transcripts, and personal paths. If relevant, say whether yt-dlp reproduces the issue directly.
+  - type: input
+    id: sample
+    attributes:
+      label: Safe sample URL
+      description: Do not post private media URLs or URLs containing credentials.

@@ -4,7 +4,14 @@ import { router } from "./router";
 import { useAppStore } from "./stores/app-store";
 
 export function App() {
-  const { setSettings, setDownloads, settings, updateDownload } = useAppStore();
+  const {
+    setSettings,
+    setDownloads,
+    settings,
+    updateDownload,
+    applyProgress,
+    setUpdate,
+  } = useAppStore();
 
   useEffect(() => {
     // Initial fetch
@@ -13,13 +20,7 @@ export function App() {
 
     // Subscriptions
     const unsubProgress = window.prism.on("download:progress", (data) => {
-      const current = useAppStore
-        .getState()
-        .downloads.find((item) => item.id === data.id);
-      updateDownload(data.id, {
-        progress: data.progress,
-        status: current?.status === "processing" ? "processing" : "downloading",
-      });
+      applyProgress(data);
     });
 
     const unsubComplete = window.prism.on("download:complete", (data) => {
@@ -35,6 +36,15 @@ export function App() {
       updateDownload(data.id, {
         status: "failed",
         error: data.error,
+        jobError: data.code
+          ? {
+              code: data.code,
+              userMessage: data.error,
+              technicalDetails: data.technicalDetails,
+              stage: data.stage,
+              retryable: data.retryable ?? true,
+            }
+          : undefined,
         retryCount: data.retryCount,
       });
     });
@@ -42,12 +52,24 @@ export function App() {
     const unsubUpdate = window.prism.on("history:update", (data) => {
       setDownloads(data);
     });
+    const unsubUpdateAvailable = window.prism.on("update:available", (data) => {
+      setUpdate({ status: "available", version: data.version });
+    });
+    const unsubUpdateDownloaded = window.prism.on("update:downloaded", (data) =>
+      setUpdate({ status: "downloaded", version: data.version }),
+    );
+    const unsubUpdateError = window.prism.on("update:error", (data) => {
+      setUpdate({ status: "error", message: data.message });
+    });
 
     return () => {
       unsubProgress();
       unsubComplete();
       unsubError();
       unsubUpdate();
+      unsubUpdateAvailable();
+      unsubUpdateDownloaded();
+      unsubUpdateError();
     };
   }, []);
 

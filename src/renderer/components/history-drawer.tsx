@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   X,
   FolderOpen,
@@ -9,6 +9,7 @@ import {
   Copy,
 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
+import { isActiveJobStatus } from "../../shared/jobs.ts";
 
 interface HistoryDrawerProps {
   item: DownloadItem | null;
@@ -23,6 +24,15 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   const [isConverting, setIsConverting] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
 
+  useEffect(() => {
+    if (!item) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [item, onClose]);
+
   if (!item) return null;
 
   const handleOpenFolder = async () => {
@@ -32,6 +42,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   };
 
   const handleRedownload = async () => {
+    if (!/^https?:\/\//i.test(item.url)) return;
     await window.prism.download.addToQueue({
       url: item.url,
       format: item.format as any,
@@ -40,6 +51,8 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
       quality: item.quality as any,
       transcript: item.transcript,
       transcriptFormat: item.transcriptFormat,
+      trimStart: item.trimStart,
+      trimEnd: item.trimEnd,
     });
     const updatedHistory = await window.prism.history.get();
     setDownloads(updatedHistory);
@@ -47,6 +60,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   };
 
   const handleDeleteRecord = async () => {
+    if (isActiveJobStatus(item.status)) return;
     await window.prism.history.remove(item.id);
     const updatedHistory = await window.prism.history.get();
     setDownloads(updatedHistory);
@@ -89,13 +103,25 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
       <div
         className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] transition-opacity duration-150 animate-in fade-in"
         onClick={onClose}
+        aria-hidden="true"
       />
-      <div className="fixed inset-y-0 right-0 z-50 w-[360px] bg-bg-elevated border-l border-border-subtle shadow-2xl animate-in slide-in-from-right duration-180 ease-out flex flex-col">
+      <div
+        className="fixed inset-y-0 right-0 z-50 flex w-[min(360px,calc(100vw-44px))] flex-col border-l border-border-subtle bg-bg-elevated shadow-2xl animate-in slide-in-from-right duration-180 ease-out"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-drawer-title"
+      >
         <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-sm font-semibold text-text-primary">Details</h2>
+          <h2
+            id="history-drawer-title"
+            className="text-sm font-semibold text-text-primary"
+          >
+            Details
+          </h2>
           <button
             onClick={onClose}
             className="text-text-tertiary hover:text-text-primary transition-colors"
+            aria-label="Close details"
           >
             <X size={18} strokeWidth={1.5} />
           </button>
@@ -110,7 +136,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                   src={
                     item.thumbnail.startsWith("http")
                       ? item.thumbnail
-                      : `local://${item.thumbnail}`
+                      : `local://${encodeURIComponent(item.thumbnail)}`
                   }
                   alt={item.title}
                   className="w-full h-full object-cover"
@@ -135,7 +161,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                       ? "text-success"
                       : item.status === "failed"
                         ? "text-error"
-                        : item.status === "downloading"
+                        : isActiveJobStatus(item.status)
                           ? "text-accent"
                           : "text-warning"
                   }`}
@@ -295,24 +321,28 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                 Open File Location
               </button>
             )}
-            <button
-              onClick={handleRedownload}
-              className="flex items-center gap-3 h-10 px-4 w-full rounded border border-border bg-bg text-sm font-medium text-text-primary hover:bg-bg-subtle transition-colors"
-            >
-              <RefreshCw
-                size={16}
-                strokeWidth={1.5}
-                className="text-text-secondary"
-              />
-              Redownload
-            </button>
-            <button
-              onClick={handleDeleteRecord}
-              className="flex items-center gap-3 h-10 px-4 w-full rounded border border-error/20 bg-bg text-sm font-medium text-error hover:bg-error/10 transition-colors mt-2"
-            >
-              <Trash2 size={16} strokeWidth={1.5} />
-              Delete Record
-            </button>
+            {/^https?:\/\//i.test(item.url) && (
+              <button
+                onClick={handleRedownload}
+                className="flex h-10 w-full items-center gap-3 rounded border border-border bg-bg px-4 text-sm font-medium text-text-primary transition-colors hover:bg-bg-subtle"
+              >
+                <RefreshCw
+                  size={16}
+                  strokeWidth={1.5}
+                  className="text-text-secondary"
+                />
+                Redownload
+              </button>
+            )}
+            {!isActiveJobStatus(item.status) && (
+              <button
+                onClick={handleDeleteRecord}
+                className="mt-2 flex h-10 w-full items-center gap-3 rounded border border-error/20 bg-bg px-4 text-sm font-medium text-error transition-colors hover:bg-error/10"
+              >
+                <Trash2 size={16} strokeWidth={1.5} />
+                Delete Record
+              </button>
+            )}
           </div>
         </div>
       </div>

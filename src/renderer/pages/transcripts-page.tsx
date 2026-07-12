@@ -1,263 +1,407 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  CircleAlert,
-  Copy,
-  Download,
-  FileText,
-  FileVideo,
-  LoaderCircle,
-  Music,
+  FileAudio,
+  FolderOpen,
+  Loader2,
+  Mic2,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
+import { useAppStore } from "../stores/app-store";
 
-type TranscriptFormat = "txt" | "srt" | "vtt";
+type Format = "txt" | "srt" | "vtt" | "json";
 
-function fileNameFromPath(filePath: string) {
+function nameOf(filePath: string) {
   return filePath.split(/[\\/]/).pop() || filePath;
 }
 
-function baseNameFromPath(filePath: string) {
-  const name = fileNameFromPath(filePath);
-  return name.replace(/\.[^/.]+$/, "") || name;
-}
-
-function downloadTranscript(
-  text: string,
-  sourcePath: string | null,
-  format: TranscriptFormat,
-) {
-  const mimeType = format === "vtt" ? "text/vtt" : "text/plain";
-  const blob = new Blob([text], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${sourcePath ? baseNameFromPath(sourcePath) : "transcript"} transcript.${format}`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function isAudioFile(filePath: string) {
-  return /\.(mp3|wav|ogg|flac|aac|m4a|wma)$/i.test(filePath);
+function formatBytes(value: number) {
+  if (value > 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.round(value / 1024 ** 2)} MB`;
 }
 
 export function TranscriptsPage() {
+  const downloads = useAppStore((state) => state.downloads);
+  const settings = useAppStore((state) => state.settings);
+  const [models, setModels] = useState<WhisperModelState[]>([]);
   const [filePath, setFilePath] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [progress, setProgress] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState<TranscriptFormat>("txt");
-  const [copied, setCopied] = useState(false);
+  const [format, setFormat] = useState<Format>(
+    (settings?.transcriptionFormat as Format) || "txt",
+  );
+  const [language, setLanguage] = useState(
+    String(settings?.transcriptionLanguage || "auto"),
+  );
+  const [translate, setTranslate] = useState(false);
+  const [saveBeside, setSaveBeside] = useState(
+    settings?.transcriptionSaveBesideSource !== false,
+  );
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [modelProgress, setModelProgress] = useState<
+    Record<string, { value: number; speed?: number; eta?: number }>
+  >({});
 
-  const setSelectedFile = (path: string) => {
-    setFilePath(path);
-    setFileName(fileNameFromPath(path));
-    setTranscript("");
-    setProgress("");
-    setError(null);
-  };
+  const installedModels = useMemo(
+    () => models.filter((model) => model.status === "installed"),
+    [models],
+  );
+  const selectedModel =
+    models.find(
+      (model) => model.id === String(settings?.transcriptionModelId || "base"),
+    ) || installedModels[0];
 
-  const handleSelectFile = async () => {
-    setError(null);
-    const selected = await window.prism.download.selectVideoFile();
-    if (selected) setSelectedFile(selected);
-  };
-
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const dropped = event.dataTransfer.files?.[0];
-    const droppedPath = (dropped as any)?.path as string | undefined;
-    if (droppedPath) {
-      setSelectedFile(droppedPath);
-      return;
-    }
-    setError(
-      "Could not read the dropped file path. Click to select the file instead.",
-    );
-  };
-
-  const handleExtract = async () => {
-    if (!filePath) return;
-    setIsProcessing(true);
-    setError(null);
-    setTranscript("");
-    setProgress("Initializing transcription...");
-
-    const checkInterval = window.setInterval(() => {
-      setProgress((current) => {
-        if (!current) return current;
-        if (current.endsWith("...")) return current.slice(0, -3);
-        return `${current}.`;
-      });
-    }, 1000);
-
+  const refreshModels = async () =>
+    setModels(await window.prism.transcription.listModels());
+  const installModel = async (modelId: string) => {
     try {
-      setProgress("Extracting audio and loading AI model...");
-      const result = await window.prism.download.transcribeFile(
-        filePath,
-        exportFormat,
-      );
-      setTranscript(result.transcriptText);
-      setProgress("");
+      const next = await window.prism.transcription.downloadModel(modelId);
+      setModels(next);
+      await window.prism.settings.update({ transcriptionModelId: modelId });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setProgress("");
-    } finally {
-      window.clearInterval(checkInterval);
-      setIsProcessing(false);
     }
   };
+  useEffect(() => {
+    void refreshModels();
+    const libraryFile = window.localStorage.getItem("prism.transcription.file");
+    if (libraryFile) {
+      setFilePath(libraryFile);
+      window.localStorage.removeItem("prism.transcription.file");
+    }
+  }, []);
+  useEffect(
+    () =>
+      window.prism.on("transcription:model-progress", (progress) => {
+        setModelProgress((current) => ({
+          ...current,
+          [progress.modelId]: {
+            value: progress.totalBytes
+              ? (progress.bytesDownloaded / progress.totalBytes) * 100
+              : 0,
+            speed: progress.speedBytesPerSecond,
+            eta: progress.etaSeconds,
+          },
+        }));
+        if (
+          progress.status === "installed" ||
+          progress.status === "failed" ||
+          progress.status === "paused"
+        )
+          void refreshModels();
+      }),
+    [],
+  );
+  useEffect(
+    () =>
+      window.prism.on("history:update", (history) => {
+        const item = (history as DownloadItem[]).find(
+          (entry) => entry.id === runningId,
+        );
+        if (!item) return;
+        if (item.status === "completed") {
+          setRunningId(null);
+          setMessage(
+            `Transcript saved to ${item.filePath || "the selected folder"}.`,
+          );
+        }
+        if (item.status === "failed" || item.status === "cancelled") {
+          setRunningId(null);
+          setError(item.error || "Transcription did not complete.");
+        }
+      }),
+    [runningId],
+  );
 
-  const handleCopy = async () => {
-    if (!transcript) return;
-    await navigator.clipboard.writeText(transcript);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
-  };
-
-  const handleExport = () => {
-    if (!transcript) return;
-    downloadTranscript(transcript, filePath || fileName, exportFormat);
+  const chooseFile = async () =>
+    setFilePath(await window.prism.download.selectVideoFile());
+  const start = async () => {
+    if (!filePath || !selectedModel) {
+      setError("Install a Whisper model and choose a media file first.");
+      return;
+    }
+    setError("");
+    setMessage("Preparing audio locally…");
+    try {
+      const id = await window.prism.transcription.start({
+        filePath,
+        modelId: selectedModel.id,
+        language,
+        translateToEnglish: translate,
+        format,
+        saveBesideSource: saveBeside,
+        threads: Number(settings?.transcriptionThreads || 0),
+      });
+      setRunningId(id);
+      setMessage("Transcribing offline…");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
-    <div className="flex h-full w-full flex-col p-6">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-text-primary tracking-tight">
-          Transcript
-        </h1>
-        <p className="text-xs text-text-tertiary mt-1">
-          AI-powered transcription for any video or audio file.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 flex-1 min-h-0">
-        <div
-          onClick={handleSelectFile}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors group min-h-[150px] ${
-            isDragging
-              ? "border-accent bg-accent/10"
-              : "border-border hover:border-text-tertiary"
-          }`}
-        >
-          {fileName && filePath ? (
-            <div className="flex items-center gap-3 max-w-full">
-              {isAudioFile(filePath) ? (
-                <Music size={24} className="text-text-tertiary" />
-              ) : (
-                <FileVideo size={24} className="text-text-tertiary" />
-              )}
-              <span className="truncate text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
-                {fileName}
-              </span>
-            </div>
-          ) : (
-            <>
-              <FileVideo size={32} className="text-text-tertiary mb-3" />
-              <span className="text-sm font-medium text-text-primary">
-                Click to select a video or audio file
-              </span>
-              <span className="text-xs text-text-tertiary mt-1">
-                MP4, MKV, MOV, MP3, WAV, FLAC, and more
-              </span>
-            </>
-          )}
-        </div>
-
-        {filePath && (
+    <main className="h-full overflow-y-auto px-6 pb-12 pt-8">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <header>
           <div className="flex items-center gap-3">
-            <select
-              value={exportFormat}
-              onChange={(event) =>
-                setExportFormat(event.target.value as TranscriptFormat)
-              }
-              className="h-9 px-3 rounded-lg bg-bg-subtle border border-border text-sm text-text-primary outline-none focus:border-text-tertiary cursor-pointer"
-            >
-              <option value="txt">Plain Text (.txt)</option>
-              <option value="srt">SubRip Captions (.srt)</option>
-              <option value="vtt">WebVTT Captions (.vtt)</option>
-            </select>
-            <button
-              onClick={handleExtract}
-              disabled={isProcessing}
-              className="h-9 px-4 rounded-lg bg-accent text-accent-fg text-sm font-medium transition-all hover:bg-accent/90 disabled:opacity-50 flex items-center gap-2"
-            >
-              {isProcessing ? (
-                <>
-                  <LoaderCircle size={14} className="animate-spin" />
-                  Transcribing...
-                </>
-              ) : (
-                <>
-                  <FileText size={14} />
-                  Transcribe
-                </>
+            <Mic2 size={20} className="text-accent" />
+            <h1 className="text-xl font-semibold text-text-primary">
+              Local transcription
+            </h1>
+          </div>
+          <p className="mt-1 text-sm text-text-tertiary">
+            Private, offline transcription powered by a locally installed
+            Whisper model.
+          </p>
+        </header>
+
+        {installedModels.length === 0 && (
+          <section className="rounded-xl border border-accent/30 bg-accent/5 p-5">
+            <h2 className="font-medium text-text-primary">
+              Install local transcription support
+            </h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Choose a model below. Downloads are verified and remain on this
+              device; no audio or transcript is sent to a cloud API.
+            </p>
+          </section>
+        )}
+
+        <section className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+          <div className="space-y-5">
+            <div className="rounded-xl border border-border bg-surface p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-medium text-text-primary">Media file</h2>
+                <button className="button-secondary" onClick={chooseFile}>
+                  <FolderOpen size={15} /> Choose file
+                </button>
+              </div>
+              <div
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const path = (
+                    event.dataTransfer.files[0] as
+                      | (File & { path?: string })
+                      | undefined
+                  )?.path;
+                  if (path) setFilePath(path);
+                }}
+                className="flex min-h-28 items-center gap-3 rounded-lg border border-dashed border-border-strong bg-surface-raised px-4 text-sm text-text-secondary"
+              >
+                <FileAudio size={22} className="text-text-tertiary" />
+                {filePath ? (
+                  <span className="truncate text-text-primary">
+                    {nameOf(filePath)}
+                    <small className="mt-1 block text-text-tertiary">
+                      {filePath}
+                    </small>
+                  </span>
+                ) : (
+                  <span>Drop a local video or audio file here</span>
+                )}
+              </div>
+              <div className="mt-4">
+                <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-tertiary">
+                  Library files
+                </h3>
+                <div className="max-h-36 space-y-1 overflow-auto">
+                  {downloads
+                    .filter(
+                      (item) => item.status === "completed" && item.filePath,
+                    )
+                    .slice(0, 10)
+                    .map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setFilePath(item.filePath || null)}
+                        className="block w-full truncate rounded px-2 py-1.5 text-left text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary"
+                      >
+                        {item.title}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-surface p-5">
+              <h2 className="mb-4 font-medium text-text-primary">Output</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="field-label">
+                  Format
+                  <select
+                    className="field-control"
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value as Format)}
+                  >
+                    <option value="txt">TXT — plain text</option>
+                    <option value="srt">SRT — subtitles</option>
+                    <option value="vtt">VTT — web subtitles</option>
+                    <option value="json">JSON — structured timestamps</option>
+                  </select>
+                </label>
+                <label className="field-label">
+                  Language
+                  <select
+                    className="field-control"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                  >
+                    <option value="auto">Auto detect</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="ja">Japanese</option>
+                  </select>
+                </label>
+              </div>
+              <label className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={translate}
+                  onChange={(e) => setTranslate(e.target.checked)}
+                />{" "}
+                Translate to English
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-sm text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={saveBeside}
+                  onChange={(e) => setSaveBeside(e.target.checked)}
+                />{" "}
+                Save beside source file
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                className="button-primary"
+                disabled={!filePath || !selectedModel || !!runningId}
+                onClick={() => void start()}
+              >
+                {runningId ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" /> Working…
+                  </>
+                ) : (
+                  "Start transcription"
+                )}
+              </button>
+              {runningId && (
+                <button
+                  className="button-secondary"
+                  onClick={() => void window.prism.download.cancel(runningId)}
+                >
+                  Cancel
+                </button>
               )}
+            </div>
+            {message && (
+              <p className="text-sm text-text-secondary">{message}</p>
+            )}
+            {error && <p className="text-sm text-danger">{error}</p>}
+          </div>
+          <div className="rounded-xl border border-border bg-surface p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="font-medium text-text-primary">
+                  Whisper models
+                </h2>
+                <p className="mt-1 text-xs text-text-tertiary">
+                  Base multilingual is the recommended starting point.
+                </p>
+              </div>
+              <button
+                className="icon-button"
+                title="Refresh models"
+                onClick={() => void refreshModels()}
+              >
+                <RefreshCw size={15} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {models.map((model) => {
+                const progress = modelProgress[model.id];
+                return (
+                  <div
+                    key={model.id}
+                    className="rounded-lg border border-border px-3 py-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-medium text-text-primary">
+                          {model.displayName}
+                        </div>
+                        <div className="mt-1 text-xs text-text-tertiary">
+                          {formatBytes(model.expectedBytes)} ·{" "}
+                          {model.languageSupport} · {model.memoryRequirement}
+                        </div>
+                      </div>
+                      {model.status === "installed" ? (
+                        <span className="text-xs text-success">Installed</span>
+                      ) : (
+                        <button
+                          className="text-xs text-accent hover:underline"
+                          onClick={() => void installModel(model.id)}
+                        >
+                          {model.status === "paused" ? "Resume" : "Install"}
+                        </button>
+                      )}
+                    </div>
+                    {progress && model.status === "downloading" && (
+                      <div className="mt-2">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
+                          <div
+                            className="h-full bg-accent"
+                            style={{ width: `${progress.value}%` }}
+                          />
+                        </div>
+                        <div className="mt-1 text-[11px] text-text-tertiary">
+                          {progress.value.toFixed(0)}%
+                          {progress.speed
+                            ? ` · ${(progress.speed / 1024 / 1024).toFixed(1)} MB/s`
+                            : ""}
+                        </div>
+                      </div>
+                    )}
+                    {model.status === "installed" && (
+                      <div className="mt-2 flex gap-3 text-xs">
+                        <button
+                          className="text-text-tertiary hover:text-text-primary"
+                          onClick={() =>
+                            void window.prism.transcription.verifyModel(
+                              model.id,
+                            )
+                          }
+                        >
+                          Verify
+                        </button>
+                        <button
+                          className="text-danger/80 hover:text-danger"
+                          onClick={() =>
+                            void window.prism.transcription
+                              .deleteModel(model.id)
+                              .then(setModels)
+                          }
+                        >
+                          <Trash2 size={12} className="inline" /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              className="mt-4 text-xs text-text-tertiary hover:text-text-primary"
+              onClick={() =>
+                void window.prism.transcription.openModelDirectory()
+              }
+            >
+              Open model directory
             </button>
           </div>
-        )}
-
-        {isProcessing && progress && (
-          <div className="px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-sm text-accent flex items-center gap-2">
-            <LoaderCircle size={14} className="animate-spin" />
-            {progress}
-          </div>
-        )}
-
-        {error && (
-          <div className="px-4 py-3 rounded-lg bg-error/10 border border-error/20 text-sm text-error flex items-center gap-2">
-            <CircleAlert size={14} />
-            {error}
-          </div>
-        )}
-
-        {transcript && (
-          <div className="flex flex-col flex-1 min-h-0 rounded-xl border border-border bg-bg-subtle">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle shrink-0">
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
-                  Editable transcript
-                </span>
-                <span className="text-[10px] text-text-tertiary">
-                  Make changes below, then download the edited file.
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleCopy}
-                  className="h-7 px-3 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors flex items-center gap-1.5 text-xs font-medium"
-                >
-                  <Copy size={12} />
-                  {copied ? "Copied" : "Copy"}
-                </button>
-                <button
-                  onClick={handleExport}
-                  className="h-7 px-3 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors flex items-center gap-1.5 text-xs font-medium"
-                >
-                  <Download size={12} />
-                  Download
-                </button>
-              </div>
-            </div>
-            <textarea
-              value={transcript}
-              onChange={(event) => setTranscript(event.target.value)}
-              spellCheck={false}
-              className="flex-1 resize-none overflow-y-auto bg-transparent p-4 text-sm leading-relaxed text-text-primary outline-none"
-            />
-          </div>
-        )}
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

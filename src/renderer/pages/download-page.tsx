@@ -148,7 +148,7 @@ export function DownloadPage() {
         </div>
 
         <div className="w-full flex flex-col gap-3 relative">
-          <div className="w-full bg-bg-subtle rounded-xl border border-border shadow-sm transition-all duration-200 focus-within:border-text-tertiary focus-within:shadow-md">
+          <div className="w-full rounded-xl border border-border bg-bg-subtle shadow-sm transition-[border-color,box-shadow] duration-200 focus-within:border-text-tertiary focus-within:shadow-md">
             <div className="relative">
               <textarea
                 ref={textareaRef}
@@ -242,7 +242,7 @@ export function DownloadPage() {
           {clipboardUrl && !url && (
             <button
               onClick={handleSmartPaste}
-              className="absolute -bottom-14 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-full bg-text-primary text-bg text-xs font-medium shadow-lg animate-in slide-in-from-top-2 fade-in duration-200 hover:scale-105 transition-all z-10"
+              className="absolute -bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-text-primary px-4 py-2 text-xs font-medium text-bg shadow-lg transition-[transform,background-color] hover:scale-105"
             >
               <Clipboard size={14} />
               Paste from Clipboard
@@ -252,7 +252,7 @@ export function DownloadPage() {
           <button
             onClick={handleSubmit}
             disabled={!url}
-            className="w-full h-[48px] flex items-center justify-center rounded-xl bg-accent text-accent-fg font-medium text-sm transition-all disabled:opacity-50 hover:bg-accent/90 shadow-md active:scale-[0.98]"
+            className="flex h-[48px] w-full items-center justify-center rounded-xl bg-accent text-sm font-medium text-accent-fg shadow-md transition-[background-color,opacity,transform] hover:bg-accent/90 disabled:opacity-50 active:scale-[0.98]"
           >
             Add to Queue
           </button>

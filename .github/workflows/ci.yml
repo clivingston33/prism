@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          # Skip electron-builder app-deps work; CI checks need no packaging.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - name: Formatting check
+        run: pnpm run format:check
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Unit and fixture tests
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm run build
+
+      - name: Dependency audit (production)
+        run: pnpm audit --prod --audit-level high
+
+  native-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out Git repository and LFS objects
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Reject unhydrated or invalid native resources
+        run: node scripts/verify-resources.mjs
+
+      - name: Confirm LFS checkout
+        run: git lfs ls-files

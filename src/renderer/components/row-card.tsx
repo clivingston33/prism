@@ -1,5 +1,44 @@
 import { X, RotateCw, Play, Folder, Trash2 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
+import { isActiveJobStatus } from "../../shared/jobs.ts";
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+function formatEta(seconds: number) {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const secs = rounded % 60;
+  if (minutes >= 60) {
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+  return minutes > 0 ? `${minutes}m ${secs}s` : `${secs}s`;
+}
+
+function activityLine(item: DownloadItem) {
+  const parts: string[] = [];
+  if (item.stageLabel) parts.push(item.stageLabel);
+  if (item.speedBytesPerSecond && item.speedBytesPerSecond > 0) {
+    parts.push(`${formatBytes(item.speedBytesPerSecond)}/s`);
+  }
+  if (item.etaSeconds !== undefined && item.etaSeconds > 0) {
+    parts.push(`ETA ${formatEta(item.etaSeconds)}`);
+  }
+  // When the total is unknown, show live downloaded bytes instead of a
+  // made-up percentage.
+  if (
+    (!item.progress || item.progress <= 0) &&
+    item.downloadedBytes &&
+    item.downloadedBytes > 0
+  ) {
+    parts.push(formatBytes(item.downloadedBytes));
+  }
+  return parts.join(" · ");
+}
 
 function timeAgo(dateStr: string) {
   const date = new Date(dateStr);
@@ -23,9 +62,7 @@ export function RowCard({
   compact?: boolean;
 }) {
   const { setDownloads } = useAppStore();
-  const isDownloading = ["pending", "downloading", "converting"].includes(
-    item.status,
-  );
+  const isDownloading = isActiveJobStatus(item.status);
 
   const handleCancel = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -35,15 +72,19 @@ export function RowCard({
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await window.prism.download.addToQueue({
-        url: item.url,
-        format: item.format as DownloadOptions["format"],
-        mode: item.mode,
-        audioFormat: item.audioFormat as DownloadOptions["audioFormat"],
-        quality: item.quality as DownloadOptions["quality"],
-        transcript: item.transcript,
-        transcriptFormat: item.transcriptFormat,
-      });
+      await window.prism.download.addToQueue(
+        item.request || {
+          url: item.url,
+          format: item.format as DownloadOptions["format"],
+          mode: item.mode,
+          audioFormat: item.audioFormat as DownloadOptions["audioFormat"],
+          quality: item.quality as DownloadOptions["quality"],
+          transcript: item.transcript,
+          transcriptFormat: item.transcriptFormat,
+          trimStart: item.trimStart,
+          trimEnd: item.trimEnd,
+        },
+      );
     } catch (err) {
       console.error("Retry failed", err);
     }
@@ -72,7 +113,7 @@ export function RowCard({
 
   return (
     <div
-      className={`group relative flex flex-col justify-center rounded-2xl bg-bg-subtle border border-border px-4 overflow-hidden transition-all duration-200 hover:border-border-subtle hover:bg-bg-elevated hover:shadow-sm ${compact ? "h-[64px]" : "h-[84px]"}`}
+      className={`group relative flex flex-col justify-center rounded-2xl bg-bg-subtle border border-border px-4 overflow-hidden transition-[background-color,border-color,box-shadow] duration-200 hover:border-border-subtle hover:bg-bg-elevated hover:shadow-sm ${compact ? "h-[64px]" : "h-[84px]"}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 overflow-hidden flex-1">
@@ -88,30 +129,32 @@ export function RowCard({
             className={`text-[10px] font-bold uppercase tracking-wider group-hover:invisible px-2 py-0.5 rounded-full transition-colors border shadow-sm ${
               item.status === "completed"
                 ? "bg-success/10 text-success border-success/20"
-                : item.status === "failed"
+                : item.status === "failed" || item.status === "interrupted"
                   ? "bg-error/10 text-error border-error/20"
-                  : item.status === "downloading"
+                  : isDownloading
                     ? "bg-accent/10 text-accent border-accent/20"
                     : "bg-bg text-text-tertiary border-border-subtle"
             }`}
           >
             {item.status}
           </span>
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex gap-1.5 transition-all duration-200 translate-x-2 group-hover:translate-x-0 bg-bg-subtle pl-4 pr-3 rounded-l-2xl">
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 flex translate-x-2 gap-1.5 rounded-l-2xl bg-bg-subtle pl-4 pr-3 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
             {isDownloading && (
               <button
                 onClick={handleCancel}
-                className="p-2 rounded-full hover:bg-bg border border-transparent hover:border-border-subtle text-text-secondary hover:text-text-primary transition-all hover:shadow-sm"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                 title="Cancel"
+                aria-label={`Cancel ${item.title || "job"}`}
               >
                 <X size={14} strokeWidth={2} />
               </button>
             )}
-            {item.status === "failed" && (
+            {(item.status === "failed" || item.status === "interrupted") && (
               <button
                 onClick={handleRetry}
-                className="p-2 rounded-full hover:bg-bg border border-transparent hover:border-error/20 text-error transition-all hover:shadow-sm"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-error transition-[background-color,border-color,transform] hover:border-error/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                 title="Retry"
+                aria-label={`Retry ${item.title || "job"}`}
               >
                 <RotateCw size={14} strokeWidth={2} />
               </button>
@@ -120,27 +163,32 @@ export function RowCard({
               <>
                 <button
                   onClick={handlePlay}
-                  className="p-2 rounded-full hover:bg-bg border border-transparent hover:border-border-subtle text-text-secondary hover:text-text-primary transition-all hover:shadow-sm"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                   title="Play File"
+                  aria-label={`Open ${item.title || "file"}`}
                 >
                   <Play size={14} strokeWidth={2} />
                 </button>
                 <button
                   onClick={handleOpenFolder}
-                  className="p-2 rounded-full hover:bg-bg border border-transparent hover:border-border-subtle text-text-secondary hover:text-text-primary transition-all hover:shadow-sm"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                   title="Reveal in Explorer"
+                  aria-label={`Reveal ${item.title || "file"} in folder`}
                 >
                   <Folder size={14} strokeWidth={2} />
                 </button>
               </>
             )}
-            <button
-              onClick={handleDelete}
-              className="p-2 rounded-full hover:bg-bg border border-transparent hover:border-error/20 text-text-secondary hover:text-error transition-all hover:shadow-sm"
-              title="Delete Record"
-            >
-              <Trash2 size={14} strokeWidth={2} />
-            </button>
+            {!isDownloading && (
+              <button
+                onClick={handleDelete}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-error/20 hover:bg-bg hover:text-error focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                title="Delete Record"
+                aria-label={`Delete ${item.title || "record"}`}
+              >
+                <Trash2 size={14} strokeWidth={2} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -187,8 +235,11 @@ export function RowCard({
         </div>
 
         {isDownloading && (
-          <span className="font-mono text-xs font-semibold text-text-secondary">
-            {Math.round(item.progress || 0)}%
+          <span className="flex items-center gap-2 font-mono text-[11px] font-semibold text-text-secondary whitespace-nowrap">
+            <span className="truncate max-w-[260px] font-sans font-medium text-text-tertiary">
+              {activityLine(item)}
+            </span>
+            {item.progress > 0 && <span>{Math.round(item.progress)}%</span>}
           </span>
         )}
       </div>
@@ -200,11 +251,17 @@ export function RowCard({
       )}
 
       {isDownloading && (
-        <div className="absolute bottom-0 left-0 h-[3px] w-full bg-progress-track">
-          <div
-            className="h-full bg-accent transition-all duration-200 ease-linear rounded-r-full"
-            style={{ width: `${item.progress || 0}%` }}
-          />
+        <div className="absolute bottom-0 left-0 h-[3px] w-full bg-progress-track overflow-hidden">
+          {item.progress > 0 ? (
+            <div
+              className="h-full rounded-r-full bg-accent transition-[width] duration-300 ease-out"
+              style={{ width: `${item.progress}%` }}
+            />
+          ) : (
+            // Indeterminate: the total size is genuinely unknown, so show
+            // motion without pretending to know a percentage.
+            <div className="h-full w-1/3 bg-accent/60 rounded-full animate-indeterminate" />
+          )}
         </div>
       )}
     </div>

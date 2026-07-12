@@ -1,49 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { JobProgress } from "../shared/jobs.ts";
+import type {
+  ConversionRequest,
+  DownloadRequest,
+} from "../shared/contracts.ts";
+import type { RemuxRequest } from "../shared/media-tools.ts";
+import type { TranscriptionRequest } from "../shared/transcription.ts";
 
-interface DownloadOptions {
-  url: string;
-  mode?: "video_audio" | "video_only" | "audio_only" | "split";
-  format:
-    | "mp4"
-    | "mp3"
-    | "wav"
-    | "mov"
-    | "webm"
-    | "mkv"
-    | "aac"
-    | "flac"
-    | "prores";
-  audioFormat?: "mp3" | "wav" | "aac" | "flac";
-  quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
-  transcript?: boolean;
-  transcriptFormat?: "txt" | "srt" | "vtt";
-  trimStart?: string;
-  trimEnd?: string;
-}
-
-interface ConversionOptions {
-  sourceItemId?: string;
-  filePath: string;
-  format:
-    | "mp4"
-    | "mov"
-    | "webm"
-    | "mkv"
-    | "prores"
-    | "gif"
-    | "mp3"
-    | "m4a"
-    | "wav"
-    | "aac"
-    | "flac"
-    | "ogg";
-  videoCodec?: string;
-  audioCodec?: string;
-  videoHeight?: number | null;
-  crf?: number;
-  audioBitrate?: string;
-  fps?: string;
-}
+type DownloadOptions = DownloadRequest;
+type ConversionOptions = ConversionRequest;
 
 interface ConversionResult {
   id: string;
@@ -56,15 +21,22 @@ const prismAPI = {
   version: "1.1.3",
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
-    update: (settings: any) => ipcRenderer.invoke("settings:update", settings),
+    update: (settings: Record<string, unknown>) =>
+      ipcRenderer.invoke("settings:update", settings),
     selectDirectory: () => ipcRenderer.invoke("settings:selectDirectory"),
     checkForUpdates: () => ipcRenderer.invoke("settings:checkForUpdates"),
-    downloadUpdate: () => ipcRenderer.invoke("settings:downloadUpdate"),
+    downloadUpdate: () =>
+      ipcRenderer.invoke("settings:downloadUpdate") as Promise<void>,
     quitAndInstall: () => ipcRenderer.invoke("settings:quitAndInstall"),
   },
   history: {
     get: () => ipcRenderer.invoke("history:get"),
+    reconcile: () => ipcRenderer.invoke("history:reconcile"),
     remove: (id: string) => ipcRenderer.invoke("history:remove", id),
+    removeMissing: () => ipcRenderer.invoke("history:removeMissing"),
+    locate: (id: string) => ipcRenderer.invoke("history:locate", id),
+    regenerateThumbnail: (id: string) =>
+      ipcRenderer.invoke("history:regenerateThumbnail", id),
     clear: () => ipcRenderer.invoke("history:clear"),
     openFolder: (filePath: string) =>
       ipcRenderer.invoke("history:openFolder", filePath),
@@ -84,22 +56,82 @@ const prismAPI = {
     getTranscript: (url: string, format: string) =>
       ipcRenderer.invoke("download:getTranscript", url, format),
     convertFile: (options: ConversionOptions) =>
-      ipcRenderer.invoke("download:convertFile", options) as Promise<ConversionResult>,
+      ipcRenderer.invoke(
+        "download:convertFile",
+        options,
+      ) as Promise<ConversionResult>,
+    startConversion: (options: ConversionOptions) =>
+      ipcRenderer.invoke(
+        "download:startConversion",
+        options,
+      ) as Promise<string>,
+    startRemux: (options: RemuxRequest) =>
+      ipcRenderer.invoke("download:startRemux", options) as Promise<string>,
+    probeFile: (filePath: string) =>
+      ipcRenderer.invoke("download:probeFile", filePath),
     selectFile: () => ipcRenderer.invoke("download:selectFile"),
+    selectMediaFiles: () =>
+      ipcRenderer.invoke("download:selectMediaFiles") as Promise<string[]>,
     selectVideoFile: () => ipcRenderer.invoke("download:selectVideoFile"),
-    getTranscriptFromFile: (filePath: string, format: string) =>
-      ipcRenderer.invoke("download:getTranscriptFromFile", filePath, format),
-    transcribeFile: (filePath: string, format: string) =>
-      ipcRenderer.invoke("download:transcribeFile", filePath, format),
   },
-  on: (channel: string, callback: (...args: any[]) => void) => {
-    const subscription = (_event: any, ...args: any[]) => callback(...args);
+  transcription: {
+    listModels: () => ipcRenderer.invoke("transcription:listModels"),
+    downloadModel: (modelId: string) =>
+      ipcRenderer.invoke("transcription:downloadModel", modelId),
+    cancelModelDownload: (modelId: string) =>
+      ipcRenderer.invoke("transcription:cancelModelDownload", modelId),
+    deleteModel: (modelId: string) =>
+      ipcRenderer.invoke("transcription:deleteModel", modelId),
+    verifyModel: (modelId: string) =>
+      ipcRenderer.invoke("transcription:verifyModel", modelId),
+    openModelDirectory: () =>
+      ipcRenderer.invoke("transcription:openModelDirectory"),
+    start: (request: TranscriptionRequest) =>
+      ipcRenderer.invoke("transcription:start", request) as Promise<string>,
+  },
+  on: <K extends keyof EventPayloads>(
+    channel: K,
+    callback: (payload: EventPayloads[K]) => void,
+  ) => {
+    const subscription = (
+      _event: Electron.IpcRendererEvent,
+      ...args: unknown[]
+    ) => callback(args[0] as EventPayloads[K]);
     ipcRenderer.on(channel, subscription);
     return () => {
       ipcRenderer.removeListener(channel, subscription);
     };
   },
 };
+
+interface EventPayloads {
+  "download:progress": JobProgress;
+  "download:complete": {
+    id: string;
+    filePath: string;
+    filePaths?: string[];
+  };
+  "download:error": {
+    id: string;
+    code?: string;
+    error: string;
+    technicalDetails?: string;
+    retryCount: number;
+  };
+  "history:update": unknown[];
+  "transcription:model-progress": {
+    modelId: string;
+    status: string;
+    bytesDownloaded: number;
+    totalBytes: number;
+    speedBytesPerSecond?: number;
+    etaSeconds?: number;
+    error?: string;
+  };
+  "update:available": { version: string; releaseDate?: string };
+  "update:downloaded": { version: string };
+  "update:error": { message: string };
+}
 
 try {
   contextBridge.exposeInMainWorld("prism", prismAPI);

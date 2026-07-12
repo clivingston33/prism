@@ -67,13 +67,16 @@ function resolveExecutable(
   envName: string,
   bundledPath: string,
   command: string,
+  allowSystemPath: boolean,
 ): string {
   const envPath = process.env[envName];
   if (isUsableExecutable(envPath)) return envPath;
   if (isUsableExecutable(bundledPath)) return bundledPath;
 
-  const systemPath = findExecutableOnPath(command);
-  if (systemPath) return systemPath;
+  if (allowSystemPath) {
+    const systemPath = findExecutableOnPath(command);
+    if (systemPath) return systemPath;
+  }
 
   return bundledPath;
 }
@@ -83,7 +86,9 @@ export function describeExecutableProblem(name: string, filePath: string) {
     ? "PRISM_YTDLP_PATH"
     : name.toLowerCase().includes("ffmpeg")
       ? "PRISM_FFMPEG_PATH"
-      : `PRISM_${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_PATH`;
+      : name.toLowerCase().includes("ffprobe")
+        ? "PRISM_FFPROBE_PATH"
+        : `PRISM_${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_PATH`;
 
   if (!fs.existsSync(filePath)) {
     return `${name} was not found at ${filePath}. Install ${name} or set ${envName}.`;
@@ -123,15 +128,50 @@ export function getBinPaths() {
     binDir,
     process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
   );
+  const bundledFfprobe = path.join(
+    binDir,
+    process.platform === "win32" ? "ffprobe.exe" : "ffprobe",
+  );
   const bundledDeno = path.join(
     binDir,
     process.platform === "win32" ? "deno.exe" : "deno",
   );
+  const bundledWhisper = path.join(
+    binDir,
+    process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli",
+  );
 
   return {
-    ytdlp: resolveExecutable("PRISM_YTDLP_PATH", bundledYtdlp, "yt-dlp"),
-    ffmpeg: resolveExecutable("PRISM_FFMPEG_PATH", bundledFfmpeg, "ffmpeg"),
-    deno: resolveExecutable("PRISM_DENO_PATH", bundledDeno, "deno"),
+    ytdlp: resolveExecutable(
+      "PRISM_YTDLP_PATH",
+      bundledYtdlp,
+      "yt-dlp",
+      !app.isPackaged,
+    ),
+    ffmpeg: resolveExecutable(
+      "PRISM_FFMPEG_PATH",
+      bundledFfmpeg,
+      "ffmpeg",
+      !app.isPackaged,
+    ),
+    ffprobe: resolveExecutable(
+      "PRISM_FFPROBE_PATH",
+      bundledFfprobe,
+      "ffprobe",
+      !app.isPackaged,
+    ),
+    deno: resolveExecutable(
+      "PRISM_DENO_PATH",
+      bundledDeno,
+      "deno",
+      !app.isPackaged,
+    ),
+    whisper: resolveExecutable(
+      "PRISM_WHISPER_PATH",
+      bundledWhisper,
+      "whisper-cli",
+      !app.isPackaged,
+    ),
   };
 }
 

@@ -21,7 +21,7 @@ export function Shell() {
         <div className="h-10 shrink-0" />
 
         <div
-          className={`${sidebarExpanded ? "px-3" : "px-2"} h-8 flex items-center justify-center mb-3 shrink-0 [app-region:no-drag] transition-all`}
+          className={`${sidebarExpanded ? "px-3" : "px-2"} mb-3 flex h-8 shrink-0 items-center justify-center [app-region:no-drag] transition-[padding]`}
         >
           <div
             className={`flex items-center transition-opacity duration-200 ${sidebarExpanded ? "opacity-100" : "absolute opacity-0 pointer-events-none"}`}
@@ -67,9 +67,9 @@ export function Shell() {
             expanded={sidebarExpanded}
           />
           <NavItem
-            to="/convert"
+            to="/media-tools"
             icon={<ArrowRightLeft size={16} strokeWidth={1.5} />}
-            label="File Swap"
+            label="Media Tools"
             expanded={sidebarExpanded}
           />
           <NavItem
@@ -115,15 +115,15 @@ function NavItem({
     <Link
       to={to}
       title={!expanded ? label : undefined}
-      className={`group relative flex h-7 items-center rounded-lg transition-all duration-200 overflow-hidden ${expanded ? "px-2.5 gap-2.5" : "justify-center px-0"} ${isActive ? "bg-accent/10 text-accent font-semibold" : "text-text-primary hover:bg-bg-elevated/50"}`}
+      className={`group relative flex h-7 items-center overflow-hidden rounded-lg transition-[background-color,color,padding,gap] duration-200 ${expanded ? "gap-2.5 px-2.5" : "justify-center px-0"} ${isActive ? "bg-accent/10 font-semibold text-accent" : "text-text-primary hover:bg-bg-elevated/50"}`}
     >
       <div
-        className={`flex h-[16px] w-[16px] shrink-0 items-center justify-center transition-all duration-200 ${isActive ? "opacity-100" : "opacity-40 group-hover:opacity-70"}`}
+        className={`flex h-[16px] w-[16px] shrink-0 items-center justify-center transition-[opacity] duration-200 ${isActive ? "opacity-100" : "opacity-40 group-hover:opacity-70"}`}
       >
         {icon}
       </div>
       <span
-        className={`text-[12px] font-medium whitespace-nowrap transition-all duration-200 ${expanded ? "opacity-100" : "opacity-0 w-0 overflow-hidden"} ${isActive ? "opacity-100" : "opacity-60 group-hover:opacity-100"}`}
+        className={`whitespace-nowrap text-[12px] font-medium transition-[opacity,width] duration-200 ${expanded ? "w-auto opacity-100" : "w-0 overflow-hidden opacity-0"} ${isActive ? "opacity-100" : "opacity-60 group-hover:opacity-100"}`}
       >
         {label}
       </span>

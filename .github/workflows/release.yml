@@ -1,4 +1,4 @@
-name: Release
+name: Signed Windows Release
 
 on:
   push:
@@ -7,18 +7,25 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
 
     steps:
-      - name: Check out Git repository
+      - name: Check out repository and LFS objects
         uses: actions/checkout@v4
         with:
           lfs: true
+
+      - name: Require release signing credentials
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw "Signed public releases require WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD secrets."
+          }
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -30,54 +37,52 @@ jobs:
         with:
           version: 9
 
-      - name: Install Dependencies
-        run: pnpm install
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Build Windows
-        if: matrix.os == 'windows-latest'
+      - name: Quality and native-resource gates
+        run: |
+          pnpm run format:check
+          pnpm run lint
+          pnpm run typecheck
+          pnpm test
+          pnpm run verify:resources
+
+      - name: Build signed Windows installer
         run: pnpm run build:win
 
-      - name: Build macOS
-        if: matrix.os == 'macos-latest'
-        run: pnpm run build:mac
+      - name: Verify executable and installer signatures
+        run: pnpm run verify:signatures
 
-      - name: Upload Windows artifact
-        if: matrix.os == 'windows-latest'
+      - name: Write artifact checksums
+        shell: pwsh
+        run: Get-ChildItem dist -Filter *.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Set-Content dist/SHA256SUMS-windows.txt
+
+      - name: Upload signed release candidate
         uses: actions/upload-artifact@v4
         with:
-          name: prism-windows
-          path: dist/*.exe
-
-      - name: Upload macOS artifact
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: prism-macos
-          path: dist/*.dmg
+          name: prism-windows-signed
+          path: |
+            dist/Prism-Setup-*.exe
+            dist/*.blockmap
+            dist/latest.yml
+            dist/SHA256SUMS-windows.txt
+          if-no-files-found: error
 
   release:
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Download Windows artifact
+      - name: Download signed artifact
         uses: actions/download-artifact@v4
         with:
-          name: prism-windows
+          name: prism-windows-signed
           path: dist
 
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: prism-macos
-          path: dist
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          draft: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          draft: true

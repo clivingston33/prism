@@ -1,22 +1,45 @@
 import Store from "electron-store";
 import { app } from "electron";
 
-export const defaultSettings: any = {
-  defaultVideoFormat: "mp4",
-  defaultAudioFormat: "mp3",
-  maxConcurrentDownloads: 2,
-  downloadLocation: app.getPath("downloads"),
-  historyRetentionDays: -1,
-  videoAutoDeleteDays: 0,
-  theme: "system",
-  aiTranscriptModel: "Gemini 3.1 Flash Lite",
-  geminiApiKey: "",
-};
+export type MissingFileBehavior = "mark" | "remove" | "ask";
 
-export const store = new Store({
+export const defaultSettings = {
+  // "auto" = Original — Fastest: keep source codecs, merge/remux only.
+  defaultVideoFormat: "auto",
+  defaultAudioFormat: "source",
+  maxConcurrentDownloads: 2,
+  // yt-dlp --concurrent-fragments for DASH/HLS downloads (1-16).
+  concurrentFragments: 8,
+  downloadLocation: app.getPath("downloads"),
+  defaultDownloadMode: "original",
+  defaultQuality: "best",
+  retryCount: 10,
+  fragmentRetryCount: 10,
+  downloadSpeedLimit: "",
+  lowResourceMode: false,
+  defaultMediaToolsMode: "remux",
+  defaultRemuxContainer: "auto",
+  mediaToolsPreserveMetadata: true,
+  mediaToolsPreserveChapters: true,
+  mediaToolsPreserveAllTracks: true,
+  missingFileBehavior: "mark" as MissingFileBehavior,
+  generateThumbnails: true,
+  transcriptionModelId: "base",
+  transcriptionLanguage: "auto",
+  transcriptionFormat: "txt",
+  transcriptionSaveBesideSource: true,
+  transcriptionDirectory: "",
+  transcriptionThreads: 0,
+  theme: "system",
+} as const satisfies Record<string, unknown>;
+
+export const store = new Store<{
+  settings: Record<string, unknown>;
+  history: unknown[];
+}>({
   name: "prism-settings",
   defaults: {
-    settings: defaultSettings,
+    settings: { ...defaultSettings },
     history: [],
   },
 });

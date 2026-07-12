@@ -7,7 +7,14 @@
   "license": "MIT",
   "scripts": {
     "format": "prettier --write .",
-    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
+    "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
+    "format:check": "prettier --check .",
+    "verify:resources": "node scripts/verify-resources.mjs",
+    "verify:signatures": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/verify-windows-signatures.ps1",
+    "prepare:resources:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/native/prepare-windows.ps1",
+    "test": "node --no-warnings --experimental-strip-types --test test/progress.test.ts test/jobs.test.ts test/conversion.test.ts test/media-tools.test.ts test/transcription.test.ts test/process-registry.test.ts test/format-selection.test.ts test/metadata-cache.test.ts test/progress-tracker.test.ts test/errors.test.ts test/temp-dirs.test.ts test/ipc-schemas.test.ts test/queue-state.test.ts test/ytdlp-args.test.ts",
+    "test:watch": "node --no-warnings --experimental-strip-types --test --watch test/progress.test.ts test/jobs.test.ts test/conversion.test.ts test/media-tools.test.ts test/transcription.test.ts test/process-registry.test.ts test/format-selection.test.ts test/metadata-cache.test.ts test/progress-tracker.test.ts test/errors.test.ts test/temp-dirs.test.ts test/ipc-schemas.test.ts test/queue-state.test.ts test/ytdlp-args.test.ts",
+    "test:e2e:native": "node scripts/e2e/native-media.mjs",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
@@ -16,19 +23,15 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir --publish never",
-    "build:win": "npm run build && electron-builder --win --publish never",
-    "build:mac": "npm run build && electron-builder --mac --publish never",
-    "build:linux": "npm run build && electron-builder --linux --publish never"
+    "build:win": "npm run verify:resources && npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
-    "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@fontsource/geist-mono": "^5.0.0",
     "@fontsource/geist-sans": "^5.0.0",
     "@tanstack/react-router": "^1.81.0",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.1.8",
-    "ffmpeg-static": "^5.3.0",
     "lucide-react": "^0.400.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -43,7 +46,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.1",
-    "electron": "^33.0.0",
+    "electron": "^43.1.0",
     "electron-builder": "^25.0.0-alpha.10",
     "electron-vite": "^2.3.0",
     "eslint": "^8.57.0",
@@ -51,5 +54,11 @@
     "tailwindcss": "^4.0.0",
     "typescript": "^5.5.2",
     "vite": "^5.3.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.2",
+      "js-yaml": "4.2.0"
+    }
   }
 }

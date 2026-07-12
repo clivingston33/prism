@@ -4,8 +4,8 @@ import { useAppStore } from "../stores/app-store";
 import { useNavigate } from "@tanstack/react-router";
 
 type DownloadMode = "video_audio" | "video_only" | "audio_only" | "split";
-type VideoFormat = "mp4" | "mov" | "webm" | "mkv" | "prores";
-type AudioFormat = "mp3" | "wav" | "aac" | "flac";
+type VideoFormat = "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
+type AudioFormat = "source" | "mp3" | "wav" | "aac" | "flac";
 
 interface OptionsDrawerProps {
   isOpen: boolean;
@@ -27,6 +27,7 @@ interface QueueOptions {
 }
 
 const VIDEO_FORMATS: { value: VideoFormat; label: string }[] = [
+  { value: "auto", label: "Auto" },
   { value: "mp4", label: "MP4" },
   { value: "mov", label: "MOV" },
   { value: "webm", label: "WebM" },
@@ -35,11 +36,22 @@ const VIDEO_FORMATS: { value: VideoFormat; label: string }[] = [
 ];
 
 const AUDIO_FORMATS: { value: AudioFormat; label: string }[] = [
+  { value: "source", label: "Source" },
   { value: "mp3", label: "MP3" },
   { value: "wav", label: "WAV" },
   { value: "aac", label: "AAC" },
   { value: "flac", label: "FLAC" },
 ];
+
+const CONTAINER_HINTS: Record<VideoFormat, string> = {
+  auto: "Auto — Recommended. Original — Fastest: keeps the source video and audio exactly as published (no re-encoding). Uses a native container, MKV if needed.",
+  mp4: "MP4 compatibility: picks H.264/AAC source streams and remuxes without re-encoding. If the source has no MP4-compatible streams, Prism saves the original quality as MKV — you can convert it later in Media Tools.",
+  mov: "MOV: remuxes H.264/AAC source streams without re-encoding; falls back to MKV when the source is incompatible.",
+  webm: "WebM: picks VP9/Opus source streams when available; falls back to MKV to preserve original quality.",
+  mkv: "MKV: stores any source streams without re-encoding. The safest container.",
+  prores:
+    "ProRes converts the download to ProRes video (slow, large files, re-encodes). Only pick this when an editing workflow requires it.",
+};
 
 const MODE_OPTIONS: {
   value: DownloadMode;
@@ -49,7 +61,7 @@ const MODE_OPTIONS: {
   {
     value: "video_audio",
     label: "Video + audio",
-    description: "One playable file",
+    description: "Original — Fastest",
   },
   { value: "video_only", label: "Video only", description: "No audio track" },
   { value: "audio_only", label: "Audio only", description: "Extract audio" },
@@ -60,24 +72,33 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
   return {
     url,
     mode: "video_audio",
-    format: settings?.defaultVideoFormat || "mp4",
-    audioFormat: settings?.defaultAudioFormat || "mp3",
-    quality: "best",
+    format:
+      settings?.defaultDownloadMode === "mp4-compatible"
+        ? "mp4"
+        : settings?.defaultVideoFormat || "auto",
+    audioFormat: settings?.defaultAudioFormat || "source",
+    quality: (settings?.defaultQuality as QueueOptions["quality"]) || "best",
     trimEnabled: false,
     trimStart: "00:00:00",
     trimEnd: "00:00:00",
   };
 }
 
+function containerLabel(format: VideoFormat | AudioFormat) {
+  if (format === "auto") return "Original";
+  if (format === "source") return "Source";
+  return format.toUpperCase();
+}
+
 function formatSummary(item: QueueOptions) {
   if (item.mode === "audio_only")
-    return `${item.audioFormat.toUpperCase()} audio`;
+    return `${containerLabel(item.audioFormat)} audio`;
   if (item.mode === "video_only")
-    return `${item.format.toUpperCase()} video only`;
+    return `${containerLabel(item.format)} video only`;
   if (item.mode === "split") {
-    return `${item.format.toUpperCase()} + ${item.audioFormat.toUpperCase()}`;
+    return `${containerLabel(item.format)} + ${containerLabel(item.audioFormat)}`;
   }
-  return `${item.format.toUpperCase()} ${item.quality === "best" ? "best" : item.quality}`;
+  return `${containerLabel(item.format)} ${item.quality === "best" ? "best" : item.quality}`;
 }
 
 export function OptionsDrawer({
@@ -145,6 +166,15 @@ export function OptionsDrawer({
     };
   }, [isOpen, currentUrl, metadataCache]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
+
   const qualityOptions = useMemo(() => {
     const defaults = ["1080p", "720p", "480p", "360p"];
     const available = metadata?.qualities?.length
@@ -207,17 +237,25 @@ export function OptionsDrawer({
       <div
         className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] transition-opacity duration-150 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
         onClick={onClose}
+        aria-hidden="true"
       />
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-[390px] bg-bg-elevated border-l border-border-subtle shadow-2xl transition-transform duration-180 ease-out flex flex-col ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 z-50 w-[min(390px,calc(100vw-44px))] bg-bg-elevated border-l border-border-subtle shadow-2xl transition-transform duration-180 ease-out flex flex-col ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="download-options-title"
       >
         <div className="flex items-center justify-between p-6 pb-4">
-          <h2 className="text-sm font-semibold text-text-primary">
+          <h2
+            id="download-options-title"
+            className="text-sm font-semibold text-text-primary"
+          >
             Download options
           </h2>
           <button
             onClick={onClose}
             className="text-text-tertiary hover:text-text-primary transition-colors"
+            aria-label="Close download options"
           >
             <X size={18} strokeWidth={1.5} />
           </button>
@@ -304,9 +342,9 @@ export function OptionsDrawer({
           {current.mode !== "audio_only" && (
             <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-text-secondary">
-                Video format
+                Output container
               </label>
-              <div className="grid grid-cols-5 gap-1">
+              <div className="grid grid-cols-6 gap-1">
                 {VIDEO_FORMATS.map((f) => (
                   <button
                     key={f.value}
@@ -322,8 +360,7 @@ export function OptionsDrawer({
                 ))}
               </div>
               <p className="text-[10px] text-text-tertiary">
-                MP4 and MOV are exported with standard H.264/AAC. ProRes exports
-                a true MOV with ProRes video.
+                {CONTAINER_HINTS[current.format]}
               </p>
             </div>
           )}
@@ -333,7 +370,7 @@ export function OptionsDrawer({
               <label className="text-xs font-medium text-text-secondary">
                 Audio format
               </label>
-              <div className="grid grid-cols-4 gap-1">
+              <div className="grid grid-cols-5 gap-1">
                 {AUDIO_FORMATS.map((f) => (
                   <button
                     key={f.value}

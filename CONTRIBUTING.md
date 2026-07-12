@@ -1,37 +1,37 @@
 # Contributing to Prism
 
-Thank you for your interest in contributing to Prism!
+Thank you for helping improve Prism. Please read the [Code of Conduct](CODE_OF_CONDUCT.md) first.
 
-## Development Setup
+## Development setup
 
-1. Fork and clone the repository
-2. Install dependencies: `pnpm install`
-3. Start the dev server: `pnpm dev`
-4. Make your changes
+1. Clone the repository and confirm the remote points to `clivingston33/prism`.
+2. Install Node.js 20+ and pnpm 9.
+3. Run `pnpm install --frozen-lockfile`.
+4. Run `pnpm run prepare:resources:win` to hydrate pinned Windows x64 yt-dlp, FFmpeg/ffprobe, and whisper.cpp resources. The deterministic unit suite does not require live internet or native binaries.
+5. Run `pnpm dev`.
 
-## Code Style
+## Before opening a pull request
 
-- Use TypeScript for all new code
-- Follow the existing code formatting (Prettier handles this with `pnpm format`)
-- Keep components small and focused
-- Use Lucide React icons at 18px with strokeWidth 1.5
+Run:
 
-## Pull Request Process
+```sh
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
-1. Ensure all tests pass and code lints
-2. Update documentation if adding new features
-3. The PR will be reviewed and merged once approved
+Keep changes targeted. Preserve existing settings, history, downloaded files, transcripts, models, and upgrade behavior. Validate all renderer-controlled values at the IPC boundary and use argument arrays for child processes. Do not add telemetry or cloud media processing without a separate privacy review.
 
-## Reporting Bugs
+## Pull requests
 
-Please include:
+Explain the user-visible behavior, the reason for the change, and how it was verified. Include tests for important safety and lifecycle fixes. Do not include media files, cookies, private URLs, transcripts, local paths, generated installers, or native binaries unless the repository explicitly requires that artifact.
 
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- OS and version
-- Browser/ Electron version if relevant
+## Bug reports
 
-## Suggesting Features
+Use the bug template and include Prism version, operating system and architecture, reproduction steps, expected result, actual result, and relevant redacted logs. Include a sample URL only when it is public and safe. Say whether the issue reproduces when running yt-dlp directly. Never post private media URLs, cookies, credentials, or account data.
 
-Open an issue to discuss new features before implementing them. This helps avoid duplicate work and ensures the feature aligns with the project's goals.
+## Native binaries and models
+
+Native runtime updates require version, license, provenance, checksum, and clean-packaged-app verification. Model manifest changes require checksum and storage/upgrade review. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [docs/RELEASING.md](docs/RELEASING.md).

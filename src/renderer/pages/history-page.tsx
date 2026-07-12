@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Clock, FilterX, AlertTriangle } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { RowCard } from "../components/row-card";
@@ -11,6 +11,15 @@ export function HistoryPage() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [showClearModal, setShowClearModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<DownloadItem | null>(null);
+
+  useEffect(() => {
+    if (!showClearModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowClearModal(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showClearModal]);
 
   const historyItems = downloads;
   const selectedLiveItem = selectedItem
@@ -42,7 +51,7 @@ export function HistoryPage() {
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`rounded-full px-3 py-1 text-[11px] font-semibold capitalize transition-all border ${
+                className={`rounded-full border px-3 py-1 text-[11px] font-semibold capitalize transition-[background-color,border-color,color,box-shadow] ${
                   filter === f
                     ? "bg-accent border-accent text-accent-fg shadow-sm"
                     : "bg-bg-subtle border-border text-text-secondary hover:text-text-primary hover:border-border-subtle"
@@ -101,13 +110,21 @@ export function HistoryPage() {
       {/* Clear Confirmation Modal */}
       {showClearModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-[380px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+          <div
+            className="w-[380px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-history-title"
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-error/10 text-error">
                 <AlertTriangle size={20} strokeWidth={1.5} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-text-primary">
+                <h3
+                  id="clear-history-title"
+                  className="text-sm font-semibold text-text-primary"
+                >
                   Clear all history?
                 </h3>
                 <p className="text-xs text-text-secondary mt-0.5">

@@ -1,44 +1,49 @@
 import { ipcMain, dialog, BrowserWindow } from "electron";
 import { store, defaultSettings } from "../store";
 import { autoUpdater } from "electron-updater";
+import { parseSettingsPatch } from "../../shared/ipc-schemas.ts";
 
-function cleanSettings(settings: Record<string, any>) {
+function cleanSettings(settings: Record<string, unknown>) {
   return Object.fromEntries(
     Object.keys(defaultSettings).map((key) => [key, settings[key]]),
   );
 }
 
-function hasGeminiApiKey(settings: Record<string, any>) {
-  return Boolean(
-    String(settings.geminiApiKey || "").trim() ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_API_KEY,
-  );
-}
-
-function settingsForRenderer(settings: Record<string, any>) {
+function settingsForRenderer(settings: Record<string, unknown>) {
   const clean = cleanSettings(settings);
-  return {
-    ...clean,
-    geminiApiKey: "",
-    hasGeminiApiKey: hasGeminiApiKey(settings),
-  };
+  return clean;
 }
 
 export function setupSettingsIPC() {
+  // Normalize persisted settings on every startup. This migrates old
+  // versions, removes obsolete cloud-transcription and decorative settings,
+  // and preserves every setting that still has a live behavior.
+  const legacy = store.get("settings", {}) as Record<string, unknown>;
+  store.set("settings", cleanSettings({ ...defaultSettings, ...legacy }));
+  for (const channel of [
+    "settings:get",
+    "settings:update",
+    "settings:selectDirectory",
+    "settings:checkForUpdates",
+    "settings:downloadUpdate",
+    "settings:quitAndInstall",
+  ]) {
+    ipcMain.removeHandler(channel);
+  }
   ipcMain.handle("settings:get", () => {
     return settingsForRenderer({
       ...defaultSettings,
-      ...(store.get("settings", {}) as any),
+      ...(store.get("settings", {}) as Record<string, unknown>),
     });
   });
 
   ipcMain.handle("settings:update", (_, partialSettings) => {
+    const patch = parseSettingsPatch(partialSettings);
     const current = {
       ...defaultSettings,
-      ...(store.get("settings", {}) as any),
+      ...(store.get("settings", {}) as Record<string, unknown>),
     };
-    const updated = cleanSettings({ ...current, ...partialSettings });
+    const updated = cleanSettings({ ...current, ...patch });
     store.set("settings", updated);
     return settingsForRenderer(updated);
   });
@@ -60,22 +65,24 @@ export function setupSettingsIPC() {
       const result = await autoUpdater.checkForUpdates();
       if (result?.updateInfo?.version) {
         return {
+          status: "available" as const,
           isUpdateAvailable: true,
           version: result.updateInfo.version,
           releaseDate: result.updateInfo.releaseDate,
           releaseNotes: result.updateInfo.releaseNotes,
         };
       }
-      return { isUpdateAvailable: false };
-    } catch (err: any) {
-      console.error("[updater] Update check failed:", err.message);
-      return { isUpdateAvailable: false, error: err.message };
+      return { status: "up_to_date" as const, isUpdateAvailable: false };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[updater] Update check failed:", message);
+      return { status: "error" as const, error: message };
     }
   });
 
   ipcMain.handle("settings:downloadUpdate", async () => {
     try {
-      autoUpdater.downloadUpdate();
+      await autoUpdater.downloadUpdate();
     } catch (err) {
       console.error("[updater] Update download failed:", err);
     }

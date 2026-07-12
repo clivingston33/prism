@@ -7,3 +7,6 @@ out/
 !.env.example
 *.log
 *.tsbuildinfo
+.native-downloads/
+.e2e-artifacts/
+.e2e-install/

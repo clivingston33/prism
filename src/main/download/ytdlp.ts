@@ -1,16 +1,30 @@
 import { app } from "electron";
 import fs from "fs";
 import path from "path";
-import { execSync, spawn } from "child_process";
+import { spawn } from "child_process";
 import { store } from "../store";
-import { convertMedia, moveFileUnique, runFfmpeg } from "./converter";
+import { convertMedia, moveFileUnique } from "./converter";
+import { StreamLineBuffer } from "./progress";
+import { JobCancelledError, processRegistry } from "./process-registry";
+import { isJobCancelled, publishJobProgress } from "./job-state";
+import type { JobStage } from "../../shared/jobs.ts";
+import { MetadataCache } from "./metadata-cache";
+import {
+  buildDownloadPlan,
+  clampConcurrentFragments,
+  describeContainerFallback,
+  planExpectsTwoStreams,
+  type DownloadPlan,
+} from "./format-selection";
+import { DownloadAggregator, parsePrismProgressLine } from "./progress-tracker";
+import { buildBaseYtDlpFlags } from "./ytdlp-args";
+import { createJobTempDir, moveFileFast } from "./temp-dirs";
 import {
   ensureUniqueDirectory,
   ensureUniquePath,
   getBinPaths,
   isAudioFormat,
   isUsableExecutable,
-  outputExtension,
   qualityToHeight,
   removeDirectorySafe,
   sanitizeFileName,
@@ -18,8 +32,6 @@ import {
   describeExecutableProblem,
   type DownloadMode,
 } from "./utils";
-
-const activeProcesses = new Map<string, ReturnType<typeof spawn>>();
 
 function getJsRuntimeArg(): string | null {
   const { deno } = getBinPaths();
@@ -73,7 +85,9 @@ function updateHistoryItem(
 ) {
   const history = store.get("history", []) as any[];
   const updated = history.map((item) =>
-    item.id === id ? { ...item, ...partial } : item,
+    item.id === id
+      ? { ...item, ...partial, updatedAt: new Date().toISOString() }
+      : item,
   );
   store.set("history", updated);
   if (emit && mainWindow) {
@@ -83,15 +97,33 @@ function updateHistoryItem(
 
 function setProgress(
   itemId: string,
-  progress: number,
+  progress: number | undefined,
   mainWindow: Electron.BrowserWindow,
+  details: {
+    stage?: JobStage;
+    stageProgress?: number;
+    processedSeconds?: number;
+    durationSeconds?: number;
+    speedBytesPerSecond?: number;
+  } = {},
 ) {
-  const rounded = Math.max(0, Math.min(100, Math.round(progress)));
-  mainWindow.webContents.send("download:progress", {
-    id: itemId,
-    progress: rounded,
+  const item = (store.get("history", []) as any[]).find(
+    (entry) => entry.id === itemId,
+  );
+  publishJobProgress(mainWindow, {
+    jobId: itemId,
+    attemptId: item?.attemptId || itemId,
+    jobType: item?.jobType || "download",
+    status: item?.status === "processing" ? "processing" : "running",
+    stage: details.stage || item?.stage || "download",
+    patch: {
+      overallProgress: progress,
+      stageProgress: details.stageProgress,
+      processedSeconds: details.processedSeconds,
+      durationSeconds: details.durationSeconds,
+      speedBytesPerSecond: details.speedBytesPerSecond,
+    },
   });
-  updateHistoryItem(itemId, { progress: rounded }, undefined, false);
 }
 
 function extractQualities(formats: any[]): string[] {
@@ -186,10 +218,13 @@ function fallbackMetadata(url: string) {
     mediaType: "video",
     imageUrls: [],
     imageCount: 0,
+    fromFallback: true,
   };
 }
 
-export async function getMetadata(url: string): Promise<any> {
+const METADATA_TIMEOUT_MS = 45_000;
+
+async function fetchMetadata(url: string): Promise<any> {
   return new Promise((resolve) => {
     const fallback = fallbackMetadata(url);
     const { ytdlp } = getBinPaths();
@@ -217,12 +252,19 @@ export async function getMetadata(url: string): Promise<any> {
       return;
     }
     let output = "";
+    // A hung extractor must not block the queue forever.
+    const timeout = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {}
+    }, METADATA_TIMEOUT_MS);
 
     child.stdout?.on("data", (data) => {
       output += data.toString();
     });
 
     child.on("close", (code) => {
+      clearTimeout(timeout);
       if (code !== 0) {
         resolve(fallback);
         return;
@@ -277,6 +319,7 @@ export async function getMetadata(url: string): Promise<any> {
     });
 
     child.on("error", (err) => {
+      clearTimeout(timeout);
       console.warn(
         `[yt-dlp] metadata process error: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
         err,
@@ -284,6 +327,24 @@ export async function getMetadata(url: string): Promise<any> {
       resolve(fallback);
     });
   });
+}
+
+/**
+ * Shared metadata cache: queueing an item and starting its download reuse a
+ * single extraction, concurrent requests for the same URL share one in-flight
+ * promise, and extractor fallbacks are never cached.
+ */
+const metadataCache = new MetadataCache<any>({
+  fetcher: fetchMetadata,
+  ttlMs: 5 * 60 * 1000,
+  isCacheable: (value) => !value?.fromFallback,
+});
+
+export async function getMetadata(
+  url: string,
+  options: { forceRefresh?: boolean } = {},
+): Promise<any> {
+  return metadataCache.get(url, options);
 }
 
 function stripSubtitleToText(content: string) {
@@ -392,132 +453,8 @@ export async function getTranscript(
   });
 }
 
-export async function getTranscriptFromLocalFile(
-  filePath: string,
-  format: string = "txt",
-): Promise<string> {
-  return new Promise((resolve) => {
-    const { ytdlp, ffmpeg } = getBinPaths();
-    if (!isUsableExecutable(ytdlp)) {
-      resolve(
-        `Could not retrieve transcript: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
-      );
-      return;
-    }
-
-    const sourcePath = filePath.replace(/^['"]|['"]$/g, "").trim();
-    if (!sourcePath || !fs.existsSync(sourcePath)) {
-      resolve("Could not retrieve transcript: source file does not exist.");
-      return;
-    }
-
-    const tmpDir = fs.mkdtempSync(
-      path.join(app.getPath("temp"), "prism-local-captions-"),
-    );
-    const tempInputPath = path.join(
-      tmpDir,
-      `input${path.extname(sourcePath) || ".mp4"}`,
-    );
-    const outputTemplate = path.join(tmpDir, "prism_transcript.%(ext)s");
-    const requestedFormat = normalizeTranscriptFormat(format);
-    const subtitleFormat =
-      requestedFormat === "txt" ? "vtt/srt/best" : requestedFormat;
-
-    try {
-      fs.copyFileSync(sourcePath, tempInputPath);
-    } catch (err) {
-      removeDirectorySafe(tmpDir);
-      resolve(
-        `Could not retrieve transcript: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
-    }
-
-    const args = [
-      "--enable-file-urls",
-      "--write-subs",
-      "--write-auto-subs",
-      "--sub-langs",
-      "en.*",
-      "--skip-download",
-      "--sub-format",
-      subtitleFormat,
-      "--no-playlist",
-      "-o",
-      outputTemplate,
-    ];
-    if (isUsableExecutable(ffmpeg)) args.push("--ffmpeg-location", ffmpeg);
-    args.push(`file:///${tempInputPath.replace(/\\/g, "/")}`);
-
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(ytdlp, args, { windowsHide: true });
-    } catch {
-      removeDirectorySafe(tmpDir);
-      resolve(
-        `Could not retrieve transcript: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
-      );
-      return;
-    }
-
-    let stderr = "";
-    child.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    child.on("close", (code) => {
-      try {
-        if (code === 0) {
-          const files = fs
-            .readdirSync(tmpDir)
-            .map((file) => path.join(tmpDir, file))
-            .filter((file) => /\.(srt|vtt|ttml|srv\d*)$/i.test(file));
-          const preferred =
-            files.find((file) => file.endsWith(`.${requestedFormat}`)) ||
-            files[0];
-          if (preferred && fs.existsSync(preferred)) {
-            const content = fs.readFileSync(preferred, "utf-8");
-            removeDirectorySafe(tmpDir);
-            resolve(
-              requestedFormat === "txt"
-                ? stripSubtitleToText(content)
-                : content.trim(),
-            );
-            return;
-          }
-        }
-      } catch {}
-
-      removeDirectorySafe(tmpDir);
-      resolve(
-        stderr.trim()
-          ? `Could not retrieve transcript: ${stderr.trim().slice(0, 400)}`
-          : "Could not retrieve transcript: no transcript file was generated.",
-      );
-    });
-
-    child.on("error", () => {
-      removeDirectorySafe(tmpDir);
-      resolve("Could not retrieve transcript from local file.");
-    });
-  });
-}
-
 export function cancelDownload(id: string) {
-  const child = activeProcesses.get(id);
-  if (!child) return;
-
-  try {
-    if (process.platform === "win32" && child.pid) {
-      execSync(`taskkill /pid ${child.pid} /T /F`);
-    } else {
-      child.kill();
-    }
-  } catch (e) {
-    console.error(`Failed to kill process ${id}`, e);
-  } finally {
-    activeProcesses.delete(id);
-  }
+  processRegistry.cancel(id);
 }
 
 export function extractThumbnail(
@@ -569,18 +506,20 @@ export function extractThumbnail(
       thumbPath,
     ];
 
-    const child = spawn(ffmpeg, args);
-    let errOut = "";
-    child.stderr.on("data", (data) => {
-      errOut += data.toString();
-    });
+    const child = spawn(ffmpeg, args, { windowsHide: true });
+    processRegistry.register(itemId, child);
     child.on("close", (code) => {
       if (code === 0 && fs.existsSync(thumbPath)) {
         resolve(thumbPath);
         return;
       }
 
-      console.log(`[thumbnail] first pass failed: ${errOut.slice(0, 200)}`);
+      if (processRegistry.isCancelled(itemId)) {
+        resolve(null);
+        return;
+      }
+
+      // Keep media paths and extractor diagnostics out of production logs.
       const retryArgs = [
         "-y",
         "-i",
@@ -593,7 +532,8 @@ export function extractThumbnail(
         "4",
         thumbPath,
       ];
-      const retry = spawn(ffmpeg, retryArgs);
+      const retry = spawn(ffmpeg, retryArgs, { windowsHide: true });
+      processRegistry.register(itemId, retry);
       retry.on("close", (retryCode) => {
         resolve(retryCode === 0 && fs.existsSync(thumbPath) ? thumbPath : null);
       });
@@ -603,65 +543,33 @@ export function extractThumbnail(
   });
 }
 
+export function getConcurrentFragments(): number {
+  const settings = (store.get("settings") || {}) as any;
+  if (settings.lowResourceMode) return 1;
+  return clampConcurrentFragments(settings.concurrentFragments);
+}
+
 function baseYtDlpArgs(tempDir: string, item: any) {
   const { ffmpeg } = getBinPaths();
-  const args = [
-    "--newline",
-    "--no-playlist",
-    "--windows-filenames",
-    "--no-overwrites",
-    "--print",
-    "after_move:filepath",
-    "-P",
+  const args = buildBaseYtDlpFlags({
     tempDir,
-    "-o",
-    "%(title).200B.%(ext)s",
-  ];
+    concurrentFragments: getConcurrentFragments(),
+    retryCount: Number((store.get("settings") as any)?.retryCount ?? 10),
+    fragmentRetryCount: Number(
+      (store.get("settings") as any)?.fragmentRetryCount ?? 10,
+    ),
+    speedLimit: String(
+      (store.get("settings") as any)?.downloadSpeedLimit || "",
+    ),
+    trimStart: item.trimStart,
+    trimEnd: item.trimEnd,
+  });
 
   const jsRuntime = getJsRuntimeArg();
   if (jsRuntime) args.push(jsRuntime);
   if (isUsableExecutable(ffmpeg)) args.push("--ffmpeg-location", ffmpeg);
 
-  if (item.trimStart || item.trimEnd) {
-    const start = item.trimStart || "00:00:00";
-    const end = item.trimEnd || "23:59:59";
-    args.push("--download-sections", `*${start}-${end}`);
-    args.push("--force-keyframes-at-cuts");
-  }
-
   return args;
-}
-
-function buildFormatSelector(
-  mode: DownloadMode,
-  quality: string,
-  outputFormat: string,
-) {
-  const height = qualityToHeight(quality);
-  const heightFilter = height ? `[height<=${height}]` : "";
-  const preferWebm = outputFormat === "webm";
-  const videoExt = preferWebm ? "[ext=webm]" : "[ext=mp4]";
-  const audioExt = preferWebm ? "[ext=webm]" : "[ext=m4a]";
-
-  if (mode === "audio_only") return "bestaudio/best";
-
-  if (mode === "video_only") {
-    return [
-      `bestvideo${heightFilter}`,
-      `bestvideo${heightFilter}${videoExt}`,
-      "bestvideo",
-      `best${heightFilter}`,
-      "best",
-    ].join("/");
-  }
-
-  return [
-    `bestvideo${heightFilter}+bestaudio`,
-    `best${heightFilter}${videoExt}`,
-    `best${heightFilter}`,
-    `bestvideo${heightFilter}${videoExt}+bestaudio${audioExt}`,
-    "best",
-  ].join("/");
 }
 
 function mediaFilesIn(
@@ -698,25 +606,36 @@ function mediaFilesIn(
   };
 
   if (fs.existsSync(directory)) visit(directory);
-  return files.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
+  const sizes = new Map(files.map((file) => [file, fs.statSync(file).size]));
+  return files.sort((a, b) => (sizes.get(b) || 0) - (sizes.get(a) || 0));
+}
+
+interface RunYtDlpOptions {
+  /** How many separate streams the format selector may download. */
+  expectedStreams: number;
+  kind: "video" | "audio";
+  /** The window of overall progress this run occupies (e.g. 0-96). */
+  progressStart: number;
+  progressEnd: number;
+  /** Stage reported for a single-stream transfer. */
+  singleStreamStage?: JobStage;
 }
 
 async function runYtDlp(
   args: string[],
   item: any,
   mainWindow: Electron.BrowserWindow,
-  progressStart: number,
-  progressEnd: number,
+  options: RunYtDlpOptions,
 ) {
   const { ytdlp } = getBinPaths();
   if (!isUsableExecutable(ytdlp)) {
     throw new Error(describeExecutableProblem("yt-dlp", ytdlp));
   }
 
+  const { expectedStreams, progressStart, progressEnd } = options;
   console.log(
     `[yt-dlp] id=${item.id} mode=${item.mode} format=${item.format} quality=${item.quality || "best"}`,
   );
-  console.log(`[yt-dlp] ${args.join(" ")}`);
 
   return new Promise<{ outputFiles: string[] }>((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
@@ -726,63 +645,105 @@ async function runYtDlp(
       reject(new Error(describeExecutableProblem("yt-dlp", ytdlp)));
       return;
     }
-    activeProcesses.set(item.id, child);
+    processRegistry.register(item.id, child);
+    // Cancellation can arrive in the small preparing window before yt-dlp is
+    // spawned. Preserve that intent and terminate this child immediately
+    // rather than allowing a canceled job to begin downloading.
+    if (processRegistry.isCancelled(item.id)) {
+      processRegistry.cancel(item.id);
+      reject(new JobCancelledError());
+      return;
+    }
     const outputFiles = new Set<string>();
-    let stdoutBuffer = "";
+    const stdoutBuffer = new StreamLineBuffer();
+    const stderrBuffer = new StreamLineBuffer();
+    const aggregator = new DownloadAggregator(expectedStreams);
     let stderr = "";
-    let lastProgress = progressStart;
+
+    const stageFor = (streamIndex: number, streamsSeen: number): JobStage => {
+      if (options.kind === "audio") return "download_audio";
+      if (expectedStreams >= 2 || streamsSeen >= 2) {
+        return streamIndex === 0 ? "download_video" : "download_audio";
+      }
+      return options.singleStreamStage || "download";
+    };
+
+    const handleLine = (line: string) => {
+      const output = line.trim();
+      if (!output) return;
+      const event = parsePrismProgressLine(output);
+      if (event?.kind === "download") {
+        const aggregate = aggregator.update(event);
+        const scaled =
+          aggregate.percent === undefined
+            ? undefined
+            : progressStart +
+              (aggregate.percent / 100) * (progressEnd - progressStart);
+        publishJobProgress(mainWindow, {
+          jobId: item.id,
+          attemptId: item.attemptId || item.id,
+          jobType: item.jobType || "download",
+          status: "running",
+          stage: stageFor(aggregate.streamIndex, aggregate.streamsSeen),
+          patch: {
+            overallProgress: scaled,
+            stageProgress: aggregate.percent,
+            downloadedBytes: aggregate.downloadedBytes,
+            totalBytes: aggregate.totalBytes,
+            estimatedTotalBytes: aggregate.totalBytes,
+            speedBytesPerSecond: aggregate.speedBytesPerSecond,
+            etaSeconds: aggregate.etaSeconds,
+            currentFile: aggregate.currentFilename,
+          },
+          elapsedSeconds: aggregate.elapsedSeconds,
+        });
+        return;
+      }
+      if (event?.kind === "postprocess") {
+        publishJobProgress(mainWindow, {
+          jobId: item.id,
+          attemptId: item.attemptId || item.id,
+          jobType: item.jobType || "download",
+          status: "processing",
+          stage: expectedStreams >= 2 ? "merge" : "remux",
+          patch: { overallProgress: progressEnd },
+        });
+        return;
+      }
+
+      const pathMatch = output.match(
+        /Destination:\s*(.+)$|Merging formats into\s+"([^"]+)"|\[Move\] Moving\s+.*to\s+"([^"]+)"|\[download\]\s+(.+)\s+has already been downloaded/,
+      );
+      const maybePath =
+        pathMatch?.[1] || pathMatch?.[2] || pathMatch?.[3] || pathMatch?.[4];
+      if (maybePath) outputFiles.add(maybePath.trim());
+
+      if (
+        !output.startsWith("[") &&
+        !output.startsWith("PRISM_") &&
+        (path.isAbsolute(output) || /^[A-Za-z]:\\/.test(output))
+      ) {
+        outputFiles.add(output);
+      }
+    };
 
     child.stderr?.on("data", (data) => {
       const text = data.toString();
-      stderr += text;
-      if (text.includes("ERROR")) console.log(`[yt-dlp] ${text.slice(0, 300)}`);
+      if (stderr.length < 64_000) stderr += text;
+      for (const line of stderrBuffer.feed(text)) handleLine(line);
     });
 
     child.stdout?.on("data", (data) => {
-      stdoutBuffer += data.toString();
-      const lines = stdoutBuffer.split(/\r?\n/);
-      stdoutBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const output = line.trim();
-        const progressMatch = output.match(/\[download\]\s+([\d.]+)%/);
-        if (progressMatch) {
-          const percent = Number(progressMatch[1]);
-          const scaled =
-            progressStart + (percent / 100) * (progressEnd - progressStart);
-          if (scaled >= lastProgress || lastProgress - scaled > 35) {
-            lastProgress = scaled;
-            setProgress(item.id, scaled, mainWindow);
-          }
-        }
-
-        if (output.includes("[ffmpeg]") || output.includes("Merging formats")) {
-          setProgress(
-            item.id,
-            Math.max(lastProgress, progressEnd - 3),
-            mainWindow,
-          );
-        }
-
-        const pathMatch = output.match(
-          /Destination:\s*(.+)$|Merging formats into\s+"([^"]+)"|\[Move\] Moving\s+.*to\s+"([^"]+)"|\[download\]\s+(.+)\s+has already been downloaded/,
-        );
-        const maybePath =
-          pathMatch?.[1] || pathMatch?.[2] || pathMatch?.[3] || pathMatch?.[4];
-        if (maybePath) outputFiles.add(maybePath.trim());
-
-        if (
-          !output.startsWith("[") &&
-          (path.isAbsolute(output) || /^[A-Za-z]:\\/.test(output))
-        ) {
-          outputFiles.add(output);
-        }
-      }
+      for (const line of stdoutBuffer.feed(data.toString())) handleLine(line);
     });
 
     child.on("close", (code) => {
-      if (activeProcesses.get(item.id) === child)
-        activeProcesses.delete(item.id);
+      for (const line of stdoutBuffer.flush()) handleLine(line);
+      for (const line of stderrBuffer.flush()) handleLine(line);
+      if (processRegistry.isCancelled(item.id)) {
+        reject(new JobCancelledError());
+        return;
+      }
       if (code === 0) {
         resolve({ outputFiles: [...outputFiles] });
         return;
@@ -796,8 +757,10 @@ async function runYtDlp(
     });
 
     child.on("error", () => {
-      if (activeProcesses.get(item.id) === child)
-        activeProcesses.delete(item.id);
+      if (processRegistry.isCancelled(item.id)) {
+        reject(new JobCancelledError());
+        return;
+      }
       reject(new Error(describeExecutableProblem("yt-dlp", ytdlp)));
     });
   });
@@ -869,270 +832,11 @@ async function downloadTikTokImages(
     setProgress(item.id, ((index + 1) / imageUrls.length) * 100, mainWindow);
   }
 
-  await completeDownload(item, folder, savedPaths, mainWindow, undefined, {
+  await completeDownload(item, folder, savedPaths, mainWindow, {
     format: "images",
     thumbnail: savedPaths[0],
     size: sumFileSizes(savedPaths),
   });
-}
-
-const DEFAULT_GEMINI_TRANSCRIPT_MODEL_LABEL = "Gemini 3.1 Flash Lite";
-
-function normalizeGeminiModel(model: string) {
-  const trimmed = model.trim().replace(/^models\//i, "");
-  if (!trimmed) return "gemini-3.1-flash-lite";
-
-  const lower = trimmed.toLowerCase();
-  if (/^gemini-[a-z0-9.-]+$/.test(lower)) return lower;
-
-  const alias = lower.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  if (alias === "gemini-3-1-flash-lite") return "gemini-3.1-flash-lite";
-  if (alias.startsWith("gemini-")) return alias;
-  return trimmed;
-}
-
-function getAiTranscriptConfig() {
-  const settings = (store.get("settings") || {}) as any;
-  const configuredModel =
-    String(settings.aiTranscriptModel || "").trim() ||
-    process.env.GEMINI_TRANSCRIBE_MODEL ||
-    process.env.PRISM_TRANSCRIBE_MODEL ||
-    DEFAULT_GEMINI_TRANSCRIPT_MODEL_LABEL;
-
-  return {
-    model: normalizeGeminiModel(configuredModel),
-    geminiApiKey:
-      settings.geminiApiKey ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_API_KEY ||
-      "",
-  };
-}
-
-function transcriptPrompt(format: "txt" | "srt" | "vtt") {
-  const accuracyRules =
-    "Transcribe only speech that is actually audible. If speech is unclear, distorted, clipped, too loud, overlapping with other audio, or masked by music/noise, write [inaudible] once for that unclear section instead of guessing. Do not invent words. Do not repeat an uncertain word or phrase to fill time. Preserve repetitions only when a speaker clearly repeats them.";
-  if (format === "srt") {
-    return `${accuracyRules} Transcribe this audio into valid SubRip .srt captions. Return only the SRT content with sequence numbers, timestamps, and caption text.`;
-  }
-  if (format === "vtt") {
-    return `${accuracyRules} Transcribe this audio into valid WebVTT captions. Return only the VTT content.`;
-  }
-  return `${accuracyRules} Return only the plain transcript text without markdown.`;
-}
-
-function transcriptAudioPath(tempDir: string) {
-  return path.join(tempDir, "audio.mp3");
-}
-
-function transcriptAudioArgs(sourcePath: string, audioPath: string) {
-  return [
-    "-y",
-    "-hide_banner",
-    "-i",
-    sourcePath,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "24000",
-    "-b:a",
-    "96k",
-    audioPath,
-  ];
-}
-
-async function transcribeWithGemini(
-  audioPath: string,
-  format: "txt" | "srt" | "vtt",
-  apiKey: string,
-  model: string,
-) {
-  if (!apiKey) {
-    throw new Error(
-      "Gemini API key is not configured. Add one in Settings or set GEMINI_API_KEY/GOOGLE_API_KEY.",
-    );
-  }
-
-  const fetchImpl = (globalThis as any).fetch;
-  if (!fetchImpl) {
-    throw new Error("This Node runtime does not support fetch requests");
-  }
-
-  const audioData = fs.readFileSync(audioPath).toString("base64");
-  const geminiModel = model.replace(/^models\//, "");
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    geminiModel,
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const response = await fetchImpl(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: transcriptPrompt(format) },
-            {
-              inlineData: {
-                mimeType: "audio/mpeg",
-                data: audioData,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: { temperature: 0, topP: 0.1, topK: 1 },
-    }),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      text.slice(0, 800) || `Gemini transcription failed (${response.status})`,
-    );
-  }
-
-  const parsed = JSON.parse(text);
-  const parts = parsed?.candidates?.[0]?.content?.parts || [];
-  const transcript = parts
-    .map((part: any) => part?.text)
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-
-  if (!transcript) {
-    throw new Error("Gemini returned an empty transcription response.");
-  }
-
-  return transcript;
-}
-
-async function transcribeWithGeminiConfig(
-  audioPath: string,
-  format: "txt" | "srt" | "vtt",
-) {
-  const config = getAiTranscriptConfig();
-  console.log(`[transcript] model=${config.model} audio=${audioPath}`);
-
-  return await transcribeWithGemini(
-    audioPath,
-    format,
-    config.geminiApiKey,
-    config.model,
-  );
-}
-
-async function saveTranscriptForFile(
-  item: any,
-  sourcePath: string,
-  mainWindow: Electron.BrowserWindow,
-) {
-  const { ffmpeg } = getBinPaths();
-  const format = normalizeTranscriptFormat(item.transcriptFormat);
-  const tempDir = fs.mkdtempSync(
-    path.join(app.getPath("temp"), "prism-transcribe-"),
-  );
-  const audioPath = transcriptAudioPath(tempDir);
-  const transcriptPath = ensureUniquePath(
-    path.dirname(sourcePath),
-    `${path.basename(sourcePath, path.extname(sourcePath))} transcript`,
-    format,
-  );
-
-  let aiError: string | null = null;
-  try {
-    await runFfmpeg(
-      ffmpeg,
-      transcriptAudioArgs(sourcePath, audioPath),
-      audioPath,
-      (progress) => setProgress(item.id, 95 + progress * 0.03, mainWindow),
-    );
-
-    const text = await transcribeWithGeminiConfig(audioPath, format);
-    fs.writeFileSync(transcriptPath, text, "utf-8");
-    return { transcriptPath, transcriptText: text };
-  } catch (err) {
-    aiError = err instanceof Error ? err.message : String(err);
-  } finally {
-    removeDirectorySafe(tempDir);
-  }
-
-  const fallback = await getTranscript(item.url, format);
-  if (fallback && !/^Could not retrieve transcript/i.test(fallback)) {
-    fs.writeFileSync(transcriptPath, fallback, "utf-8");
-    return {
-      transcriptPath,
-      transcriptText: fallback,
-      transcriptError: aiError,
-    };
-  }
-
-  throw new Error(
-    `${aiError}. No downloadable captions were available as a fallback.`,
-  );
-}
-
-export async function transcribeLocalFile(
-  filePath: string,
-  format: string,
-  _mainWindow: Electron.BrowserWindow,
-) {
-  const { ffmpeg } = getBinPaths();
-  if (!isUsableExecutable(ffmpeg)) {
-    throw new Error(describeExecutableProblem("FFmpeg", ffmpeg));
-  }
-
-  const sourcePath = filePath.replace(/^['"]|['"]$/g, "").trim();
-  if (!sourcePath || !fs.existsSync(sourcePath)) {
-    throw new Error("Source file does not exist.");
-  }
-
-  const transcriptFormat = normalizeTranscriptFormat(format);
-  const tmpDir = fs.mkdtempSync(
-    path.join(app.getPath("temp"), "prism-transcribe-"),
-  );
-  const audioPath = transcriptAudioPath(tmpDir);
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  let transcriptError: string | undefined;
-
-  try {
-    await runFfmpeg(
-      ffmpeg,
-      transcriptAudioArgs(sourcePath, audioPath),
-      audioPath,
-    );
-  } catch (err) {
-    removeDirectorySafe(tmpDir);
-    throw new Error(
-      `Failed to extract audio: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  let transcriptText = "";
-  try {
-    transcriptText = await transcribeWithGeminiConfig(
-      audioPath,
-      transcriptFormat,
-    );
-  } catch (err) {
-    transcriptError = err instanceof Error ? err.message : String(err);
-    const fallback = await getTranscriptFromLocalFile(
-      sourcePath,
-      transcriptFormat,
-    );
-    if (fallback && !/^Could not retrieve transcript/i.test(fallback)) {
-      transcriptText = fallback;
-    } else {
-      removeDirectorySafe(tmpDir);
-      throw new Error(`${transcriptError}. ${fallback}`);
-    }
-  } finally {
-    removeDirectorySafe(tmpDir);
-  }
-
-  return { id, transcriptText, transcriptError };
 }
 
 async function completeDownload(
@@ -1140,28 +844,43 @@ async function completeDownload(
   filePath: string,
   filePaths: string[],
   mainWindow: Electron.BrowserWindow,
-  transcriptSourcePath?: string,
   overrides: Record<string, any> = {},
 ) {
-  const transcriptUpdate: Record<string, any> = {};
+  if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
+    throw new JobCancelledError();
+  }
 
-  if (
-    item.transcript &&
-    transcriptSourcePath &&
-    fs.existsSync(transcriptSourcePath)
-  ) {
-    updateHistoryItem(item.id, { status: "processing" }, mainWindow);
-    try {
-      Object.assign(
-        transcriptUpdate,
-        await saveTranscriptForFile(item, transcriptSourcePath, mainWindow),
-      );
-    } catch (err) {
-      transcriptUpdate.transcriptError =
-        err instanceof Error
-          ? err.message.slice(0, 500)
-          : String(err).slice(0, 500);
-    }
+  // Downloads never auto-transcribe: transcription is an explicit action the
+  // user can run later from the Transcript page or Library.
+  const settings = (store.get("settings") || {}) as Record<string, unknown>;
+  const thumbSource =
+    settings.generateThumbnails === false
+      ? undefined
+      : overrides.thumbnail ||
+        filePaths.find((entry) => {
+          try {
+            return fs.existsSync(entry) && fs.statSync(entry).isFile();
+          } catch {
+            return false;
+          }
+        });
+  if (thumbSource) {
+    publishJobProgress(mainWindow, {
+      jobId: item.id,
+      attemptId: item.attemptId || item.id,
+      jobType: item.jobType || "download",
+      status: "processing",
+      stage: "thumbnail",
+      patch: { overallProgress: 98, stageProgress: 0 },
+    });
+    const thumbPath = await extractThumbnail(thumbSource, item.id);
+    if (thumbPath) overrides.thumbnail = thumbPath;
+  }
+
+  // A cancel that arrived while the thumbnail was being generated must win:
+  // a cancelled job can never be flipped to completed afterwards.
+  if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
+    throw new JobCancelledError();
   }
 
   const completed = {
@@ -1177,33 +896,87 @@ async function completeDownload(
         ),
       ),
     completedAt: new Date().toISOString(),
-    ...transcriptUpdate,
     ...overrides,
   };
 
+  publishJobProgress(mainWindow, {
+    jobId: item.id,
+    attemptId: item.attemptId || item.id,
+    jobType: item.jobType || "download",
+    status: "completed",
+    stage: "finalize",
+    patch: { overallProgress: 100, stageProgress: 100, outputPath: filePath },
+  });
   updateHistoryItem(item.id, completed, mainWindow);
   mainWindow.webContents.send("download:complete", {
     id: item.id,
     filePath,
     filePaths,
   });
+}
 
-  const thumbSource =
-    overrides.thumbnail ||
-    filePaths.find((entry) => {
-      try {
-        return fs.existsSync(entry) && fs.statSync(entry).isFile();
-      } catch {
-        return false;
-      }
-    });
-
-  if (thumbSource) {
-    extractThumbnail(thumbSource, item.id).then((thumbPath) => {
-      if (thumbPath)
-        updateHistoryItem(item.id, { thumbnail: thumbPath }, mainWindow);
-    });
+/**
+ * Runs the explicit ProRes conversion. This is the only download path allowed
+ * to re-encode — the user asked for ProRes by name.
+ */
+async function convertToProRes(
+  item: any,
+  sourcePath: string,
+  dest: string,
+  mainWindow: Electron.BrowserWindow,
+  mode: "video_audio" | "video_only",
+) {
+  if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
+    throw new JobCancelledError();
   }
+  const { ffmpeg } = getBinPaths();
+  const outputPath = ensureUniquePath(
+    dest,
+    `${item.title || "download"} ProRes`,
+    "mov",
+  );
+  publishJobProgress(mainWindow, {
+    jobId: item.id,
+    attemptId: item.attemptId || item.id,
+    jobType: "download",
+    status: "processing",
+    stage: "transcode",
+    patch: { overallProgress: 96, stageProgress: 0 },
+  });
+  await convertMedia(ffmpeg, sourcePath, outputPath, "prores", {
+    mode,
+    durationSeconds: item.duration,
+    jobId: item.id,
+    onProgress: (progress, details) =>
+      setProgress(
+        item.id,
+        progress === undefined ? undefined : 96 + progress * 0.03,
+        mainWindow,
+        {
+          stage: "transcode",
+          stageProgress: progress,
+          processedSeconds: details?.processedSeconds,
+          durationSeconds: details?.durationSeconds,
+        },
+      ),
+  });
+  return outputPath;
+}
+
+/**
+ * Moves the finished temp file into the destination, keeping the container
+ * extension yt-dlp produced. Same-drive rename in the common case because the
+ * temp directory lives inside the destination.
+ */
+async function deliverDownloadedFile(
+  sourcePath: string,
+  dest: string,
+  baseName: string,
+) {
+  const extension = path.extname(sourcePath).replace(/^\./, "") || "mkv";
+  const outputPath = ensureUniquePath(dest, baseName, extension);
+  await moveFileFast(sourcePath, outputPath);
+  return outputPath;
 }
 
 async function downloadSingleMedia(
@@ -1211,29 +984,28 @@ async function downloadSingleMedia(
   dest: string,
   mainWindow: Electron.BrowserWindow,
 ) {
-  const { ffmpeg } = getBinPaths();
   const mode = normalizeMode(item);
-  const outputFormat =
-    mode === "audio_only" ? item.format : item.format || "mp4";
-  const tempDir = fs.mkdtempSync(
-    path.join(app.getPath("temp"), `prism-${item.id}-`),
-  );
+  const plan: DownloadPlan = buildDownloadPlan({
+    mode,
+    quality: item.quality,
+    container: item.format,
+    audioFormat:
+      mode === "audio_only"
+        ? item.audioFormat || item.format
+        : item.audioFormat,
+    heightForQuality: qualityToHeight(item.quality),
+  });
+  const tempDir = createJobTempDir(dest, item.id);
 
   try {
     const args = baseYtDlpArgs(tempDir, item);
-    args.push(
-      "-f",
-      buildFormatSelector(mode, item.quality || "best", outputFormat),
-    );
-
-    if (mode === "audio_only") {
-      args.push("-x", "--audio-format", outputFormat);
-    } else if (mode === "video_audio") {
-      args.push("--merge-output-format", "mkv");
-    }
-
-    args.push(item.url);
-    await runYtDlp(args, item, mainWindow, 0, 88);
+    args.push(...plan.extraArgs, item.url);
+    await runYtDlp(args, item, mainWindow, {
+      expectedStreams: planExpectsTwoStreams(plan) ? 2 : 1,
+      kind: plan.kind,
+      progressStart: 0,
+      progressEnd: 96,
+    });
 
     const sourceFiles = mediaFilesIn(
       tempDir,
@@ -1244,33 +1016,43 @@ async function downloadSingleMedia(
       throw new Error("yt-dlp completed but no media file was produced.");
     }
 
-    updateHistoryItem(
-      item.id,
-      { status: "processing", progress: 90 },
-      mainWindow,
-    );
-    const extension = outputExtension(outputFormat);
-    const outputBase =
-      outputFormat === "prores"
-        ? `${item.title || "download"} ProRes`
-        : item.title || "download";
-    const outputPath = ensureUniquePath(dest, outputBase, extension);
     const selectedHeight = qualityToHeight(item.quality);
-    await convertMedia(ffmpeg, sourcePath, outputPath, outputFormat, {
-      mode: mode === "split" ? "video_audio" : mode,
-      videoHeight: selectedHeight,
-      onProgress: (progress) =>
-        setProgress(item.id, 90 + progress * 0.08, mainWindow),
-    });
+    let outputPath: string;
+    let containerNote: string | null = null;
+    if (plan.postProcess === "prores") {
+      outputPath = await convertToProRes(
+        item,
+        sourcePath,
+        dest,
+        mainWindow,
+        mode === "video_only" ? "video_only" : "video_audio",
+      );
+    } else {
+      publishJobProgress(mainWindow, {
+        jobId: item.id,
+        attemptId: item.attemptId || item.id,
+        jobType: "download",
+        status: "processing",
+        stage: "finalize",
+        patch: { overallProgress: 97 },
+      });
+      outputPath = await deliverDownloadedFile(
+        sourcePath,
+        dest,
+        item.title || "download",
+      );
+      containerNote = describeContainerFallback(
+        plan.requestedContainer,
+        path.extname(outputPath),
+      );
+      if (containerNote) console.log(`[download] ${item.id} ${containerNote}`);
+    }
 
-    await completeDownload(
-      item,
-      outputPath,
-      [outputPath],
-      mainWindow,
-      outputPath,
-      { resolution: selectedHeight ? `${selectedHeight}p` : item.resolution },
-    );
+    await completeDownload(item, outputPath, [outputPath], mainWindow, {
+      resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
+      format: path.extname(outputPath).replace(/^\./, "") || item.format,
+      ...(containerNote ? { containerNote } : {}),
+    });
   } finally {
     removeDirectorySafe(tempDir);
   }
@@ -1281,67 +1063,80 @@ async function downloadSplitMedia(
   dest: string,
   mainWindow: Electron.BrowserWindow,
 ) {
-  const { ffmpeg } = getBinPaths();
-  const tempDir = fs.mkdtempSync(
-    path.join(app.getPath("temp"), `prism-split-${item.id}-`),
-  );
+  const tempDir = createJobTempDir(dest, item.id);
   const videoTemp = path.join(tempDir, "video");
   const audioTemp = path.join(tempDir, "audio");
   fs.mkdirSync(videoTemp, { recursive: true });
   fs.mkdirSync(audioTemp, { recursive: true });
 
   try {
+    const selectedHeight = qualityToHeight(item.quality);
+    const videoPlan = buildDownloadPlan({
+      mode: "video_only",
+      quality: item.quality,
+      container: item.format,
+      heightForQuality: selectedHeight,
+    });
     const videoArgs = baseYtDlpArgs(videoTemp, item);
-    videoArgs.push(
-      "-f",
-      buildFormatSelector("video_only", item.quality || "best", item.format),
-    );
-    videoArgs.push(item.url);
-    await runYtDlp(videoArgs, item, mainWindow, 0, 42);
+    videoArgs.push(...videoPlan.extraArgs, item.url);
+    await runYtDlp(videoArgs, item, mainWindow, {
+      expectedStreams: 1,
+      kind: "video",
+      progressStart: 0,
+      progressEnd: 48,
+      singleStreamStage: "download_video",
+    });
 
     const videoSource = mediaFilesIn(videoTemp, "video")[0];
     if (!videoSource) throw new Error("No video-only stream was produced.");
 
-    const videoPath = ensureUniquePath(
-      dest,
-      `${item.title || "download"} ${item.format === "prores" ? "ProRes video" : "video"}`,
-      outputExtension(item.format || "mp4"),
-    );
-    const selectedHeight = qualityToHeight(item.quality);
-    await convertMedia(ffmpeg, videoSource, videoPath, item.format || "mp4", {
-      mode: "video_only",
-      videoHeight: selectedHeight,
-      onProgress: (progress) =>
-        setProgress(item.id, 42 + progress * 0.13, mainWindow),
-    });
+    let videoPath: string;
+    if (videoPlan.postProcess === "prores") {
+      videoPath = await convertToProRes(
+        item,
+        videoSource,
+        dest,
+        mainWindow,
+        "video_only",
+      );
+    } else {
+      videoPath = await deliverDownloadedFile(
+        videoSource,
+        dest,
+        `${item.title || "download"} video`,
+      );
+    }
 
-    const audioFormat = item.audioFormat || "mp3";
+    const audioPlan = buildDownloadPlan({
+      mode: "audio_only",
+      audioFormat: item.audioFormat || "mp3",
+    });
     const audioArgs = baseYtDlpArgs(audioTemp, item);
-    audioArgs.push("-f", "bestaudio/best", "-x", "--audio-format", audioFormat);
-    audioArgs.push(item.url);
-    await runYtDlp(audioArgs, item, mainWindow, 55, 82);
+    audioArgs.push(...audioPlan.extraArgs, item.url);
+    await runYtDlp(audioArgs, item, mainWindow, {
+      expectedStreams: 1,
+      kind: "audio",
+      progressStart: 48,
+      progressEnd: 96,
+    });
 
     const audioSource = mediaFilesIn(audioTemp, "audio")[0];
     if (!audioSource) throw new Error("No audio-only stream was produced.");
 
-    const audioPath = ensureUniquePath(
+    const audioPath = await deliverDownloadedFile(
+      audioSource,
       dest,
       `${item.title || "download"} audio`,
-      audioFormat,
     );
-    await convertMedia(ffmpeg, audioSource, audioPath, audioFormat, {
-      mode: "audio_only",
-      onProgress: (progress) =>
-        setProgress(item.id, 82 + progress * 0.12, mainWindow),
-    });
 
     await completeDownload(
       item,
       videoPath,
       [videoPath, audioPath],
       mainWindow,
-      audioPath,
-      { resolution: selectedHeight ? `${selectedHeight}p` : item.resolution },
+      {
+        resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
+      },
     );
   } finally {
     removeDirectorySafe(tempDir);
@@ -1364,6 +1159,9 @@ export async function startDownload(
   const dest = settings.downloadLocation || app.getPath("downloads");
   fs.mkdirSync(dest, { recursive: true });
 
+  // Metadata was already requested when the item was queued; the cache makes
+  // this a no-op reuse (or joins the still-in-flight request) instead of a
+  // second extractor run.
   const metadata = await getMetadata(item.url).catch(() => null);
   const mode = normalizeMode(item);
   const title = sanitizeFileName(metadata?.title || item.title || "download");
@@ -1382,7 +1180,7 @@ export async function startDownload(
           item.audioFormat ||
           settings.defaultAudioFormat ||
           "mp3"
-        : item.format || settings.defaultVideoFormat || "mp4",
+        : item.format || settings.defaultVideoFormat || "auto",
     audioFormat: item.audioFormat || settings.defaultAudioFormat || "mp3",
   };
 
@@ -1396,10 +1194,9 @@ export async function startDownload(
     mainWindow,
   );
 
-  console.log(
-    `[download] ${item.id} mode=${effectiveItem.mode} format=${effectiveItem.format} audioFormat=${effectiveItem.audioFormat} quality=${effectiveItem.quality} dest=${dest}`,
+  console.info(
+    `[download] ${item.id} mode=${effectiveItem.mode} format=${effectiveItem.format} quality=${effectiveItem.quality}`,
   );
-  console.log(`[download] binaries yt-dlp=${ytdlp} ffmpeg=${ffmpeg}`);
 
   if (metadata?.mediaType === "image") {
     await downloadTikTokImages(effectiveItem, metadata, dest, mainWindow);

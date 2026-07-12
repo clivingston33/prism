@@ -1,0 +1,10 @@
+Prism local transcription runtime
+
+Component: whisper.cpp v1.9.1 CPU x64
+Executable: whisper-cli.exe
+Source: https://github.com/ggml-org/whisper.cpp/releases/tag/v1.9.1
+License: MIT (packaged at resources/licenses/whisper.cpp-MIT.txt)
+
+This runtime is packaged with Prism and is never downloaded or replaced at
+runtime. Whisper model files are separate user downloads and are verified by
+their pinned manifest checksum before installation.

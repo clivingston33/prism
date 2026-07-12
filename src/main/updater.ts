@@ -5,6 +5,12 @@ import * as path from "path";
 
 let mainWindow: BrowserWindow | null = null;
 
+function sendUpdateEvent(channel: string, payload: unknown) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
 export function setupUpdater() {
   autoUpdater.autoDownload = false;
 
@@ -19,23 +25,26 @@ export function setupUpdater() {
   }
 
   autoUpdater.on("update-available", (info: UpdateInfo) => {
-    if (mainWindow) {
-      mainWindow.webContents.send("update:available", {
-        version: info.version,
-        releaseDate: info.releaseDate,
-      });
-    }
+    sendUpdateEvent("update:available", {
+      version: info.version,
+      releaseDate: info.releaseDate,
+    });
   });
 
   autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
-    if (mainWindow) {
-      mainWindow.webContents.send("update:downloaded", {
-        version: info.version,
-      });
-    }
+    sendUpdateEvent("update:downloaded", { version: info.version });
   });
 
-  autoUpdater.checkForUpdatesAndNotify();
+  autoUpdater.on("error", (error) => {
+    console.error("[updater] Update error:", error.message);
+    sendUpdateEvent("update:error", { message: error.message });
+  });
+
+  void autoUpdater.checkForUpdatesAndNotify().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[updater] Update check failed:", message);
+    sendUpdateEvent("update:error", { message });
+  });
 }
 
 export function setUpdaterMainWindow(window: BrowserWindow) {

@@ -1,206 +1,366 @@
+import type { BrowserWindow } from "electron";
 import { store } from "../store";
-import { startDownload, getMetadata, cancelDownload } from "./ytdlp";
+import { startDownload, getMetadata } from "./ytdlp";
 import {
   describeExecutableProblem,
   getBinPaths,
   isAudioFormat,
   isUsableExecutable,
 } from "./utils";
+import { JobCancelledError, processRegistry } from "./process-registry";
+import { clearJobProgress, publishJobProgress } from "./job-state";
+import { classifyDownloadError } from "./errors";
+import { cleanupAbandonedTempDirs } from "./temp-dirs";
+import { app } from "electron";
+import { isActiveJobStatus, type JobError } from "../../shared/jobs.ts";
+import type { DownloadRequest, HistoryRecord } from "../../shared/contracts.ts";
+import {
+  findTimedOutJobs,
+  reconcileStartupHistory,
+  selectCancelTargets,
+} from "./queue-state";
 
 const ACTIVE_DOWNLOADS = new Map<string, { startedAt: number }>();
 const DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 function getMaxConcurrentDownloads() {
-  const settings = (store.get("settings") || {}) as any;
+  const settings = (store.get("settings") || {}) as Record<string, unknown>;
+  if (settings.lowResourceMode) return 1;
   return Math.max(1, Math.min(3, Number(settings.maxConcurrentDownloads) || 2));
+}
+
+function createId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function errorFor(
+  code: string,
+  userMessage: string,
+  technicalDetails?: string,
+  stage?: HistoryRecord["stage"],
+  retryable = true,
+): JobError {
+  return { code, userMessage, technicalDetails, stage, retryable };
+}
+
+function sendHistory(
+  mainWindow: BrowserWindow,
+  history = store.get("history") as unknown[],
+) {
+  mainWindow.webContents.send("history:update", history);
+}
+
+function updateHistoryItem(
+  id: string,
+  partial: Record<string, unknown>,
+  mainWindow?: BrowserWindow,
+) {
+  const history = store.get("history", []) as Record<string, unknown>[];
+  const updated = history.map((item) =>
+    item.id === id
+      ? { ...item, ...partial, updatedAt: new Date().toISOString() }
+      : item,
+  );
+  store.set("history", updated);
+  if (mainWindow) sendHistory(mainWindow, updated);
+  return updated;
 }
 
 class DownloadManager {
   private activeCount = 0;
-  private mainWindow: any = null;
+  private mainWindow: BrowserWindow | null = null;
+  private readonly timeoutHandle: ReturnType<typeof setInterval>;
 
   constructor() {
-    setInterval(() => this.checkTimeouts(), 15000);
+    this.timeoutHandle = setInterval(() => this.checkTimeouts(), 15_000);
+  }
+
+  recoverPersistedJobs(mainWindow: BrowserWindow) {
+    this.mainWindow = mainWindow;
+    const history = store.get("history", []) as Record<string, unknown>[];
+    const { history: recovered, changed } = reconcileStartupHistory(history);
+    if (changed) {
+      store.set("history", recovered);
+      sendHistory(mainWindow, recovered);
+    }
+
+    // Clean temp directories abandoned by a previous crash. Runs at startup
+    // when nothing is downloading, and only touches Prism's own .prism-tmp
+    // directory — never completed user output.
+    const settings = (store.get("settings") || {}) as Record<string, unknown>;
+    const dest =
+      String(settings.downloadLocation || "") || app.getPath("downloads");
+    void cleanupAbandonedTempDirs(dest, new Set(ACTIVE_DOWNLOADS.keys()));
   }
 
   private checkTimeouts() {
-    const now = Date.now();
-    for (const [id, data] of ACTIVE_DOWNLOADS.entries()) {
-      if (now - data.startedAt > DOWNLOAD_TIMEOUT_MS) {
-        console.log(
-          `[download] ${id} timed out after ${DOWNLOAD_TIMEOUT_MS}ms`,
-        );
-        this.cancel(id);
-        const history = store.get("history", []) as any[];
-        const idx = history.findIndex((h: any) => h.id === id);
-        if (idx !== -1) {
-          history[idx].status = "failed";
-          history[idx].error = "Download timed out";
-          store.set("history", history);
-        }
-      }
+    const timedOut = findTimedOutJobs(
+      ACTIVE_DOWNLOADS.entries(),
+      Date.now(),
+      DOWNLOAD_TIMEOUT_MS,
+    );
+    for (const id of timedOut) {
+      const item = (store.get("history", []) as Record<string, unknown>[]).find(
+        (entry) => entry.id === id,
+      );
+      if (!item || !this.mainWindow) continue;
+      processRegistry.cancel(id);
+      const error = errorFor(
+        "DOWNLOAD_TIMEOUT",
+        "The download took too long and was stopped.",
+        `Exceeded ${DOWNLOAD_TIMEOUT_MS}ms`,
+        (item.stage as HistoryRecord["stage"]) || "download",
+        true,
+      );
+      publishJobProgress(this.mainWindow, {
+        jobId: id,
+        attemptId: String(item.attemptId || id),
+        jobType: "download",
+        status: "failed",
+        stage: (item.stage as HistoryRecord["stage"]) || "download",
+        patch: { error },
+      });
+      updateHistoryItem(
+        id,
+        { status: "failed", error: error.userMessage, jobError: error },
+        this.mainWindow,
+      );
     }
   }
 
-  async add(options: any, mainWindow: any): Promise<string> {
+  async add(
+    options: DownloadRequest,
+    mainWindow: BrowserWindow,
+  ): Promise<string> {
     this.mainWindow = mainWindow;
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const settings = (store.get("settings") || {}) as any;
+    const id = createId();
+    const settings = (store.get("settings") || {}) as Record<string, unknown>;
     const mode =
       options.mode ||
-      (isAudioFormat(options.format)
-        ? "audio_only"
-        : options.muteAudio
-          ? "video_only"
-          : "video_audio");
+      (isAudioFormat(options.format) ? "audio_only" : "video_audio");
     const format =
-      options.format ||
+      (options.format === "auto" &&
+      settings.defaultDownloadMode === "mp4-compatible"
+        ? "mp4"
+        : options.format) ||
       (mode === "audio_only"
-        ? settings.defaultAudioFormat || "mp3"
-        : settings.defaultVideoFormat || "mp4");
-
-    const item = {
+        ? (settings.defaultAudioFormat as DownloadRequest["format"]) || "mp3"
+        : (settings.defaultVideoFormat as DownloadRequest["format"]) || "auto");
+    const now = new Date().toISOString();
+    const item: HistoryRecord = {
       id,
       url: options.url,
       platform: "Unknown",
       title: options.url,
       mode,
       format,
-      audioFormat: options.audioFormat || settings.defaultAudioFormat || "mp3",
-      quality: options.quality || "best",
+      audioFormat:
+        options.audioFormat || String(settings.defaultAudioFormat || "mp3"),
+      quality: options.quality || String(settings.defaultQuality || "best"),
       transcript: options.transcript,
       transcriptFormat: options.transcriptFormat || "txt",
       trimStart: options.trimStart,
       trimEnd: options.trimEnd,
-      status: "pending",
+      status: "queued",
       progress: 0,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
+      revision: 0,
+      attemptId: id,
+      jobType: "download",
+      stage: "metadata",
+      stageLabel: "Queued",
       retryCount: 0,
+      request: options,
     };
 
-    const history = store.get("history", []) as any[];
+    const history = store.get("history", []) as HistoryRecord[];
     const updatedHistory = [item, ...history];
     store.set("history", updatedHistory);
-    mainWindow.webContents.send("history:update", updatedHistory);
+    sendHistory(mainWindow, updatedHistory);
 
     getMetadata(options.url)
       .then((meta) => {
-        const h = store.get("history", []) as any[];
-        const i = h.findIndex((x: any) => x.id === id);
-        if (i !== -1) {
-          h[i].title = meta?.title || h[i].title;
-          h[i].platform = meta?.platform || h[i].platform;
-          h[i].thumbnail = meta?.thumbnail || h[i].thumbnail;
-
-          let dur = meta?.duration;
-          if (options.trimStart || options.trimEnd) {
-            const parseTime = (t: string) => {
-              const parts = t.split(":").map(Number);
-              if (parts.length === 3)
-                return parts[0] * 3600 + parts[1] * 60 + parts[2];
-              if (parts.length === 2) return parts[0] * 60 + parts[1];
-              return parts[0];
-            };
-            const s = options.trimStart ? parseTime(options.trimStart) : 0;
-            const e = options.trimEnd ? parseTime(options.trimEnd) : dur || s;
-            dur = Math.max(0, e - s);
-          }
-
-          h[i].duration = dur;
-          h[i].resolution = meta?.height || meta?.resolution;
-          store.set("history", h);
-          mainWindow.webContents.send("history:update", h);
-        }
+        const current = (store.get("history", []) as HistoryRecord[]).find(
+          (entry) => entry.id === id,
+        );
+        if (!current || !meta) return;
+        updateHistoryItem(
+          id,
+          {
+            title: meta.title || current.title,
+            platform: meta.platform || current.platform,
+            thumbnail: meta.thumbnail || current.thumbnail,
+            duration: meta.duration,
+            resolution: meta.height || meta.resolution,
+          },
+          mainWindow,
+        );
       })
-      .catch(() => {});
+      .catch(() => undefined);
 
     this.processQueue(mainWindow);
     return id;
   }
 
-  private processQueue(mainWindow: any) {
+  private processQueue(mainWindow: BrowserWindow) {
     while (this.activeCount < getMaxConcurrentDownloads()) {
-      const history = store.get("history", []) as any[];
+      const history = store.get("history", []) as HistoryRecord[];
       const next = history.find(
-        (h: any) => h.status === "pending" && !ACTIVE_DOWNLOADS.has(h.id),
+        (item) =>
+          (item.status === "queued" || (item.status as string) === "pending") &&
+          !ACTIVE_DOWNLOADS.has(item.id),
       );
-
       if (!next) break;
-      this.startDownload(next.id, mainWindow);
+      void this.startDownload(next.id, mainWindow);
     }
   }
 
-  private async startDownload(id: string, mainWindow: any) {
-    const history = store.get("history", []) as any[];
-    const idx = history.findIndex((h: any) => h.id === id);
-    if (idx === -1) return;
+  private async startDownload(id: string, mainWindow: BrowserWindow) {
+    const history = store.get("history", []) as HistoryRecord[];
+    const item = history.find((entry) => entry.id === id);
+    if (!item) return;
 
-    history[idx].status = "downloading";
-    store.set("history", history);
-    mainWindow.webContents.send("history:update", history);
-
-    this.activeCount++;
+    this.activeCount += 1;
     ACTIVE_DOWNLOADS.set(id, { startedAt: Date.now() });
+    updateHistoryItem(
+      id,
+      {
+        status: "preparing",
+        stage: "metadata",
+        stageLabel: "Resolving media",
+      },
+      mainWindow,
+    );
 
     try {
       const { ffmpeg } = getBinPaths();
       if (!isUsableExecutable(ffmpeg)) {
         throw new Error(describeExecutableProblem("FFmpeg", ffmpeg));
       }
-      await startDownload(history[idx], mainWindow);
+      await startDownload({ ...item, status: "preparing" }, mainWindow);
     } catch (err) {
-      console.error(`[download] ${id} error:`, err);
-      const message = err instanceof Error ? err.message : String(err);
-      const h = store.get("history", []) as any[];
-      const i = h.findIndex((x: any) => x.id === id);
-      if (i !== -1) {
-        h[i].status = "failed";
-        h[i].error = message.slice(0, 500);
-        store.set("history", h);
-        mainWindow.webContents.send("history:update", h);
+      const cancelled =
+        err instanceof JobCancelledError || processRegistry.isCancelled(id);
+      const current = (store.get("history", []) as HistoryRecord[]).find(
+        (entry) => entry.id === id,
+      );
+      if (current) {
+        const error = cancelled
+          ? errorFor(
+              "JOB_CANCELLED",
+              "Download cancelled.",
+              undefined,
+              current.stage,
+              true,
+            )
+          : classifyDownloadError(err, current.stage);
+        publishJobProgress(mainWindow, {
+          jobId: id,
+          attemptId: current.attemptId,
+          jobType: "download",
+          status: cancelled ? "cancelled" : "failed",
+          stage: current.stage,
+          patch: { error },
+        });
+        updateHistoryItem(
+          id,
+          {
+            status: cancelled ? "cancelled" : "failed",
+            error: error.userMessage,
+            jobError: error,
+          },
+          mainWindow,
+        );
+        if (!cancelled) {
+          mainWindow.webContents.send("download:error", {
+            id,
+            code: error.code,
+            error: error.userMessage,
+            technicalDetails: error.technicalDetails,
+            stage: error.stage,
+            retryable: error.retryable,
+            retryCount: current.retryCount || 0,
+          });
+        }
       }
-      mainWindow.webContents.send("download:error", {
-        id,
-        error: message.slice(0, 500),
-        retryCount: h[i]?.retryCount || 0,
-      });
     } finally {
+      processRegistry.clear(id);
       ACTIVE_DOWNLOADS.delete(id);
       this.activeCount = Math.max(0, this.activeCount - 1);
+      // The job reached a terminal state and its history record is persisted;
+      // drop the in-memory progress entry and its timers so long sessions do
+      // not accumulate one entry per finished job.
+      clearJobProgress(id);
       this.processQueue(mainWindow);
     }
   }
 
   cancel(id: string): boolean {
-    const history = store.get("history", []) as any[];
-    const idx = history.findIndex((h: any) => h.id === id);
-    if (idx === -1) return false;
+    const history = store.get("history", []) as HistoryRecord[];
+    const item = history.find((entry) => entry.id === id);
+    if (!item) return false;
+    const window = this.mainWindow;
+    const active =
+      isActiveJobStatus(item.status) ||
+      ACTIVE_DOWNLOADS.has(id) ||
+      processRegistry.has(id);
+    if (!active) return true;
 
-    if (history[idx].status === "pending") {
-      const updated = history.filter((h: any) => h.id !== id);
-      store.set("history", updated);
-      this.mainWindow?.webContents.send("history:update", updated);
-      return true;
+    processRegistry.cancel(id);
+    const error = errorFor(
+      "JOB_CANCELLED",
+      "Download cancelled.",
+      undefined,
+      item.stage,
+      true,
+    );
+    if (window) {
+      publishJobProgress(window, {
+        jobId: id,
+        attemptId: item.attemptId || id,
+        jobType: item.jobType || "download",
+        status: "cancelled",
+        stage: item.stage || "download",
+        patch: { error },
+      });
+      updateHistoryItem(
+        id,
+        { status: "cancelled", error: error.userMessage, jobError: error },
+        window,
+      );
+    } else {
+      updateHistoryItem(id, {
+        status: "cancelled",
+        error: error.userMessage,
+        jobError: error,
+      });
     }
-
-    if (ACTIVE_DOWNLOADS.has(id)) {
-      cancelDownload(id);
-      history[idx].status = "failed";
-      history[idx].error = "Download cancelled";
-      store.set("history", history);
-      this.mainWindow?.webContents.send("history:update", history);
+    if (!ACTIVE_DOWNLOADS.has(id) && item.jobType === "download") {
+      // Still-queued items never reach startDownload's cleanup, so release
+      // their cancellation flag and runtime progress entry here.
+      processRegistry.clear(id);
+      clearJobProgress(id);
     }
     return true;
   }
 
   cancelAll() {
-    for (const id of ACTIVE_DOWNLOADS.keys()) {
-      this.cancel(id);
-    }
+    const history = store.get("history", []) as HistoryRecord[];
+    const targets = selectCancelTargets(
+      history,
+      new Set(ACTIVE_DOWNLOADS.keys()),
+    );
+    for (const id of targets) this.cancel(id);
   }
 
   getActiveCount() {
     return this.activeCount;
+  }
+
+  shutdown() {
+    for (const id of ACTIVE_DOWNLOADS.keys()) processRegistry.cancel(id);
+    clearInterval(this.timeoutHandle);
   }
 }
 

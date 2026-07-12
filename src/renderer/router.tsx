@@ -3,14 +3,16 @@ import {
   createRoute,
   createRootRoute,
   createHashHistory,
+  useNavigate,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { Shell } from "./components/shell";
 import { DownloadPage } from "./pages/download-page";
 import { HistoryPage } from "./pages/history-page";
 import { LibraryPage } from "./pages/library-page";
 import { SettingsPage } from "./pages/settings-page";
 import { TranscriptsPage } from "./pages/transcripts-page";
-import { ConvertPage } from "./pages/convert-page";
+import { MediaToolsPage } from "./pages/media-tools-page";
 
 const rootRoute = createRootRoute({
   component: Shell,
@@ -40,10 +42,24 @@ const transcriptsRoute = createRoute({
   component: TranscriptsPage,
 });
 
+const mediaToolsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/media-tools",
+  component: MediaToolsPage,
+});
+
+function LegacyConvertRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    void navigate({ to: "/media-tools", replace: true });
+  }, [navigate]);
+  return null;
+}
+
 const convertRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/convert",
-  component: ConvertPage,
+  component: LegacyConvertRedirect,
 });
 
 const settingsRoute = createRoute({
@@ -57,6 +73,7 @@ const routeTree = rootRoute.addChildren([
   historyRoute,
   libraryRoute,
   transcriptsRoute,
+  mediaToolsRoute,
   convertRoute,
   settingsRoute,
 ]);

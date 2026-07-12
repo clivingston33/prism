@@ -1,36 +1,76 @@
-# Prism
+<div align="center">
+  <img src="resources/prism-light.png" width="88" alt="Prism logo" />
+  <h1>Prism</h1>
+  <p><strong>Download, convert, organize, and transcribe media from one private desktop workspace.</strong></p>
+  <p>
+    <a href="https://github.com/clivingston33/prism/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/clivingston33/prism/ci.yml?branch=main&style=flat-square&label=checks" /></a>
+    <a href="https://github.com/clivingston33/prism/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/clivingston33/prism?style=flat-square" /></a>
+    <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat-square&logo=windows11&logoColor=white" />
+    <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" /></a>
+  </p>
+</div>
 
-Prism is an Electron desktop application for downloading online media with yt-dlp, processing local media with FFmpeg, and creating local Whisper transcripts. Download management, remuxing, conversion, transcription, and the Library run on the user’s machine.
+![Prism download workspace](docs/images/download.png)
 
-## Features
+Prism combines yt-dlp, FFmpeg, FFprobe, and whisper.cpp in a focused Electron app. Download management, lossless remuxing, conversion, local transcription, and the media Library run on your computer.
 
-- yt-dlp downloads for video, audio, source formats, quality limits, trimming, subtitles, thumbnails, and supported image posts
-- truthful progress for metadata, stream downloads, merges, remuxes, conversions, thumbnails, and transcription
-- Media Tools for stream-copy remuxing and explicit re-encoding
-- local whisper.cpp transcription to TXT, SRT, VTT, or JSON
-- verified, resumable Whisper model downloads
-- Library reconciliation for missing, partial, and temporarily unavailable files
-- dark, light, and system themes
+> [!IMPORTANT]
+> The initial release target is **Windows 10/11 x64**. macOS and Linux are not currently supported. Published installers may be unsigned and can trigger Windows SmartScreen; verify release checksums before running them.
 
-### Website support
+## What Prism does
+
+- **Flexible downloads** — video, audio, source formats, quality limits, trimming, subtitles, thumbnails, and supported image posts through yt-dlp.
+- **Honest progress** — separate download, merge, remux, conversion, thumbnail, and transcription stages with speed and ETA only when available.
+- **Lossless Media Tools** — remux compatible streams without re-encoding, or convert explicitly for another device or workflow.
+- **Private local transcription** — verified Whisper models and offline TXT, SRT, VTT, or JSON output through whisper.cpp.
+- **Local Library** — stable thumbnails, search, filtering, missing-file reconciliation, and shortcuts into Media Tools or transcription.
+- **Native desktop experience** — dark, light, and system themes with persistent settings and download history.
+
+## Inside the app
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/media-tools.png" alt="Prism Media Tools remux workspace" /></td>
+    <td width="50%"><img src="docs/images/transcription.png" alt="Prism local transcription workspace" /></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Remux and convert</strong><br />Inspect streams, preserve compatible tracks, and build batches.</td>
+    <td align="center"><strong>Transcribe locally</strong><br />Install verified models and keep media and transcripts on-device.</td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/library.png" alt="Prism local media Library" /></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><strong>Keep a local Library</strong><br />Find completed downloads and recover safely when files or drives move.</td>
+  </tr>
+</table>
+
+## Website support
 
 Prism uses yt-dlp’s extractors. YouTube, TikTok, X/Twitter, Instagram, and other sites may work when yt-dlp supports them, but site behavior, authentication requirements, rate limits, and extractor support can change. Prism does not guarantee every yt-dlp-supported site.
 
-## Platform and binary status
-
-The initial public release target is **Windows 10/11 x64 only**. macOS and Linux remain planned but unsupported until their native binaries, packages, and end-to-end workflows are verified on those operating systems. Portable application code is retained, but no macOS or Linux artifact is published.
-
-Windows native resources are pinned in `resources/native-resources.json` and stored with Git LFS. Run `pnpm run prepare:resources:win` to acquire them reproducibly and `pnpm run verify:resources` before packaging. A Git LFS pointer is never accepted as a usable binary.
-
 ## Installation
 
-Installers are published on the [Releases](https://github.com/clivingston33/prism/releases) page when a maintainer has produced and verified them. Prism stores models, settings, history, and thumbnails in the operating system’s per-user application-data directory and does not remove them during uninstall.
+1. Open [Releases](https://github.com/clivingston33/prism/releases).
+2. Download the latest Windows installer and its checksum.
+3. Verify the SHA-256 checksum, then run the installer.
+
+Prism stores models, settings, history, and thumbnails in the per-user application-data directory and does not remove them during uninstall. Downloads and transcripts remain wherever you chose to save them.
+
+## Privacy by design
+
+- Prism does not include telemetry, analytics, or cloud transcription.
+- Transcription and media processing happen locally after a model is installed.
+- Network access is still required for downloads, metadata, model installation, and update checks.
+- URLs and download history are stored locally.
+
+Read the complete [privacy notes](docs/PRIVACY.md) and [security policy](SECURITY.md).
 
 ## Development setup
 
 Prerequisites:
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - pnpm 9
 - Windows x64 FFmpeg/ffprobe, yt-dlp, and whisper.cpp resources (`pnpm run prepare:resources:win`)
 
@@ -65,12 +105,6 @@ Useful commands:
 - `resources/bin` — platform-native runtime resources
 - `test` — Node test-runner tests that do not require live internet access
 - `docs` — privacy, real-media verification, and release documentation
-
-## Local transcription and privacy
-
-Transcription is local whisper.cpp work after a model has been installed. No cloud transcription API key is required, and Prism does not send media or transcript text to a transcription service. Installing models, downloading media, checking updates, and extracting metadata from online sites require network access. Download URLs and history are stored locally in Prism’s user data.
-
-Prism does not add telemetry or analytics. See [docs/PRIVACY.md](docs/PRIVACY.md) for network and storage details. See [SECURITY.md](SECURITY.md) for security reporting and known limitations.
 
 ## Troubleshooting
 

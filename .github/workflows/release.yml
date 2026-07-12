@@ -1,4 +1,4 @@
-name: Signed Windows Release
+name: Windows Release
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
 
 jobs:
   build:
+    outputs:
+      signing_status: ${{ steps.signing.outputs.status }}
     runs-on: windows-latest
     permissions:
       contents: read
@@ -20,17 +22,20 @@ jobs:
         with:
           lfs: true
 
-      - name: Require release signing credentials
+      - name: Determine signing mode
+        id: signing
         shell: pwsh
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
-            throw "Signed public releases require WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD secrets."
+          if (-not [string]::IsNullOrWhiteSpace($env:CSC_LINK) -and -not [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            "status=signed" >> $env:GITHUB_OUTPUT
+          } else {
+            "status=unsigned" >> $env:GITHUB_OUTPUT
           }
 
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -48,25 +53,59 @@ jobs:
           pnpm test
           pnpm run verify:resources
 
-      - name: Build signed Windows installer
+      - name: Build Windows installer
         run: pnpm run build:win
 
       - name: Verify executable and installer signatures
+        if: steps.signing.outputs.status == 'signed'
         run: pnpm run verify:signatures
+
+      - name: Verify and label unsigned artifacts
+        if: steps.signing.outputs.status == 'unsigned'
+        shell: pwsh
+        run: |
+          $artifacts = @("dist/win-unpacked/Prism.exe", "dist/Prism-Setup-${{ github.ref_name }}.exe")
+          $installer = Get-ChildItem dist -Filter "Prism-Setup-*.exe" -File | Select-Object -First 1
+          if ($null -eq $installer) { throw "Windows installer is missing." }
+          $artifacts[1] = $installer.FullName
+          foreach ($artifact in $artifacts) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $artifact
+            if ($signature.Status -ne "NotSigned") {
+              throw "Expected an unsigned artifact but $artifact reported $($signature.Status)."
+            }
+          }
+          @(
+            "Signing status: UNSIGNED",
+            "Tag: ${{ github.ref_name }}",
+            "Commit: ${{ github.sha }}",
+            "",
+            "Windows SmartScreen may warn or block this installer. Verify its SHA-256 checksum before running it."
+          ) | Set-Content dist/SIGNING-STATUS.txt
+
+      - name: Record signed artifact status
+        if: steps.signing.outputs.status == 'signed'
+        shell: pwsh
+        run: |
+          @(
+            "Signing status: SIGNED",
+            "Tag: ${{ github.ref_name }}",
+            "Commit: ${{ github.sha }}"
+          ) | Set-Content dist/SIGNING-STATUS.txt
 
       - name: Write artifact checksums
         shell: pwsh
         run: Get-ChildItem dist -Filter *.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Set-Content dist/SHA256SUMS-windows.txt
 
-      - name: Upload signed release candidate
+      - name: Upload release candidate
         uses: actions/upload-artifact@v4
         with:
-          name: prism-windows-signed
+          name: prism-windows-${{ steps.signing.outputs.status }}
           path: |
             dist/Prism-Setup-*.exe
             dist/*.blockmap
             dist/latest.yml
             dist/SHA256SUMS-windows.txt
+            dist/SIGNING-STATUS.txt
           if-no-files-found: error
 
   release:
@@ -75,10 +114,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download signed artifact
+      - name: Download release artifact
         uses: actions/download-artifact@v4
         with:
-          name: prism-windows-signed
+          name: prism-windows-${{ needs.build.outputs.signing_status }}
           path: dist
 
       - name: Create draft GitHub release
@@ -86,3 +125,5 @@ jobs:
         with:
           files: dist/*
           draft: true
+          prerelease: ${{ needs.build.outputs.signing_status == 'unsigned' }}
+          name: Prism ${{ github.ref_name }} (${{ needs.build.outputs.signing_status }})

@@ -4,10 +4,16 @@ All notable changes to Prism will be documented here.
 
 ## [Unreleased]
 
+## [1.2.0-beta.1] - 2026-07-12
+
 - Final release-readiness audit and targeted reliability, security, and packaging fixes.
 - Local transcription failures now become terminal history records and clean partial output.
 - Uninstall no longer removes Prism’s per-user settings, history, thumbnails, transcripts, or Whisper models.
-- Added native-resource verification and public release documentation.
+- Added local whisper.cpp model management and offline TXT, SRT, VTT, and JSON transcription.
+- Added lossless remuxing, explicit conversion, FFprobe inspection, and local Library workflows.
+- Added checksum-pinned Windows native resources, reproducible preparation, and packaged real-media verification.
+- Added hardened Electron boundaries, runtime IPC validation, recovery improvements, and public project documentation.
+- Refreshed the GitHub README with genuine packaged-app screenshots and Windows-only release guidance.
 
 ## [1.1.3]
 

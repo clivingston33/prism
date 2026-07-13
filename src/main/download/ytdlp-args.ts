@@ -18,6 +18,12 @@ export interface BaseYtDlpFlagsInput {
   speedLimit?: string;
   trimStart?: string;
   trimEnd?: string;
+  /**
+   * When set, subtitles are downloaded next to the media. `format` is what
+   * lands on disk (txt is converted after download from vtt); `languages` is a
+   * yt-dlp --sub-langs expression.
+   */
+  subtitles?: { languages: string; format: "srt" | "vtt" };
 }
 
 export function buildBaseYtDlpFlags(input: BaseYtDlpFlagsInput): string[] {
@@ -55,6 +61,19 @@ export function buildBaseYtDlpFlags(input: BaseYtDlpFlagsInput): string[] {
 
   if (input.speedLimit?.trim())
     args.push("--limit-rate", input.speedLimit.trim());
+
+  if (input.subtitles) {
+    args.push(
+      "--write-subs",
+      // Auto-generated captions are the only option on most videos; uploaded
+      // subtitles still win when both exist because yt-dlp prefers them.
+      "--write-auto-subs",
+      "--sub-langs",
+      input.subtitles.languages,
+      "--convert-subs",
+      input.subtitles.format,
+    );
+  }
 
   if (input.trimStart || input.trimEnd) {
     const start = input.trimStart || "00:00:00";

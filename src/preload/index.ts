@@ -28,6 +28,13 @@ const prismAPI = {
     downloadUpdate: () =>
       ipcRenderer.invoke("settings:downloadUpdate") as Promise<void>,
     quitAndInstall: () => ipcRenderer.invoke("settings:quitAndInstall"),
+    hardwareProfile: () => ipcRenderer.invoke("settings:hardwareProfile"),
+    optimizeForDevice: () => ipcRenderer.invoke("settings:optimizeForDevice"),
+    thumbnailCacheInfo: () => ipcRenderer.invoke("settings:thumbnailCacheInfo"),
+    clearThumbnails: () => ipcRenderer.invoke("settings:clearThumbnails"),
+    ytdlpUpdateState: (checkLatest = false) =>
+      ipcRenderer.invoke("settings:ytdlpUpdateState", checkLatest),
+    updateYtdlp: () => ipcRenderer.invoke("settings:updateYtdlp"),
   },
   history: {
     get: () => ipcRenderer.invoke("history:get"),
@@ -48,8 +55,12 @@ const prismAPI = {
       ipcRenderer.invoke("download:addToQueue", options),
     cancel: (id: string) => ipcRenderer.invoke("download:cancel", id),
     cancelAll: () => ipcRenderer.invoke("download:cancelAll"),
+    reorderQueue: (ids: string[]) =>
+      ipcRenderer.invoke("download:reorderQueue", ids),
     getMetadata: (url: string) =>
       ipcRenderer.invoke("download:getMetadata", url),
+    getPlaylistInfo: (url: string) =>
+      ipcRenderer.invoke("download:getPlaylistInfo", url),
     isUrlSupported: (url: string) =>
       ipcRenderer.invoke("download:isUrlSupported", url),
     getActiveCount: () => ipcRenderer.invoke("download:getActiveCount"),
@@ -69,6 +80,10 @@ const prismAPI = {
       ipcRenderer.invoke("download:startRemux", options) as Promise<string>,
     probeFile: (filePath: string) =>
       ipcRenderer.invoke("download:probeFile", filePath),
+    getWaveform: (filePath: string) =>
+      ipcRenderer.invoke("download:getWaveform", filePath),
+    getMediaPreviewUrl: (filePath: string) =>
+      ipcRenderer.invoke("download:getMediaPreviewUrl", filePath),
     selectFile: () => ipcRenderer.invoke("download:selectFile"),
     selectMediaFiles: () =>
       ipcRenderer.invoke("download:selectMediaFiles") as Promise<string[]>,
@@ -88,6 +103,17 @@ const prismAPI = {
       ipcRenderer.invoke("transcription:openModelDirectory"),
     start: (request: TranscriptionRequest) =>
       ipcRenderer.invoke("transcription:start", request) as Promise<string>,
+    gpuRuntimeState: () => ipcRenderer.invoke("transcription:gpuRuntimeState"),
+    installGpuRuntime: () =>
+      ipcRenderer.invoke("transcription:installGpuRuntime"),
+    cancelGpuRuntimeInstall: () =>
+      ipcRenderer.invoke("transcription:cancelGpuRuntimeInstall"),
+    removeGpuRuntime: () =>
+      ipcRenderer.invoke("transcription:removeGpuRuntime"),
+    readTranscript: (historyId: string) =>
+      ipcRenderer.invoke("transcription:readTranscript", historyId),
+    writeTranscript: (historyId: string, content: string) =>
+      ipcRenderer.invoke("transcription:writeTranscript", historyId, content),
   },
   on: <K extends keyof EventPayloads>(
     channel: K,

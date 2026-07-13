@@ -37,8 +37,16 @@ export interface DownloadRequest {
   quality?: Quality;
   transcript?: boolean;
   transcriptFormat?: TranscriptFormat;
+  /** yt-dlp --sub-langs expression, e.g. "en.*" or "en,es". */
+  subtitleLanguages?: string;
   trimStart?: string;
   trimEnd?: string;
+  playlistId?: string;
+  playlistTitle?: string;
+  playlistIndex?: number;
+  playlistCount?: number;
+  playlistEntryTitle?: string;
+  playlistDirectory?: boolean;
 }
 
 export type ConversionFormat =
@@ -68,6 +76,8 @@ export interface ConversionRequest {
   crf?: number;
   audioBitrate?: string;
   fps?: string;
+  trimStart?: string;
+  trimEnd?: string;
 }
 
 export interface HistoryRecord {
@@ -104,6 +114,13 @@ export interface HistoryRecord {
   error?: string;
   jobError?: JobError;
   retryCount: number;
+  /** Position among still-queued jobs; lower starts first. */
+  queueOrder?: number;
+  playlistId?: string;
+  playlistTitle?: string;
+  playlistIndex?: number;
+  playlistCount?: number;
+  playlistDirectory?: boolean;
   thumbnail?: string;
   fileState?: "present" | "missing" | "partial" | "unavailable";
   missingPaths?: string[];
@@ -117,6 +134,8 @@ export interface HistoryRecord {
   trimStart?: string;
   trimEnd?: string;
   transcriptPath?: string;
+  /** Subtitle files saved beside the media, primary first. */
+  subtitlePaths?: string[];
   transcriptText?: string;
   transcriptError?: string;
   imageCount?: number;

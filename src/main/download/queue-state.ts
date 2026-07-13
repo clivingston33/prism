@@ -69,6 +69,63 @@ export function selectCancelTargets(
     .map((item) => item.id);
 }
 
+function isQueuedStatus(status: unknown) {
+  return status === "queued" || String(status) === "pending";
+}
+
+/**
+ * The next queued job to start: lowest explicit queueOrder first, then oldest
+ * created. This is what makes user reordering authoritative over insertion
+ * order.
+ */
+export function selectNextQueued(
+  history: (Pick<HistoryRecord, "id" | "status" | "createdAt"> & {
+    queueOrder?: number;
+  })[],
+  activeIds: ReadonlySet<string>,
+): string | undefined {
+  const queued = history
+    .filter((item) => isQueuedStatus(item.status) && !activeIds.has(item.id))
+    .sort(
+      (a, b) =>
+        (a.queueOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.queueOrder ?? Number.MAX_SAFE_INTEGER) ||
+        String(a.createdAt).localeCompare(String(b.createdAt)),
+    );
+  return queued[0]?.id;
+}
+
+/** The queueOrder value a newly added job should get (after all queued). */
+export function nextQueueOrder(
+  history: (Pick<HistoryRecord, "status"> & { queueOrder?: number })[],
+): number {
+  const orders = history
+    .filter((item) => isQueuedStatus(item.status))
+    .map((item) => item.queueOrder ?? 0);
+  return (orders.length ? Math.max(...orders) : 0) + 1;
+}
+
+/**
+ * Applies a user-chosen ordering to the still-queued records. IDs missing from
+ * the list keep their position after the reordered ones; non-queued records
+ * are never touched.
+ */
+export function applyQueueOrder(
+  history: Record<string, unknown>[],
+  orderedIds: string[],
+): { history: Record<string, unknown>[]; changed: boolean } {
+  const rank = new Map(orderedIds.map((id, index) => [id, index + 1]));
+  let changed = false;
+  const updated = history.map((item) => {
+    if (!isQueuedStatus(item.status)) return item;
+    const order = rank.get(String(item.id));
+    if (order === undefined || item.queueOrder === order) return item;
+    changed = true;
+    return { ...item, queueOrder: order };
+  });
+  return { history: updated, changed };
+}
+
 /** Active job IDs whose runtime has exceeded the timeout. */
 export function findTimedOutJobs(
   active: Iterable<[string, { startedAt: number }]>,

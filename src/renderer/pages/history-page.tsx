@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { Clock, FilterX, AlertTriangle } from "lucide-react";
+import {
+  Clock,
+  FilterX,
+  AlertTriangle,
+  ChevronDown,
+  ListVideo,
+} from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { RowCard } from "../components/row-card";
 import { HistoryDrawer } from "../components/history-drawer";
@@ -11,6 +17,9 @@ export function HistoryPage() {
   const [filter, setFilter] = useState<FilterType>("all");
   const [showClearModal, setShowClearModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<DownloadItem | null>(null);
+  const [collapsedPlaylists, setCollapsedPlaylists] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     if (!showClearModal) return;
@@ -22,6 +31,25 @@ export function HistoryPage() {
   }, [showClearModal]);
 
   const historyItems = downloads;
+  // Queued items in their effective start order (explicit queueOrder first,
+  // then oldest created), used to compute reorder requests.
+  const queuedIds = downloads
+    .filter((item) => item.status === "queued")
+    .sort(
+      (a, b) =>
+        (a.queueOrder ?? Number.MAX_SAFE_INTEGER) -
+          (b.queueOrder ?? Number.MAX_SAFE_INTEGER) ||
+        a.createdAt.localeCompare(b.createdAt),
+    )
+    .map((item) => item.id);
+  const moveInQueue = (id: string, direction: -1 | 1) => {
+    const index = queuedIds.indexOf(id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= queuedIds.length) return;
+    const next = [...queuedIds];
+    [next[index], next[target]] = [next[target], next[index]];
+    void window.prism.download.reorderQueue(next);
+  };
   const selectedLiveItem = selectedItem
     ? downloads.find((item) => item.id === selectedItem.id) || selectedItem
     : null;
@@ -30,6 +58,14 @@ export function HistoryPage() {
     if (filter === "all") return true;
     return item.status === filter;
   });
+  const playlistGroups = new Map<string, DownloadItem[]>();
+  for (const item of filteredItems) {
+    if (!item.playlistId) continue;
+    const group = playlistGroups.get(item.playlistId) || [];
+    group.push(item);
+    playlistGroups.set(item.playlistId, group);
+  }
+  const renderedPlaylists = new Set<string>();
 
   const handleClearAll = async () => {
     await window.prism.history.clear();
@@ -94,15 +130,69 @@ export function HistoryPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-2 w-full pb-20">
-            {filteredItems.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => setSelectedItem(item)}
-                className="cursor-pointer"
-              >
-                <RowCard item={item} />
-              </div>
-            ))}
+            {filteredItems.map((item) => {
+              const playlistId = item.playlistId;
+              const firstInPlaylist =
+                Boolean(playlistId) && !renderedPlaylists.has(playlistId!);
+              if (playlistId) renderedPlaylists.add(playlistId);
+              const group = playlistId
+                ? playlistGroups.get(playlistId) || []
+                : [];
+              const collapsed = playlistId
+                ? collapsedPlaylists.has(playlistId)
+                : false;
+              const completed = group.filter(
+                (entry) => entry.status === "completed",
+              ).length;
+              return (
+                <div key={item.id} className="contents">
+                  {firstInPlaylist && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsedPlaylists((current) => {
+                          const next = new Set(current);
+                          if (next.has(playlistId!)) next.delete(playlistId!);
+                          else next.add(playlistId!);
+                          return next;
+                        })
+                      }
+                      className="mb-1 flex min-h-10 w-full items-center gap-3 rounded-xl bg-bg-subtle px-3 text-left shadow-sm transition-[background-color,transform] hover:bg-bg-elevated active:scale-[0.96]"
+                      aria-expanded={!collapsed}
+                    >
+                      <ListVideo size={15} className="shrink-0 text-accent" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-text-primary">
+                        {item.playlistTitle || "Playlist"}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-[10px] text-text-tertiary">
+                        {completed}/{group.length} complete
+                      </span>
+                      <ChevronDown
+                        size={14}
+                        className={`shrink-0 transition-transform duration-150 ${collapsed ? "-rotate-90" : "rotate-0"}`}
+                      />
+                    </button>
+                  )}
+                  {!collapsed && (
+                    <div
+                      onClick={() => setSelectedItem(item)}
+                      className={
+                        playlistId ? "cursor-pointer pl-3" : "cursor-pointer"
+                      }
+                    >
+                      <RowCard
+                        item={item}
+                        onMoveInQueue={
+                          item.status === "queued" && queuedIds.length > 1
+                            ? (direction) => moveInQueue(item.id, direction)
+                            : undefined
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

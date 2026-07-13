@@ -4,7 +4,39 @@ import {
   parseTranscriptionRequest,
   parseSettingsPatch,
 } from "../src/shared/ipc-schemas.ts";
-import { transcriptionJobError } from "../src/shared/transcription.ts";
+import {
+  parseWhisperProgressPercent,
+  parseWhisperSegmentEndSeconds,
+  transcriptionJobError,
+} from "../src/shared/transcription.ts";
+
+test("whisper segment lines yield continuous processed media time", () => {
+  assert.equal(
+    parseWhisperSegmentEndSeconds(
+      "[00:01:23.400 --> 00:01:27.960]  Hello world",
+    ),
+    87.96,
+  );
+  assert.equal(
+    parseWhisperSegmentEndSeconds("[00:00:00.000 --> 00:00:07.600] intro"),
+    7.6,
+  );
+  // Comma decimal separators (srt-style) parse too.
+  assert.equal(
+    parseWhisperSegmentEndSeconds("[01:00:00,000 --> 01:02:03,500] x"),
+    3723.5,
+  );
+  assert.equal(
+    parseWhisperSegmentEndSeconds("whisper_init: loading model"),
+    undefined,
+  );
+  assert.equal(parseWhisperSegmentEndSeconds("progress = 15%"), undefined);
+});
+
+test("whisper --print-progress remains a coarse fallback", () => {
+  assert.equal(parseWhisperProgressPercent("whisper: progress = 35%"), 35);
+  assert.equal(parseWhisperProgressPercent("no percentage here"), undefined);
+});
 
 test("local transcription requests accept offline formats and reject unsafe shapes", () => {
   const request = parseTranscriptionRequest({

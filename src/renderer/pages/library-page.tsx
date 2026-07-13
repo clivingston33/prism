@@ -8,9 +8,11 @@ import {
   RotateCcw,
   Trash2,
   Mic2,
+  Search,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { HistoryDrawer } from "../components/history-drawer";
+import { ConfirmDialog } from "../components/modal";
 import { useAppStore } from "../stores/app-store";
 
 function localUrl(value: string) {
@@ -167,7 +169,7 @@ const LibraryCard = memo(function LibraryCard({
           </button>
         )}
         <button
-          className="icon-button h-8 w-8 text-danger"
+          className="icon-button h-8 w-8 text-error"
           title="Remove from Library"
           aria-label={`Remove ${item.title} from Library`}
           onClick={() => onRemove(item)}
@@ -185,7 +187,23 @@ export function LibraryPage() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<DownloadItem | null>(null);
   const [notice, setNotice] = useState("");
-  const completed = useMemo(
+  const initialSearch = useMemo(() => {
+    const params = new URLSearchParams(
+      window.location.hash.split("?")[1] || "",
+    );
+    return {
+      query: params.get("q") || "",
+      type: params.get("type") || "all",
+      sort: params.get("sort") || "date-desc",
+    };
+  }, []);
+  const [query, setQuery] = useState(initialSearch.query);
+  const [typeFilter, setTypeFilter] = useState(initialSearch.type);
+  const [sort, setSort] = useState(initialSearch.sort);
+  const [missingPrompt, setMissingPrompt] = useState<
+    "reconcile" | "clean" | null
+  >(null);
+  const allCompleted = useMemo(
     () =>
       downloads.filter(
         (item) =>
@@ -194,6 +212,41 @@ export function LibraryPage() {
       ),
     [downloads],
   );
+  const completed = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    const audio = new Set(["mp3", "m4a", "wav", "aac", "flac", "ogg"]);
+    const items = allCompleted.filter((item) => {
+      if (needle && !item.title.toLocaleLowerCase().includes(needle))
+        return false;
+      if (typeFilter === "all") return true;
+      if (typeFilter === "images")
+        return item.format === "images" || item.imageCount;
+      const isAudio =
+        item.mode === "audio_only" ||
+        audio.has(item.format.toLocaleLowerCase());
+      return typeFilter === "audio"
+        ? isAudio
+        : !isAudio && item.format !== "images";
+    });
+    return items.sort((a, b) => {
+      if (sort === "date-asc") return a.createdAt.localeCompare(b.createdAt);
+      if (sort === "title") return a.title.localeCompare(b.title);
+      if (sort === "size") return (b.size || 0) - (a.size || 0);
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [allCompleted, query, sort, typeFilter]);
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (typeFilter !== "all") params.set("type", typeFilter);
+    if (sort !== "date-desc") params.set("sort", sort);
+    const suffix = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `#/library${suffix ? `?${suffix}` : ""}`,
+    );
+  }, [query, sort, typeFilter]);
   const reconcile = async () => {
     const history = await window.prism.history.reconcile();
     setDownloads(history);
@@ -202,14 +255,9 @@ export function LibraryPage() {
       settings?.missingFileBehavior === "ask" &&
       history.some(
         (item) => item.fileState === "missing" || item.fileState === "partial",
-      ) &&
-      window.confirm(
-        "Some Library files are missing. Remove those entries now?",
       )
-    ) {
-      await window.prism.history.removeMissing();
-      setDownloads(await window.prism.history.get());
-    }
+    )
+      setMissingPrompt("reconcile");
   };
   useEffect(() => {
     void reconcile();
@@ -249,9 +297,8 @@ export function LibraryPage() {
     window.localStorage.setItem("prism.transcription.file", item.filePath);
     void navigate({ to: "/transcript" });
   };
-  const cleanMissing = async () => {
-    if (!window.confirm("Remove all confirmed missing items from Library?"))
-      return;
+  const removeMissing = async () => {
+    setMissingPrompt(null);
     await window.prism.history.removeMissing();
     setDownloads(await window.prism.history.get());
   };
@@ -274,19 +321,63 @@ export function LibraryPage() {
             >
               <RefreshCw size={14} /> Refresh
             </button>
-            {completed.some(
+            {allCompleted.some(
               (item) =>
                 item.fileState === "missing" || item.fileState === "partial",
             ) && (
               <button
-                className="button-secondary text-danger"
-                onClick={() => void cleanMissing()}
+                className="button-secondary text-error"
+                onClick={() => setMissingPrompt("clean")}
               >
                 <Trash2 size={14} /> Clean missing
               </button>
             )}
           </div>
         </header>
+        <section className="rounded-2xl bg-bg-subtle p-3 shadow-sm">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
+            <label className="relative">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
+              />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search Library"
+                className="h-11 w-full rounded-xl border border-border bg-bg pl-10 pr-3 text-sm text-text-primary outline-none focus:border-accent"
+              />
+            </label>
+            <select
+              value={sort}
+              onChange={(event) => setSort(event.target.value)}
+              aria-label="Sort Library"
+              className="h-11 rounded-xl border border-border bg-bg px-3 text-xs text-text-primary outline-none focus:border-accent"
+            >
+              <option value="date-desc">Newest first</option>
+              <option value="date-asc">Oldest first</option>
+              <option value="title">Title A–Z</option>
+              <option value="size">Largest first</option>
+            </select>
+          </div>
+          <div
+            className="mt-2 flex flex-wrap gap-1"
+            role="group"
+            aria-label="Filter by media type"
+          >
+            {(["all", "video", "audio", "images"] as const).map((value) => (
+              <button
+                type="button"
+                key={value}
+                aria-pressed={typeFilter === value}
+                onClick={() => setTypeFilter(value)}
+                className={`min-h-10 rounded-lg px-3 text-[11px] font-medium capitalize transition-[background-color,color,transform] active:scale-[0.96] ${typeFilter === value ? "bg-accent text-accent-fg" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"}`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </section>
         {notice && <p className="text-xs text-text-tertiary">{notice}</p>}
         {completed.length ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -307,7 +398,9 @@ export function LibraryPage() {
           <div className="rounded-xl border border-dashed border-border px-6 py-16 text-center">
             <Play size={24} className="mx-auto text-text-tertiary" />
             <p className="mt-3 text-sm text-text-secondary">
-              Your completed downloads will appear here.
+              {allCompleted.length
+                ? "No Library items match these filters."
+                : "Your completed downloads will appear here."}
             </p>
           </div>
         )}
@@ -319,6 +412,19 @@ export function LibraryPage() {
             : null
         }
         onClose={() => setSelected(null)}
+      />
+      <ConfirmDialog
+        open={missingPrompt !== null}
+        title="Remove missing items?"
+        message={
+          missingPrompt === "reconcile"
+            ? "Some Library files could not be found on disk. Remove those entries from the Library now? The files themselves are not touched."
+            : "Remove all confirmed missing items from the Library? The files themselves are not touched."
+        }
+        confirmLabel="Remove entries"
+        destructive
+        onCancel={() => setMissingPrompt(null)}
+        onConfirm={() => void removeMissing()}
       />
     </main>
   );

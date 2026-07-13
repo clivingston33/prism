@@ -1,7 +1,8 @@
-import type { BrowserWindow } from "electron";
+import { Notification, type BrowserWindow } from "electron";
 import { store } from "../store";
 import {
   formatStageLabel,
+  isActiveJobStatus,
   mergeJobProgress,
   type DownloadProgressPatch,
   type JobProgress,
@@ -171,6 +172,59 @@ function schedulePersist(
   );
 }
 
+/**
+ * Mirrors aggregate job progress onto the OS taskbar icon: the mean overall
+ * progress of every active job, cleared when the last one finishes. Runs on
+ * the already-coalesced IPC cadence so it costs nothing extra.
+ */
+function updateTaskbarProgress(mainWindow: BrowserWindow) {
+  if (mainWindow.isDestroyed()) return;
+  const active = [...runtimeProgress.values()].filter((job) =>
+    isActiveJobStatus(job.status),
+  );
+  if (active.length === 0) {
+    mainWindow.setProgressBar(-1);
+    return;
+  }
+  const known = active.filter((job) => job.overallProgress !== undefined);
+  if (known.length === 0) {
+    // Work is happening but totals are unknown: indeterminate marquee.
+    mainWindow.setProgressBar(2, { mode: "indeterminate" });
+    return;
+  }
+  const mean =
+    known.reduce((sum, job) => sum + (job.overallProgress || 0), 0) /
+    known.length /
+    100;
+  mainWindow.setProgressBar(Math.max(0, Math.min(1, mean)));
+}
+
+/**
+ * Fires an OS notification for a job reaching a terminal state while the app
+ * is in the background. Foreground completion feedback is the renderer's
+ * toast; both trigger off the same status transition so neither duplicates.
+ */
+function notifyTerminal(mainWindow: BrowserWindow, progress: JobProgress) {
+  if (mainWindow.isDestroyed() || mainWindow.isFocused()) return;
+  if (!Notification.isSupported()) return;
+  const item = historyItem(progress.jobId);
+  const title = typeof item?.title === "string" ? item.title : "Prism job";
+  const kind =
+    progress.jobType === "conversion"
+      ? "Conversion"
+      : progress.jobType === "transcription"
+        ? "Transcription"
+        : "Download";
+  const body =
+    progress.status === "completed"
+      ? `${kind} finished: ${title}`
+      : progress.status === "failed"
+        ? `${kind} failed: ${title}`
+        : undefined;
+  if (!body) return;
+  new Notification({ title: "Prism", body, silent: true }).show();
+}
+
 function scheduleIpcSend(
   mainWindow: BrowserWindow,
   progress: JobProgress,
@@ -180,6 +234,7 @@ function scheduleIpcSend(
     lastIpcSentAt.set(progress.jobId, Date.now());
     const latest = runtimeProgress.get(progress.jobId) || progress;
     mainWindow.webContents.send("download:progress", latest);
+    updateTaskbarProgress(mainWindow);
   };
 
   if (
@@ -261,6 +316,12 @@ export function publishJobProgress(
   runtimeProgress.set(input.jobId, next);
   schedulePersist(next, previous);
   scheduleIpcSend(mainWindow, next, previous);
+  if (
+    previous?.status !== next.status &&
+    (next.status === "completed" || next.status === "failed")
+  ) {
+    notifyTerminal(mainWindow, next);
+  }
   return next;
 }
 

@@ -146,6 +146,7 @@ export class DownloadAggregator {
   private readonly streams = new Map<string, StreamState>();
   private readonly order: string[] = [];
   private lastSpeed?: number;
+  private smoothedSpeed?: number;
   private lastEta?: number;
   private lastElapsed?: number;
   private lastFragmentIndex?: number;
@@ -153,6 +154,12 @@ export class DownloadAggregator {
   private currentKey?: string;
 
   private readonly expectedStreams: number;
+
+  // Weight applied to the newest raw speed sample in the exponential moving
+  // average. yt-dlp emits an instantaneous speed several times per second and
+  // those samples swing wildly; a low alpha keeps the displayed rate steady
+  // (and the derived ETA with it) without lagging far behind real changes.
+  private static readonly SPEED_SMOOTHING_ALPHA = 0.15;
 
   constructor(expectedStreams: number = 1) {
     this.expectedStreams = expectedStreams;
@@ -187,6 +194,20 @@ export class DownloadAggregator {
 
     if (event.speedBytesPerSecond !== undefined) {
       this.lastSpeed = event.speedBytesPerSecond;
+      // Exponential moving average so the surfaced speed does not jitter with
+      // every raw sample. Snap to the new value on a large jump (e.g. a fresh
+      // stream starting) so the average never lags a genuine step change.
+      const alpha = DownloadAggregator.SPEED_SMOOTHING_ALPHA;
+      if (
+        this.smoothedSpeed === undefined ||
+        event.speedBytesPerSecond > this.smoothedSpeed * 3 ||
+        event.speedBytesPerSecond < this.smoothedSpeed / 3
+      ) {
+        this.smoothedSpeed = event.speedBytesPerSecond;
+      } else {
+        this.smoothedSpeed =
+          this.smoothedSpeed * (1 - alpha) + event.speedBytesPerSecond * alpha;
+      }
     }
     if (event.etaSeconds !== undefined) this.lastEta = event.etaSeconds;
     if (event.elapsedSeconds !== undefined) {
@@ -238,12 +259,27 @@ export class DownloadAggregator {
       }
     }
 
+    // Prefer an ETA derived from the smoothed speed and the known remaining
+    // bytes: yt-dlp's own eta is computed from its jittery instantaneous speed
+    // and bounces around, while remaining/steady-speed is stable and honest.
+    const speed = this.smoothedSpeed ?? this.lastSpeed;
+    let etaSeconds = this.lastEta;
+    if (
+      speed &&
+      speed > 0 &&
+      combinedTotal &&
+      combinedTotal > 0 &&
+      seen.length >= expected
+    ) {
+      etaSeconds = Math.max(0, (combinedTotal - downloadedBytes) / speed);
+    }
+
     return {
       percent,
       downloadedBytes,
       totalBytes: seen.length >= expected ? combinedTotal : undefined,
-      speedBytesPerSecond: this.lastSpeed,
-      etaSeconds: this.lastEta,
+      speedBytesPerSecond: speed,
+      etaSeconds,
       elapsedSeconds: this.lastElapsed,
       fragmentIndex: this.lastFragmentIndex,
       fragmentCount: this.lastFragmentCount,

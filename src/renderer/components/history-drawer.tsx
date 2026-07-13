@@ -7,7 +7,10 @@ import {
   Image as ImageIcon,
   FileText,
   Copy,
+  ArrowRightLeft,
+  Mic2,
 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useAppStore } from "../stores/app-store";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
 
@@ -16,12 +19,25 @@ interface HistoryDrawerProps {
   onClose: () => void;
 }
 
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
+        {label}
+      </span>
+      <span
+        className="mt-0.5 block truncate text-xs font-medium text-text-primary"
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   const { setDownloads } = useAppStore();
-  const [conversionFormat, setConversionFormat] = useState<
-    "mp4" | "mov" | "webm" | "prores" | "mp3"
-  >("mov");
-  const [isConverting, setIsConverting] = useState(false);
+  const navigate = useNavigate();
   const [copiedTranscript, setCopiedTranscript] = useState(false);
 
   useEffect(() => {
@@ -45,10 +61,10 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
     if (!/^https?:\/\//i.test(item.url)) return;
     await window.prism.download.addToQueue({
       url: item.url,
-      format: item.format as any,
+      format: item.format as DownloadOptions["format"],
       mode: item.mode,
-      audioFormat: item.audioFormat as any,
-      quality: item.quality as any,
+      audioFormat: item.audioFormat as DownloadOptions["audioFormat"],
+      quality: item.quality as DownloadOptions["quality"],
       transcript: item.transcript,
       transcriptFormat: item.transcriptFormat,
       trimStart: item.trimStart,
@@ -67,22 +83,20 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
     onClose();
   };
 
-  const handleConvert = async () => {
-    if (!item.filePath || isConverting) return;
-    setIsConverting(true);
-    try {
-      await window.prism.download.convertFile({
-        sourceItemId: item.id,
-        filePath: item.filePath,
-        format: conversionFormat,
-      });
-      const updatedHistory = await window.prism.history.get();
-      setDownloads(updatedHistory);
-    } catch (err) {
-      console.error("Conversion failed", err);
-    } finally {
-      setIsConverting(false);
-    }
+  const handleConvert = () => {
+    if (!item.filePath) return;
+    // Hand the file to the Media Tools workspace, matching the Transcribe
+    // handoff, instead of running a hidden inline conversion.
+    window.localStorage.setItem("prism.mediatools.file", item.filePath);
+    onClose();
+    void navigate({ to: "/media-tools" });
+  };
+
+  const handleTranscribe = () => {
+    if (!item.filePath) return;
+    window.localStorage.setItem("prism.transcription.file", item.filePath);
+    onClose();
+    void navigate({ to: "/transcript" });
   };
 
   const handleCopyTranscript = async () => {
@@ -98,39 +112,47 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
     }
   };
 
+  const handleViewTranscript = () => {
+    if (!item.transcriptPath) return;
+    onClose();
+    void navigate({
+      to: "/transcript/$historyId",
+      params: { historyId: item.id },
+    });
+  };
+
+  const canActOnFile =
+    item.status === "completed" && !!item.filePath && item.format !== "images";
+
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] transition-opacity duration-150 animate-in fade-in"
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity duration-150 animate-in fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className="fixed inset-y-0 right-0 z-50 flex w-[min(360px,calc(100vw-44px))] flex-col border-l border-border-subtle bg-bg-elevated shadow-2xl animate-in slide-in-from-right duration-180 ease-out"
+        className="fixed inset-y-0 right-0 z-50 flex w-[min(380px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border animate-in slide-in-from-right duration-180 ease-out sm:inset-y-3 sm:right-3 sm:rounded-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="history-drawer-title"
       >
-        <div className="flex items-center justify-between p-6 pb-4">
-          <h2
-            id="history-drawer-title"
-            className="text-sm font-semibold text-text-primary"
-          >
+        <div className="flex items-center justify-between px-5 pb-3 pt-5">
+          <h2 id="history-drawer-title" className="text-base font-semibold">
             Details
           </h2>
           <button
             onClick={onClose}
-            className="text-text-tertiary hover:text-text-primary transition-colors"
+            className="icon-button -mr-1.5 h-8 w-8"
             aria-label="Close details"
           >
-            <X size={18} strokeWidth={1.5} />
+            <X size={15} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 pt-0 flex flex-col gap-6">
-          <div className="flex flex-col gap-3">
-            {/* Thumbnail */}
-            <div className="w-full aspect-video bg-bg rounded border border-border-subtle flex items-center justify-center overflow-hidden">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5">
+          <div className="overflow-hidden rounded-2xl bg-bg-subtle shadow-sm">
+            <div className="flex aspect-video w-full items-center justify-center overflow-hidden bg-bg-elevated">
               {item.thumbnail ? (
                 <img
                   src={
@@ -139,24 +161,23 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                       : `local://${encodeURIComponent(item.thumbnail)}`
                   }
                   alt={item.title}
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               ) : (
                 <ImageIcon
-                  size={32}
-                  strokeWidth={1}
-                  className="text-border-subtle"
+                  size={30}
+                  strokeWidth={1.2}
+                  className="text-text-tertiary"
                 />
               )}
             </div>
-
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="shrink-0 rounded bg-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-secondary border border-border">
+            <div className="p-4">
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="shrink-0 rounded-md bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-tertiary shadow-sm">
                   {item.platform}
                 </span>
                 <span
-                  className={`shrink-0 text-[10px] font-medium capitalize ${
+                  className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${
                     item.status === "completed"
                       ? "text-success"
                       : item.status === "failed"
@@ -169,152 +190,137 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                   {item.status}
                 </span>
               </div>
-              <h3 className="text-sm font-medium text-text-primary leading-tight">
+              <h3 className="text-sm font-semibold leading-tight text-text-primary">
                 {item.title}
               </h3>
-              <p className="text-xs text-text-tertiary font-mono truncate mt-1">
+              <p
+                className="mt-1 truncate font-mono text-[10px] text-text-tertiary"
+                title={item.url}
+              >
                 {item.url}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <h4 className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary border-b border-border-subtle pb-2">
+          <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
               Metadata
-            </h4>
-            <div className="grid grid-cols-2 gap-y-3 mt-2">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase text-text-tertiary">
-                  Format
-                </span>
-                <span className="text-xs font-mono text-text-secondary">
-                  {item.mode === "split" ? "SPLIT" : item.format.toUpperCase()}
-                </span>
-              </div>
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+              <InfoCell
+                label="Format"
+                value={
+                  item.mode === "split" ? "SPLIT" : item.format.toUpperCase()
+                }
+              />
               {item.quality && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase text-text-tertiary">
-                    Quality
-                  </span>
-                  <span className="text-xs font-mono text-text-secondary">
-                    {item.quality}
-                  </span>
-                </div>
+                <InfoCell label="Quality" value={item.quality} />
               )}
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase text-text-tertiary">
-                  Date
-                </span>
-                <span className="text-xs font-mono text-text-secondary">
-                  {new Date(item.createdAt).toLocaleDateString()}
-                </span>
-              </div>
+              <InfoCell
+                label="Date"
+                value={new Date(item.createdAt).toLocaleDateString()}
+              />
               {item.mode && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase text-text-tertiary">
-                    Mode
-                  </span>
-                  <span className="text-xs font-mono text-text-secondary">
-                    {item.mode.replace("_", " ")}
-                  </span>
-                </div>
+                <InfoCell label="Mode" value={item.mode.replace("_", " ")} />
               )}
+              {item.size ? (
+                <InfoCell
+                  label="Size"
+                  value={`${(item.size / 1024 / 1024).toFixed(1)} MB`}
+                />
+              ) : null}
               {item.filePaths && item.filePaths.length > 1 && (
-                <div className="flex flex-col gap-1 col-span-2">
-                  <span className="text-[10px] uppercase text-text-tertiary">
-                    Files
-                  </span>
-                  <span className="text-xs font-mono text-text-secondary">
-                    {item.filePaths.length} saved files
-                  </span>
-                </div>
+                <InfoCell
+                  label="Files"
+                  value={`${item.filePaths.length} saved files`}
+                />
               )}
             </div>
-          </div>
+          </section>
 
           {(item.transcriptText ||
             item.transcriptPath ||
             item.transcriptError) && (
-            <div className="flex flex-col gap-3">
-              <h4 className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary border-b border-border-subtle pb-2">
+            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
                 Transcript
-              </h4>
+              </p>
               {item.transcriptText ? (
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-bg p-3 text-xs leading-relaxed text-text-secondary whitespace-pre-wrap">
+                <div className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs leading-relaxed text-text-secondary">
                   {item.transcriptText}
                 </div>
               ) : item.transcriptError ? (
-                <p className="rounded-lg border border-error/20 bg-error/5 p-3 text-xs text-error">
+                <p className="mt-3 rounded-xl bg-error/10 p-3 text-xs text-error">
                   {item.transcriptError}
                 </p>
               ) : (
-                <p className="text-xs text-text-tertiary">
+                <p className="mt-3 text-xs text-text-tertiary">
                   Transcript saved with the downloaded file.
                 </p>
               )}
-              <div className="flex gap-2">
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handleViewTranscript}
+                  disabled={!item.transcriptPath}
+                  className="field-button min-h-10 flex-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <FileText size={13} />
+                  View & edit
+                </button>
                 <button
                   onClick={handleCopyTranscript}
                   disabled={!item.transcriptText}
-                  className="flex h-8 flex-1 items-center justify-center gap-2 rounded border border-border bg-bg text-xs font-medium text-text-primary hover:bg-bg-subtle disabled:opacity-50"
+                  className="field-button min-h-10 flex-1 text-[11px] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Copy size={13} />
                   {copiedTranscript ? "Copied" : "Copy"}
                 </button>
+              </div>
+              {item.transcriptPath && (
                 <button
                   onClick={handleOpenTranscript}
-                  disabled={!item.transcriptPath}
-                  className="flex h-8 flex-1 items-center justify-center gap-2 rounded border border-border bg-bg text-xs font-medium text-text-primary hover:bg-bg-subtle disabled:opacity-50"
+                  className="mt-2 min-h-10 w-full rounded-lg text-[11px] text-text-tertiary transition-[background-color,color,transform] hover:bg-bg hover:text-text-primary active:scale-[0.96]"
                 >
-                  <FileText size={13} />
-                  Reveal
+                  Reveal transcript in folder
                 </button>
-              </div>
-            </div>
+              )}
+            </section>
           )}
 
-          {item.status === "completed" &&
-            item.filePath &&
-            item.format !== "images" && (
-              <div className="flex flex-col gap-3">
-                <h4 className="text-[11px] font-medium uppercase tracking-wider text-text-tertiary border-b border-border-subtle pb-2">
-                  Convert File
-                </h4>
-                <div className="flex gap-2">
-                  <select
-                    value={conversionFormat}
-                    onChange={(e) => setConversionFormat(e.target.value as any)}
-                    className="h-9 flex-1 rounded border border-border bg-bg px-2 text-xs text-text-primary outline-none"
-                  >
-                    <option value="mp4">H.264 MP4</option>
-                    <option value="mov">H.264 MOV</option>
-                    <option value="prores">ProRes</option>
-                    <option value="webm">WebM</option>
-                    <option value="mp3">MP3 audio</option>
-                  </select>
-                  <button
-                    onClick={handleConvert}
-                    disabled={isConverting}
-                    className="h-9 rounded border border-border bg-bg px-3 text-xs font-medium text-text-primary hover:bg-bg-subtle disabled:opacity-50"
-                  >
-                    {isConverting ? "Converting..." : "Convert"}
-                  </button>
-                </div>
-                <p className="text-[10px] text-text-tertiary">
-                  Conversion creates a new file and never overwrites the
-                  original.
-                </p>
+          <div className="mt-auto flex flex-col gap-2">
+            {canActOnFile && (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConvert}
+                  className="field-button min-h-10 flex-1"
+                >
+                  <ArrowRightLeft
+                    size={15}
+                    strokeWidth={1.5}
+                    className="text-text-secondary"
+                  />
+                  Convert
+                </button>
+                <button
+                  onClick={handleTranscribe}
+                  className="field-button min-h-10 flex-1"
+                >
+                  <Mic2
+                    size={15}
+                    strokeWidth={1.5}
+                    className="text-text-secondary"
+                  />
+                  Transcribe
+                </button>
               </div>
             )}
-
-          <div className="flex flex-col gap-2 mt-auto">
             {item.status === "completed" && item.filePath && (
               <button
                 onClick={handleOpenFolder}
-                className="flex items-center gap-3 h-10 px-4 w-full rounded border border-border bg-bg text-sm font-medium text-text-primary hover:bg-bg-subtle transition-colors"
+                className="field-button min-h-10 w-full justify-start px-4"
               >
                 <FolderOpen
-                  size={16}
+                  size={15}
                   strokeWidth={1.5}
                   className="text-text-secondary"
                 />
@@ -324,10 +330,10 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
             {/^https?:\/\//i.test(item.url) && (
               <button
                 onClick={handleRedownload}
-                className="flex h-10 w-full items-center gap-3 rounded border border-border bg-bg px-4 text-sm font-medium text-text-primary transition-colors hover:bg-bg-subtle"
+                className="field-button min-h-10 w-full justify-start px-4"
               >
                 <RefreshCw
-                  size={16}
+                  size={15}
                   strokeWidth={1.5}
                   className="text-text-secondary"
                 />
@@ -337,9 +343,9 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
             {!isActiveJobStatus(item.status) && (
               <button
                 onClick={handleDeleteRecord}
-                className="mt-2 flex h-10 w-full items-center gap-3 rounded border border-error/20 bg-bg px-4 text-sm font-medium text-error transition-colors hover:bg-error/10"
+                className="mt-1 inline-flex min-h-10 w-full items-center gap-1.5 rounded-lg bg-error/10 px-4 text-xs font-medium text-error transition-[background-color,transform] hover:bg-error/15 active:scale-[0.98]"
               >
-                <Trash2 size={16} strokeWidth={1.5} />
+                <Trash2 size={15} strokeWidth={1.5} />
                 Delete Record
               </button>
             )}

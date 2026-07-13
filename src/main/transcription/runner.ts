@@ -10,7 +10,7 @@ import {
   isUsableExecutable,
   describeExecutableProblem,
 } from "../download/utils";
-import { runFfmpeg } from "../download/converter";
+import { estimateEtaSeconds, runFfmpeg } from "../download/converter";
 import {
   JobCancelledError,
   processRegistry,
@@ -19,11 +19,15 @@ import { isJobCancelled, publishJobProgress } from "../download/job-state";
 import { formatStageLabel } from "../../shared/jobs.ts";
 import type { HistoryRecord } from "../../shared/contracts.ts";
 import {
+  parseWhisperProgressPercent,
+  parseWhisperSegmentEndSeconds,
   transcriptionJobError,
   type TranscriptionRequest,
   type TranscriptionResult,
 } from "../../shared/transcription.ts";
-import { findWhisperModel, modelPath, verifyModel } from "./models";
+import { trimDurationSeconds } from "../../shared/time.ts";
+import { findWhisperModel, modelPath, fastVerifyModel } from "./models";
+import { preferredWhisperBinary } from "./gpu-runtime";
 
 function sendHistory(window: Electron.BrowserWindow) {
   if (!window.isDestroyed())
@@ -52,16 +56,18 @@ function transcriptOutputPath(
   return ensureUniquePath(directory, name, outputExtension(request.format));
 }
 
-function parseWhisperProgress(text: string) {
-  const match = text.match(/(?:^|\s)(\d{1,3})%/);
-  return match ? Math.max(0, Math.min(100, Number(match[1]))) : undefined;
+interface WhisperProgressEvent {
+  /** Media time transcribed so far, from segment end timestamps. */
+  processedSeconds?: number;
+  /** Coarse fallback percentage from --print-progress. */
+  percent?: number;
 }
 
 async function runWhisper(
   whisper: string,
   args: string[],
   jobId: string,
-  onProgress: (value?: number) => void,
+  onProgress: (event: WhisperProgressEvent) => void,
 ) {
   if (!isUsableExecutable(whisper))
     throw new Error(describeExecutableProblem("Whisper", whisper));
@@ -75,11 +81,27 @@ async function runWhisper(
     }
     processRegistry.register(jobId, child);
     let stderr = "";
+    let processedSeconds = 0;
     const handle = (data: Buffer | string) => {
       const text = data.toString();
       if (stderr.length < 16_000) stderr += text;
-      const percent = parseWhisperProgress(text);
-      if (percent !== undefined) onProgress(percent);
+      // Prefer the continuous media-time signal from segment lines; only fall
+      // back to the coarse --print-progress percentage when no segments have
+      // been seen (e.g. output configured without timestamps).
+      let sawSegment = false;
+      for (const line of text.split(/\r?\n/)) {
+        const end = parseWhisperSegmentEndSeconds(line);
+        if (end !== undefined && end > processedSeconds) {
+          processedSeconds = end;
+          sawSegment = true;
+        }
+      }
+      if (sawSegment || processedSeconds > 0) {
+        onProgress({ processedSeconds });
+        return;
+      }
+      const percent = parseWhisperProgressPercent(text);
+      if (percent !== undefined) onProgress({ percent });
     };
     child.stdout?.on("data", handle);
     child.stderr?.on("data", handle);
@@ -88,7 +110,7 @@ async function runWhisper(
       if (processRegistry.isCancelled(jobId))
         return reject(new JobCancelledError());
       if (code === 0) {
-        onProgress(100);
+        onProgress({ percent: 100 });
         resolve();
       } else
         reject(
@@ -144,11 +166,19 @@ export async function transcribeLocalFile(
     if (fs.statSync(sourcePath).isDirectory())
       throw new Error("Folders cannot be transcribed. Select a media file.");
     if (!model) throw new Error("Select a supported local Whisper model.");
-    if (!(await verifyModel(model)))
+    if (!(await fastVerifyModel(model)))
       throw new Error(
         `The ${model.displayName} model is not installed or failed verification.`,
       );
-    const { ffmpeg, whisper } = getBinPaths();
+    const { ffmpeg, whisper: bundledWhisper } = getBinPaths();
+    // Prefer the optional CUDA runtime when it is installed and not disabled;
+    // fall back to the bundled CPU binary otherwise.
+    const runtimeSettings = store.get("settings", {}) as Record<
+      string,
+      unknown
+    >;
+    const whisper =
+      preferredWhisperBinary(runtimeSettings.whisperRuntime) || bundledWhisper;
     if (!isUsableExecutable(ffmpeg))
       throw new Error(describeExecutableProblem("FFmpeg", ffmpeg));
     if (!isUsableExecutable(whisper))
@@ -164,19 +194,30 @@ export async function transcribeLocalFile(
       status: "processing",
       stage: "extract_audio",
       patch: {
-        overallProgress: 5,
+        overallProgress: 0,
         stageProgress: 0,
         currentFile: path.basename(sourcePath),
       },
     });
+    // Extraction occupies 0-5% of the job; ffmpeg reports the source duration,
+    // which the transcript stage then uses as its progress denominator.
+    let audioDurationSeconds: number | undefined;
+    const trimDuration = trimDurationSeconds(
+      request.trimStart,
+      request.trimEnd,
+    );
     await runFfmpeg(
       ffmpeg,
       [
         "-y",
         "-hide_banner",
         "-nostats",
+        "-progress",
+        "pipe:1",
+        ...(request.trimStart ? ["-ss", request.trimStart] : []),
         "-i",
         sourcePath,
+        ...(trimDuration ? ["-t", String(trimDuration)] : []),
         "-vn",
         "-ac",
         "1",
@@ -187,7 +228,22 @@ export async function transcribeLocalFile(
         wavPath,
       ],
       wavPath,
-      undefined,
+      (progress, details) => {
+        if (trimDuration) audioDurationSeconds = trimDuration;
+        else if (details?.durationSeconds)
+          audioDurationSeconds = details.durationSeconds;
+        publishJobProgress(window, {
+          jobId: id,
+          jobType: "transcription",
+          status: "processing",
+          stage: "extract_audio",
+          patch: {
+            overallProgress:
+              progress === undefined ? undefined : progress * 0.05,
+            stageProgress: progress,
+          },
+        });
+      },
       { jobId: id },
     );
     if (isJobCancelled(id)) throw new JobCancelledError();
@@ -197,7 +253,7 @@ export async function transcribeLocalFile(
       status: "processing",
       stage: "transcript",
       patch: {
-        overallProgress: 10,
+        overallProgress: 5,
         stageProgress: 0,
         currentFile: path.basename(sourcePath),
       },
@@ -222,7 +278,21 @@ export async function transcribeLocalFile(
     const threads =
       request.threads ?? Number(settings.transcriptionThreads || 0);
     if (threads > 0) args.push("-t", String(threads));
-    await runWhisper(whisper, args, id, (progress) =>
+    const transcriptStartedAt = Date.now();
+    await runWhisper(whisper, args, id, (event) => {
+      const elapsedSeconds = (Date.now() - transcriptStartedAt) / 1000;
+      // Same model as ffmpeg transcodes: media time processed over total media
+      // time gives a smooth percentage; speed and ETA fall out of it directly.
+      const stageProgress =
+        event.processedSeconds !== undefined &&
+        audioDurationSeconds &&
+        audioDurationSeconds > 0
+          ? Math.min(100, (event.processedSeconds / audioDurationSeconds) * 100)
+          : event.percent;
+      const speedMultiplier =
+        event.processedSeconds !== undefined && elapsedSeconds > 0
+          ? event.processedSeconds / elapsedSeconds
+          : undefined;
       publishJobProgress(window, {
         jobId: id,
         jobType: "transcription",
@@ -230,11 +300,22 @@ export async function transcribeLocalFile(
         stage: "transcript",
         patch: {
           overallProgress:
-            progress === undefined ? undefined : 10 + progress * 0.85,
-          stageProgress: progress,
+            stageProgress === undefined ? undefined : 5 + stageProgress * 0.95,
+          stageProgress,
+          processedSeconds: event.processedSeconds,
+          durationSeconds: audioDurationSeconds,
+          speedMultiplier,
+          etaSeconds: estimateEtaSeconds(
+            stageProgress,
+            elapsedSeconds,
+            event.processedSeconds,
+            audioDurationSeconds,
+            speedMultiplier,
+          ),
         },
-      }),
-    );
+        elapsedSeconds,
+      });
+    });
     const generatedOutput = `${outputPath.slice(0, -path.extname(outputPath).length)}.${request.format}`;
     actualOutput = generatedOutput;
     if (!fs.existsSync(generatedOutput))

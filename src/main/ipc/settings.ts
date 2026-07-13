@@ -2,6 +2,12 @@ import { ipcMain, dialog, BrowserWindow } from "electron";
 import { store, defaultSettings } from "../store";
 import { autoUpdater } from "electron-updater";
 import { parseSettingsPatch } from "../../shared/ipc-schemas.ts";
+import { getHardwareProfile, optimizedSettingsFor } from "../hardware";
+import { clearThumbnailCache, getThumbnailCacheInfo } from "../thumbnails";
+import {
+  getYtDlpUpdateState,
+  installLatestYtDlp,
+} from "../download/ytdlp-updater";
 
 function cleanSettings(settings: Record<string, unknown>) {
   return Object.fromEntries(
@@ -27,6 +33,12 @@ export function setupSettingsIPC() {
     "settings:checkForUpdates",
     "settings:downloadUpdate",
     "settings:quitAndInstall",
+    "settings:hardwareProfile",
+    "settings:optimizeForDevice",
+    "settings:thumbnailCacheInfo",
+    "settings:clearThumbnails",
+    "settings:ytdlpUpdateState",
+    "settings:updateYtdlp",
   ]) {
     ipcMain.removeHandler(channel);
   }
@@ -47,6 +59,31 @@ export function setupSettingsIPC() {
     store.set("settings", updated);
     return settingsForRenderer(updated);
   });
+
+  ipcMain.handle("settings:hardwareProfile", () => getHardwareProfile());
+
+  ipcMain.handle("settings:optimizeForDevice", async () => {
+    const profile = await getHardwareProfile();
+    const tuned = optimizedSettingsFor(profile);
+    const current = {
+      ...defaultSettings,
+      ...(store.get("settings", {}) as Record<string, unknown>),
+    };
+    const updated = cleanSettings({ ...current, ...tuned });
+    store.set("settings", updated);
+    return { profile, applied: tuned, settings: settingsForRenderer(updated) };
+  });
+
+  ipcMain.handle("settings:thumbnailCacheInfo", () => getThumbnailCacheInfo());
+
+  ipcMain.handle("settings:clearThumbnails", async () => {
+    await clearThumbnailCache();
+    return getThumbnailCacheInfo();
+  });
+  ipcMain.handle("settings:ytdlpUpdateState", (_, checkLatest) =>
+    getYtDlpUpdateState(Boolean(checkLatest)),
+  );
+  ipcMain.handle("settings:updateYtdlp", () => installLatestYtDlp());
 
   ipcMain.handle("settings:selectDirectory", async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);

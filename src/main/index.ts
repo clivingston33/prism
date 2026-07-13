@@ -10,6 +10,8 @@ import { setupUpdater, setUpdaterMainWindow } from "./updater";
 import { store } from "./store";
 import { queueManager } from "./download/queue";
 import { setupTranscriptionIPC } from "./ipc/transcription";
+import { maybeAutoUpdateYtDlp } from "./download/ytdlp-updater";
+import { resolveMediaPreview } from "./media-preview";
 
 // Register custom protocol scheme
 protocol.registerSchemesAsPrivileged([
@@ -20,6 +22,15 @@ protocol.registerSchemesAsPrivileged([
       standard: true,
       supportFetchAPI: true,
       bypassCSP: false,
+    },
+  },
+  {
+    scheme: "prism-media",
+    privileges: {
+      secure: true,
+      standard: true,
+      stream: true,
+      supportFetchAPI: true,
     },
   },
 ]);
@@ -126,6 +137,18 @@ app.whenReady().then(() => {
     }
     return new Response("Not found", { status: 404 });
   });
+  protocol.handle("prism-media", async (request) => {
+    const token = new URL(request.url).hostname;
+    const filePath = resolveMediaPreview(token);
+    if (!filePath) return new Response("Not found", { status: 404 });
+    try {
+      return net.fetch(pathToFileURL(filePath).toString(), {
+        headers: request.headers,
+      });
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+  });
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
@@ -133,6 +156,14 @@ app.whenReady().then(() => {
 
   createWindow();
   setupUpdater();
+  // Off the critical path: remove orphaned/over-cap thumbnails from previous
+  // sessions without blocking window creation.
+  setTimeout(() => {
+    void import("./thumbnails").then(({ pruneThumbnailCache }) =>
+      pruneThumbnailCache().catch(() => undefined),
+    );
+  }, 5000);
+  setTimeout(() => void maybeAutoUpdateYtDlp(), 10_000);
 
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

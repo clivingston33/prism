@@ -1,12 +1,14 @@
 import { app } from "electron";
 import crypto from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import https from "https";
-import type {
-  ModelDownloadProgress,
-  WhisperModelDescriptor,
-  WhisperModelState,
+import {
+  recommendedModelId,
+  type ModelDownloadProgress,
+  type WhisperModelDescriptor,
+  type WhisperModelState,
 } from "../../shared/transcription.ts";
 
 // Model files are pinned by their upstream SHA-1 values. The manifest version
@@ -95,7 +97,7 @@ export const WHISPER_MODELS: readonly WhisperModelDescriptor[] = [
 
 const activeDownloads = new Map<string, AbortController>();
 
-function openModelResponse(
+export function openModelResponse(
   url: string,
   headers: Record<string, string> | undefined,
   signal: AbortSignal,
@@ -162,13 +164,97 @@ async function verifyModelFile(model: WhisperModelDescriptor, target: string) {
   }
 }
 
+/**
+ * A tiny sidecar recording that a specific on-disk file (identified by size and
+ * modification time) already passed SHA-1 verification. Re-hashing a 1.5 GB
+ * model on every `listModels` call costs ~20 seconds and makes the Transcribe
+ * page appear frozen; with the marker present that check becomes a single stat.
+ */
+interface VerificationMarker {
+  size: number;
+  mtimeMs: number;
+  sha1: string;
+}
+
+function markerPath(target: string) {
+  return `${target}.ok`;
+}
+
+async function readMarker(target: string): Promise<VerificationMarker | null> {
+  try {
+    const parsed = JSON.parse(
+      await fs.promises.readFile(markerPath(target), "utf8"),
+    ) as VerificationMarker;
+    if (
+      typeof parsed.size === "number" &&
+      typeof parsed.mtimeMs === "number" &&
+      typeof parsed.sha1 === "string"
+    )
+      return parsed;
+  } catch {
+    // No or unreadable marker.
+  }
+  return null;
+}
+
+async function writeMarker(target: string, sha1: string) {
+  try {
+    const stat = await fs.promises.stat(target);
+    const marker: VerificationMarker = {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      sha1,
+    };
+    await fs.promises.writeFile(markerPath(target), JSON.stringify(marker));
+  } catch {
+    // A missing marker only costs a future re-hash; never fatal.
+  }
+}
+
+/**
+ * Fast integrity check that trusts a matching verification marker and only
+ * falls back to a full hash when the marker is missing or stale (writing a
+ * fresh marker when the hash passes). Use this everywhere a model just needs to
+ * be confirmed present; the explicit "Verify" action still forces a full hash.
+ */
+export async function fastVerifyModel(model: WhisperModelDescriptor) {
+  const target = modelPath(model);
+  try {
+    const stat = await fs.promises.stat(target);
+    if (!stat.isFile() || stat.size < 1024) return false;
+    const marker = await readMarker(target);
+    if (
+      marker &&
+      marker.size === stat.size &&
+      marker.mtimeMs === stat.mtimeMs &&
+      marker.sha1 === model.sha1
+    )
+      return true;
+    const ok = (await sha1File(target)) === model.sha1;
+    if (ok) await writeMarker(target, model.sha1);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyModel(model: WhisperModelDescriptor) {
-  return verifyModelFile(model, modelPath(model));
+  const ok = await verifyModelFile(model, modelPath(model));
+  if (ok) await writeMarker(modelPath(model), model.sha1);
+  return ok;
 }
 
 export async function getModelStates(): Promise<WhisperModelState[]> {
+  // Lazy import to avoid a static cycle (gpu-runtime imports the download
+  // helper from this module).
+  const { getGpuRuntimeState } = await import("./gpu-runtime.ts");
+  const recommendedId = recommendedModelId(
+    os.totalmem(),
+    os.cpus()?.length || 1,
+    getGpuRuntimeState().status === "installed",
+  );
   return Promise.all(
-    WHISPER_MODELS.map(async (model) => {
+    WHISPER_MODELS.map(async (model): Promise<WhisperModelState> => {
       const target = modelPath(model);
       const part = `${target}.part`;
       const running = activeDownloads.has(model.id);
@@ -186,7 +272,7 @@ export async function getModelStates(): Promise<WhisperModelState[]> {
           bytesDownloaded,
         };
       }
-      if (await verifyModel(model)) {
+      if (await fastVerifyModel(model)) {
         return {
           ...model,
           status: "installed",
@@ -217,6 +303,11 @@ export async function getModelStates(): Promise<WhisperModelState[]> {
       }
       return { ...model, status: "not-installed", path: target };
     }),
+  ).then((states) =>
+    states.map((state) => ({
+      ...state,
+      recommended: state.id === recommendedId,
+    })),
   );
 }
 
@@ -305,6 +396,8 @@ export async function downloadModel(
       throw new Error("Whisper model checksum verification failed.");
     await fs.promises.rm(target, { force: true });
     await fs.promises.rename(part, target);
+    // Record the passing hash so later listings skip the expensive re-hash.
+    await writeMarker(target, model.sha1);
     emitProgress(window, {
       modelId,
       status: "installed",
@@ -348,5 +441,6 @@ export async function deleteModel(modelId: string) {
   await fs.promises.rm(modelPath(model), { force: true });
   await fs.promises.rm(`${modelPath(model)}.part`, { force: true });
   await fs.promises.rm(`${modelPath(model)}.failed`, { force: true });
+  await fs.promises.rm(markerPath(modelPath(model)), { force: true });
   return getModelStates();
 }

@@ -81,6 +81,24 @@ export function SettingsPage() {
   const [section, setSection] = useState<Section>("Downloads");
   const [models, setModels] = useState<WhisperModelState[]>([]);
   const [updateMessage, setUpdateMessage] = useState("");
+  const [ytdlpUpdate, setYtdlpUpdate] = useState<YtDlpUpdateState | null>(null);
+  const [optimizeSummary, setOptimizeSummary] = useState("");
+  const [thumbCache, setThumbCache] = useState<{
+    sizeBytes: number;
+    fileCount: number;
+  } | null>(null);
+  const optimizeForDevice = async () => {
+    const result = await window.prism.settings.optimizeForDevice();
+    setSettings(result.settings);
+    const gb = Math.round(result.profile.totalMemoryBytes / 1024 ** 3);
+    setOptimizeSummary(
+      `Tuned for ${result.profile.cpuModel} (${result.profile.cpuCores} cores, ${gb} GB RAM${
+        result.profile.gpus.length
+          ? `, ${result.profile.gpus.map((gpu) => gpu.name).join(" + ")}`
+          : ""
+      }).`,
+    );
+  };
   const update = async (key: string, value: unknown) => {
     const next = await window.prism.settings.update({ [key]: value });
     setSettings(next);
@@ -88,6 +106,10 @@ export function SettingsPage() {
   useEffect(() => {
     if (section === "Transcription")
       void window.prism.transcription.listModels().then(setModels);
+    if (section === "Library")
+      void window.prism.settings.thumbnailCacheInfo().then(setThumbCache);
+    if (section === "Advanced")
+      void window.prism.settings.ytdlpUpdateState().then(setYtdlpUpdate);
   }, [section]);
   if (!settings)
     return (
@@ -193,6 +215,17 @@ export function SettingsPage() {
           >
             Restore recommended defaults
           </button>
+          <button
+            className="button-primary ml-2 mt-4"
+            onClick={() => void optimizeForDevice()}
+          >
+            Optimize for this device
+          </button>
+          {optimizeSummary && (
+            <p className="mt-3 text-xs text-text-secondary">
+              {optimizeSummary}
+            </p>
+          )}
         </Panel>
       );
     if (section === "Media Tools")
@@ -237,6 +270,16 @@ export function SettingsPage() {
             value={settings.mediaToolsPreserveAllTracks !== false}
             onChange={(v) => void update("mediaToolsPreserveAllTracks", v)}
           />
+          <Select
+            label="Hardware acceleration"
+            value={value("hardwareAcceleration", "auto")}
+            options={[
+              ["auto", "Auto — use GPU encoder when available"],
+              ["off", "Off — always use the CPU encoder"],
+            ]}
+            onChange={(v) => void update("hardwareAcceleration", v)}
+            help="Uses your GPU (NVENC, Quick Sync, or AMF) to convert far faster. Turn off if a conversion fails or the output looks wrong."
+          />
         </Panel>
       );
     if (section === "Library")
@@ -261,6 +304,26 @@ export function SettingsPage() {
             value={settings.generateThumbnails !== false}
             onChange={(v) => void update("generateThumbnails", v)}
           />
+          <div className="flex items-center justify-between border-b border-border py-3 last:border-0">
+            <span>
+              <span className="block text-sm text-text-primary">
+                Thumbnail cache
+              </span>
+              <span className="mt-1 block text-xs text-text-tertiary">
+                {thumbCache
+                  ? `${(thumbCache.sizeBytes / 1024 / 1024).toFixed(1)} MB · ${thumbCache.fileCount} files. Orphans are pruned automatically at startup.`
+                  : "Calculating…"}
+              </span>
+            </span>
+            <button
+              className="button-secondary"
+              onClick={() =>
+                void window.prism.settings.clearThumbnails().then(setThumbCache)
+              }
+            >
+              Clear
+            </button>
+          </div>
           <button
             className="button-secondary mt-4"
             onClick={() => void window.prism.history.removeMissing()}
@@ -280,6 +343,16 @@ export function SettingsPage() {
             value={value("transcriptionModelId", "base")}
             options={models.map((model) => [model.id, model.displayName])}
             onChange={(v) => void update("transcriptionModelId", v)}
+          />
+          <Select
+            label="Whisper runtime"
+            value={value("whisperRuntime", "auto")}
+            options={[
+              ["auto", "Auto — GPU runtime when installed"],
+              ["cpu", "CPU only"],
+            ]}
+            onChange={(v) => void update("whisperRuntime", v)}
+            help="The GPU runtime (NVIDIA) is installed from the model manager on the Transcription page."
           />
           <Select
             label="Default language"
@@ -364,6 +437,12 @@ export function SettingsPage() {
             ]}
             onChange={(v) => void update("theme", v)}
           />
+          <Toggle
+            label="Watch clipboard for links"
+            value={settings.watchClipboard !== false}
+            onChange={(v) => void update("watchClipboard", v)}
+            help="Offers to download a supported link found on your clipboard while the Download page is open. Nothing is read in the background."
+          />
         </Panel>
       );
     return (
@@ -384,6 +463,69 @@ export function SettingsPage() {
               Validated when used
             </span>
           </div>
+        </div>
+        <div className="mt-5 rounded-xl bg-bg p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">
+                yt-dlp runtime
+              </h3>
+              <p className="mt-1 text-xs text-text-tertiary [text-wrap:pretty]">
+                Prism verifies the official release against SHA2-256SUMS and
+                keeps the previous binary if verification fails.
+              </p>
+            </div>
+            <span className="rounded-lg bg-bg-subtle px-2 py-1 font-mono text-[10px] tabular-nums text-text-secondary">
+              {ytdlpUpdate?.currentVersion || "Bundled"}
+            </span>
+          </div>
+          <Toggle
+            label="Install yt-dlp updates weekly"
+            value={settings.autoUpdateYtdlp !== false}
+            onChange={(enabled) => void update("autoUpdateYtdlp", enabled)}
+            help="Checks the official stable release in the background. Failed updates never replace the working copy."
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              className="button-secondary min-h-10 active:scale-[0.96]"
+              disabled={
+                ytdlpUpdate?.status === "checking" ||
+                ytdlpUpdate?.status === "downloading"
+              }
+              onClick={() =>
+                void window.prism.settings
+                  .ytdlpUpdateState(true)
+                  .then(setYtdlpUpdate)
+              }
+            >
+              {ytdlpUpdate?.status === "checking"
+                ? "Checking…"
+                : "Check yt-dlp"}
+            </button>
+            {(ytdlpUpdate?.status === "available" ||
+              ytdlpUpdate?.status === "failed") && (
+              <button
+                className="button-primary min-h-10 active:scale-[0.96]"
+                onClick={() => {
+                  setYtdlpUpdate((current) => ({
+                    ...(current || { status: "idle" }),
+                    status: "downloading",
+                  }));
+                  void window.prism.settings.updateYtdlp().then(setYtdlpUpdate);
+                }}
+              >
+                {ytdlpUpdate.latestVersion
+                  ? `Install ${ytdlpUpdate.latestVersion}`
+                  : "Retry update"}
+              </button>
+            )}
+          </div>
+          {ytdlpUpdate?.status === "installed" && (
+            <p className="mt-2 text-xs text-success">yt-dlp is up to date.</p>
+          )}
+          {ytdlpUpdate?.error && (
+            <p className="mt-2 text-xs text-error">{ytdlpUpdate.error}</p>
+          )}
         </div>
         <button
           className="button-secondary mt-5"
@@ -430,7 +572,7 @@ export function SettingsPage() {
               <button
                 key={entry}
                 onClick={() => setSection(entry)}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm ${entry === section ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-surface-raised hover:text-text-primary"}`}
+                className={`w-full rounded-lg px-3 py-2 text-left text-sm ${entry === section ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"}`}
               >
                 {entry}
                 {entry === "Transcription" && (
@@ -459,7 +601,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border bg-surface p-5">
+    <section className="rounded-2xl bg-bg-subtle p-5 shadow-sm">
       <h2 className="font-medium text-text-primary">{title}</h2>
       <p className="mt-1 text-sm text-text-tertiary">{description}</p>
       <div className="mt-4">{children}</div>

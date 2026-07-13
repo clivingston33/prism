@@ -8,6 +8,8 @@ import {
   StreamLineBuffer,
 } from "./progress";
 import { JobCancelledError, processRegistry } from "./process-registry";
+import { getHardwareVideoEncoder, type HardwareEncoder } from "./hwaccel";
+import { trimDurationSeconds } from "../../shared/time.ts";
 
 export interface FfmpegProgress {
   progress?: number;
@@ -26,7 +28,11 @@ export interface ConvertMediaOptions {
   audioBitrate?: string;
   fps?: string;
   durationSeconds?: number;
+  trimStart?: string;
+  trimEnd?: string;
   jobId?: string;
+  /** "auto" (default) uses a GPU encoder when one is usable; "off" forces CPU. */
+  hardwareAcceleration?: "auto" | "off";
   onProgress?: (progress: number | undefined, details?: FfmpegProgress) => void;
 }
 
@@ -116,10 +122,25 @@ function mapArgsForMode(mode: ConvertMediaOptions["mode"] = "video_audio") {
   return ["-map", "0:v:0?", "-map", "0:a:0?"];
 }
 
+/** The video codec that will actually be used, after auto/copy resolution. */
+function resolveVideoCodec(
+  format: string,
+  options: ConvertMediaOptions,
+): string {
+  const requested =
+    options.videoCodec === "auto" || !options.videoCodec
+      ? defaultVideoCodec(format)
+      : options.videoCodec;
+  return requested === "copy" && hasVideoFilter(options)
+    ? defaultVideoCodec(format)
+    : requested;
+}
+
 function codecArgsForFormat(
   format: string,
   mode: ConvertMediaOptions["mode"] = "video_audio",
   options: ConvertMediaOptions = {},
+  hwEncoder: HardwareEncoder | null = null,
 ) {
   const audioBitrate = options.audioBitrate || "192k";
 
@@ -143,20 +164,12 @@ function codecArgsForFormat(
     ];
   }
 
-  const requestedVideoCodec =
-    options.videoCodec === "auto" || !options.videoCodec
-      ? defaultVideoCodec(format)
-      : options.videoCodec;
   const requestedAudioCodec =
     options.audioCodec === "auto" || !options.audioCodec
       ? defaultAudioCodec(format)
       : options.audioCodec;
-  const filtered = hasVideoFilter(options);
 
-  const videoCodec =
-    requestedVideoCodec === "copy" && filtered
-      ? defaultVideoCodec(format)
-      : requestedVideoCodec;
+  const videoCodec = resolveVideoCodec(format, options);
 
   const args = [...mapArgsForMode(mode), ...videoFilterArgs(options)];
 
@@ -170,6 +183,12 @@ function codecArgsForFormat(
       "3",
       "-pix_fmt",
       "yuv422p10le",
+    );
+  } else if (hwEncoder && (videoCodec === "h264" || videoCodec === "h265")) {
+    // A usable GPU encoder was detected for this family — many times faster
+    // than the libx26x software path at comparable quality.
+    args.push(
+      ...hwEncoder.codecArgs(options.crf ?? (videoCodec === "h265" ? 22 : 18)),
     );
   } else if (videoCodec === "h265") {
     args.push(
@@ -268,6 +287,42 @@ function videoFilterArgs(options: ConvertMediaOptions) {
   if (options.fps && options.fps !== "source")
     filters.push(`fps=${options.fps}`);
   return filters.length ? ["-vf", filters.join(",")] : [];
+}
+
+/**
+ * Estimates wall-clock seconds remaining for a time-based job (transcode or
+ * transcription). Prefers the media-time model — remaining media divided by the
+ * current encode speed multiplier — which is what FFmpeg's own ETA uses and is
+ * far steadier than a raw percentage extrapolation; falls back to
+ * elapsed/percent when the media timing is unavailable.
+ */
+export function estimateEtaSeconds(
+  progress: number | undefined,
+  elapsedSeconds: number | undefined,
+  processedSeconds: number | undefined,
+  durationSeconds: number | undefined,
+  speedMultiplier: number | undefined,
+): number | undefined {
+  if (
+    processedSeconds !== undefined &&
+    durationSeconds !== undefined &&
+    durationSeconds > 0 &&
+    speedMultiplier !== undefined &&
+    speedMultiplier > 0
+  ) {
+    const remainingMedia = Math.max(0, durationSeconds - processedSeconds);
+    return remainingMedia / speedMultiplier;
+  }
+  if (
+    progress !== undefined &&
+    progress > 1 &&
+    progress < 100 &&
+    elapsedSeconds !== undefined &&
+    elapsedSeconds > 0
+  ) {
+    return (elapsedSeconds * (100 - progress)) / progress;
+  }
+  return undefined;
 }
 
 export function runFfmpeg(
@@ -383,15 +438,34 @@ export async function convertMedia(
 ) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
+  // Detect a GPU encoder for the codec we are about to use. Only h264/h265
+  // have hardware paths; other codecs and copy/prores skip detection entirely.
+  let hwEncoder: HardwareEncoder | null = null;
+  if (options.hardwareAcceleration !== "off") {
+    const videoCodec = resolveVideoCodec(format, options);
+    if (videoCodec === "h264" || videoCodec === "h265") {
+      hwEncoder = await getHardwareVideoEncoder(
+        ffmpeg,
+        videoCodec === "h265" ? "h265" : "h264",
+      );
+    }
+  }
+
+  const trimDuration = trimDurationSeconds(options.trimStart, options.trimEnd);
   const args = [
     "-y",
     "-hide_banner",
     "-nostats",
     "-progress",
     "pipe:1",
+    ...(options.trimStart ? ["-ss", options.trimStart] : []),
     "-i",
     inputPath,
-    ...codecArgsForFormat(format, options.mode, options),
+    ...(trimDuration ? ["-t", String(trimDuration)] : []),
+    ...codecArgsForFormat(format, options.mode, options, hwEncoder),
+    // Let the software encoders use every core; ignored by GPU encoders.
+    "-threads",
+    "0",
     outputPath,
   ];
 

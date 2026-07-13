@@ -41,6 +41,11 @@ test("parseDownloadRequest returns a typed request and strips unknown fields", (
     transcriptFormat: "srt",
     trimStart: "1:30",
     trimEnd: "00:02:45.5",
+    playlistId: "playlist-1",
+    playlistTitle: "A playlist",
+    playlistIndex: 2,
+    playlistCount: 12,
+    playlistEntryTitle: "Episode two",
     __proto__injected: "x",
     extra: "dropped",
   });
@@ -53,6 +58,11 @@ test("parseDownloadRequest returns a typed request and strips unknown fields", (
     transcriptFormat: "srt",
     trimStart: "1:30",
     trimEnd: "00:02:45.5",
+    playlistId: "playlist-1",
+    playlistTitle: "A playlist",
+    playlistIndex: 2,
+    playlistCount: 12,
+    playlistEntryTitle: "Episode two",
   });
 });
 
@@ -106,11 +116,15 @@ test("parseConversionRequest validates shape and numeric fields", () => {
     crf: "23",
     videoHeight: 1080,
     fps: "30",
+    trimStart: "00:00:05",
+    trimEnd: "00:00:10",
   });
   assert.equal(parsed.filePath, "C:\\media\\input.mov");
   assert.equal(parsed.format, "mp4");
   assert.equal(parsed.crf, 23);
   assert.equal(parsed.videoHeight, 1080);
+  assert.equal(parsed.trimStart, "00:00:05");
+  assert.equal(parsed.trimEnd, "00:00:10");
 
   assert.throws(
     () => parseConversionRequest({ filePath: "", format: "mp4" }),

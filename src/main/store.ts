@@ -18,6 +18,7 @@ export const defaultSettings = {
   downloadSpeedLimit: "",
   lowResourceMode: false,
   defaultMediaToolsMode: "remux",
+  hardwareAcceleration: "auto",
   defaultRemuxContainer: "auto",
   mediaToolsPreserveMetadata: true,
   mediaToolsPreserveChapters: true,
@@ -30,6 +31,10 @@ export const defaultSettings = {
   transcriptionSaveBesideSource: true,
   transcriptionDirectory: "",
   transcriptionThreads: 0,
+  whisperRuntime: "auto",
+  watchClipboard: true,
+  autoUpdateYtdlp: true,
+  lastYtDlpUpdateCheck: 0,
   theme: "system",
 } as const satisfies Record<string, unknown>;
 

@@ -242,8 +242,53 @@ export function parseDownloadRequest(value: unknown): DownloadRequest {
   if (transcriptFormat !== undefined) {
     request.transcriptFormat = transcriptFormat;
   }
+  if (raw.subtitleLanguages !== undefined) {
+    const languages = requireString(
+      raw.subtitleLanguages,
+      "subtitleLanguages",
+    ).trim();
+    // A yt-dlp --sub-langs expression: language codes, wildcards, and
+    // exclusions only, never arbitrary flag content.
+    if (!/^[A-Za-z0-9.,*-]{1,100}$/.test(languages))
+      throw new Error("Subtitle languages contain unsupported characters.");
+    request.subtitleLanguages = languages;
+  }
   if (trimStart !== undefined) request.trimStart = trimStart;
   if (trimEnd !== undefined) request.trimEnd = trimEnd;
+  const playlistId = optionalString(raw.playlistId, "playlistId")?.trim();
+  const playlistTitle = optionalString(
+    raw.playlistTitle,
+    "playlistTitle",
+  )?.trim();
+  const playlistEntryTitle = optionalString(
+    raw.playlistEntryTitle,
+    "playlistEntryTitle",
+  )?.trim();
+  const playlistIndex = optionalFiniteNumber(
+    raw.playlistIndex,
+    "playlistIndex",
+  );
+  const playlistCount = optionalFiniteNumber(
+    raw.playlistCount,
+    "playlistCount",
+  );
+  if (playlistId) request.playlistId = playlistId.slice(0, 300);
+  if (playlistTitle) request.playlistTitle = playlistTitle.slice(0, 300);
+  if (playlistEntryTitle)
+    request.playlistEntryTitle = playlistEntryTitle.slice(0, 500);
+  if (playlistIndex !== undefined)
+    request.playlistIndex = Math.max(1, Math.round(playlistIndex));
+  if (playlistCount !== undefined)
+    request.playlistCount = Math.max(
+      1,
+      Math.min(5000, Math.round(playlistCount)),
+    );
+  const playlistDirectory = optionalBoolean(
+    raw.playlistDirectory,
+    "playlistDirectory",
+  );
+  if (playlistDirectory !== undefined)
+    request.playlistDirectory = playlistDirectory;
   return request;
 }
 
@@ -268,6 +313,8 @@ export function parseConversionRequest(value: unknown): ConversionRequest {
   const crf = optionalFiniteNumber(raw.crf, "crf");
   const audioBitrate = optionalString(raw.audioBitrate, "audioBitrate");
   const fps = optionalString(raw.fps, "fps");
+  const conversionTrimStart = optionalTimestamp(raw.trimStart, "trimStart");
+  const conversionTrimEnd = optionalTimestamp(raw.trimEnd, "trimEnd");
   if (sourceItemId !== undefined) request.sourceItemId = sourceItemId;
   if (outputDirectory !== undefined) request.outputDirectory = outputDirectory;
   if (outputFileName !== undefined) request.outputFileName = outputFileName;
@@ -281,6 +328,9 @@ export function parseConversionRequest(value: unknown): ConversionRequest {
   if (crf !== undefined) request.crf = crf;
   if (audioBitrate !== undefined) request.audioBitrate = audioBitrate;
   if (fps !== undefined) request.fps = fps;
+  if (conversionTrimStart !== undefined)
+    request.trimStart = conversionTrimStart;
+  if (conversionTrimEnd !== undefined) request.trimEnd = conversionTrimEnd;
   return request;
 }
 
@@ -406,6 +456,8 @@ export function parseTranscriptionRequest(
     saveBesideSource: optionalBoolean(raw.saveBesideSource, "saveBesideSource"),
     outputDirectory: optionalString(raw.outputDirectory, "outputDirectory"),
     threads,
+    trimStart: optionalTimestamp(raw.trimStart, "trimStart"),
+    trimEnd: optionalTimestamp(raw.trimEnd, "trimEnd"),
   };
 }
 
@@ -455,6 +507,8 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
       ["auto", "mkv", "mp4", "mov", "webm", "m4a"] as const,
       "defaultRemuxContainer",
     ),
+  hardwareAcceleration: (value) =>
+    requireEnum(value, ["auto", "off"] as const, "hardwareAcceleration"),
   mediaToolsPreserveMetadata: (value) =>
     optionalBoolean(value, "mediaToolsPreserveMetadata"),
   mediaToolsPreserveChapters: (value) =>
@@ -483,6 +537,12 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
     requireString(value, "transcriptionDirectory"),
   transcriptionThreads: (value) =>
     clampInteger(value, "transcriptionThreads", 0, 64),
+  whisperRuntime: (value) =>
+    requireEnum(value, ["auto", "cpu"] as const, "whisperRuntime"),
+  watchClipboard: (value) => optionalBoolean(value, "watchClipboard"),
+  autoUpdateYtdlp: (value) => optionalBoolean(value, "autoUpdateYtdlp"),
+  lastYtDlpUpdateCheck: (value) =>
+    Math.max(0, optionalFiniteNumber(value, "lastYtDlpUpdateCheck") || 0),
   theme: (value) =>
     requireEnum(value, ["system", "light", "dark"] as const, "theme"),
 };

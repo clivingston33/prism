@@ -1,4 +1,12 @@
-import { X, RotateCw, Play, Folder, Trash2 } from "lucide-react";
+import {
+  X,
+  RotateCw,
+  Play,
+  Folder,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
 
@@ -19,14 +27,36 @@ function formatEta(seconds: number) {
   return minutes > 0 ? `${minutes}m ${secs}s` : `${secs}s`;
 }
 
+function formatClock(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${minutes}:${String(secs).padStart(2, "0")}`;
+}
+
 function activityLine(item: DownloadItem) {
   const parts: string[] = [];
   if (item.stageLabel) parts.push(item.stageLabel);
+  // Download transfer rate (bytes/s), only relevant while downloading.
   if (item.speedBytesPerSecond && item.speedBytesPerSecond > 0) {
     parts.push(`${formatBytes(item.speedBytesPerSecond)}/s`);
   }
+  // Encode/transcribe rate relative to real time (e.g. 2.4× speed).
+  if (item.speedMultiplier && item.speedMultiplier > 0) {
+    parts.push(`${item.speedMultiplier.toFixed(1)}× speed`);
+  }
   if (item.etaSeconds !== undefined && item.etaSeconds > 0) {
     parts.push(`ETA ${formatEta(item.etaSeconds)}`);
+  }
+  // Media time processed, for time-based jobs (transcode/transcription).
+  if (
+    item.processedSeconds !== undefined &&
+    item.durationSeconds !== undefined &&
+    item.durationSeconds > 0
+  ) {
+    parts.push(
+      `${formatClock(item.processedSeconds)} / ${formatClock(item.durationSeconds)}`,
+    );
   }
   // When the total is unknown, show live downloaded bytes instead of a
   // made-up percentage.
@@ -57,9 +87,12 @@ function timeAgo(dateStr: string) {
 export function RowCard({
   item,
   compact = false,
+  onMoveInQueue,
 }: {
   item: DownloadItem;
   compact?: boolean;
+  /** Present only for still-queued items; -1 moves it earlier, 1 later. */
+  onMoveInQueue?: (direction: -1 | 1) => void;
 }) {
   const { setDownloads } = useAppStore();
   const isDownloading = isActiveJobStatus(item.status);
@@ -139,6 +172,32 @@ export function RowCard({
             {item.status}
           </span>
           <div className="absolute right-0 top-1/2 -translate-y-1/2 flex translate-x-2 gap-1.5 rounded-l-2xl bg-bg-subtle pl-4 pr-3 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
+            {item.status === "queued" && onMoveInQueue && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveInQueue(-1);
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  title="Move up in queue"
+                  aria-label={`Move ${item.title || "job"} up in queue`}
+                >
+                  <ChevronUp size={14} strokeWidth={2} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveInQueue(1);
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  title="Move down in queue"
+                  aria-label={`Move ${item.title || "job"} down in queue`}
+                >
+                  <ChevronDown size={14} strokeWidth={2} />
+                </button>
+              </>
+            )}
             {isDownloading && (
               <button
                 onClick={handleCancel}

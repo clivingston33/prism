@@ -55,6 +55,19 @@ test("trim options add keyframe-accurate download sections only when set", () =>
   assert.ok(trimmed.includes("--force-keyframes-at-cuts"));
 });
 
+test("subtitle flags appear only when subtitles are requested", () => {
+  assert.ok(!base().includes("--write-subs"));
+  const args = buildBaseYtDlpFlags({
+    tempDir: "C:\\tmp\\job",
+    concurrentFragments: 8,
+    subtitles: { languages: "en.*", format: "srt" },
+  });
+  assert.ok(args.includes("--write-subs"));
+  assert.ok(args.includes("--write-auto-subs"));
+  assert.equal(args[args.indexOf("--sub-langs") + 1], "en.*");
+  assert.equal(args[args.indexOf("--convert-subs") + 1], "srt");
+});
+
 test("no encoder or recode flags ever appear in the base args", () => {
   const joined = base().join(" ");
   for (const token of [

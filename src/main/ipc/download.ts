@@ -1,9 +1,11 @@
 import { dialog, ipcMain } from "electron";
 import { queueManager } from "../download/queue";
-import { getMetadata, getTranscript } from "../download/ytdlp";
+import { getMetadata, getPlaylistInfo, getTranscript } from "../download/ytdlp";
 import { convertHistoryFile, startConversionJob } from "../download/conversion";
 import { getBinPaths } from "../download/utils";
 import { probeMediaFile } from "../download/media-probe";
+import { generateWaveform } from "../download/waveform";
+import { createMediaPreviewUrl } from "../media-preview";
 import {
   parseConversionRequest,
   parseDownloadRequest,
@@ -18,13 +20,17 @@ export function setupDownloadIPC(mainWindow: Electron.BrowserWindow) {
     "download:addToQueue",
     "download:cancel",
     "download:cancelAll",
+    "download:reorderQueue",
     "download:getMetadata",
+    "download:getPlaylistInfo",
     "download:isUrlSupported",
     "download:getActiveCount",
     "download:getTranscript",
     "download:convertFile",
     "download:startConversion",
     "download:probeFile",
+    "download:getWaveform",
+    "download:getMediaPreviewUrl",
     "download:selectMediaFiles",
     "download:startRemux",
     "download:selectFile",
@@ -47,8 +53,21 @@ export function setupDownloadIPC(mainWindow: Electron.BrowserWindow) {
     queueManager.cancelAll();
   });
 
+  ipcMain.handle("download:reorderQueue", (_, ids) => {
+    if (!Array.isArray(ids) || ids.length > 500)
+      throw new Error("Queue order must be a list of job ids.");
+    return queueManager.reorder(
+      ids.map((id) => requireString(id, "job id")),
+      mainWindow,
+    );
+  });
+
   ipcMain.handle("download:getMetadata", async (_, url) => {
     return await getMetadata(parseHttpUrl(url));
+  });
+
+  ipcMain.handle("download:getPlaylistInfo", async (_, url) => {
+    return await getPlaylistInfo(parseHttpUrl(url));
   });
 
   ipcMain.handle("download:isUrlSupported", (_, url) => {
@@ -90,6 +109,13 @@ export function setupDownloadIPC(mainWindow: Electron.BrowserWindow) {
       ffmpeg,
     );
   });
+
+  ipcMain.handle("download:getWaveform", (_, filePath) =>
+    generateWaveform(requireString(filePath, "filePath")),
+  );
+  ipcMain.handle("download:getMediaPreviewUrl", (_, filePath) =>
+    createMediaPreviewUrl(requireString(filePath, "filePath")),
+  );
 
   ipcMain.handle("download:selectMediaFiles", async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

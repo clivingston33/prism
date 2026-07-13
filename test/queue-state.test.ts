@@ -1,10 +1,57 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  applyQueueOrder,
   findTimedOutJobs,
+  nextQueueOrder,
   reconcileStartupHistory,
   selectCancelTargets,
+  selectNextQueued,
 } from "../src/main/download/queue-state.ts";
+
+test("queued jobs start in user order, then FIFO for legacy items", () => {
+  const history = [
+    { id: "c", status: "queued", createdAt: "2026-07-11T00:00:03Z" },
+    {
+      id: "b",
+      status: "queued",
+      createdAt: "2026-07-11T00:00:02Z",
+      queueOrder: 1,
+    },
+    {
+      id: "a",
+      status: "queued",
+      createdAt: "2026-07-11T00:00:01Z",
+      queueOrder: 2,
+    },
+    { id: "done", status: "completed", createdAt: "2026-07-11T00:00:00Z" },
+  ];
+  // Explicit order wins over insertion/creation order.
+  assert.equal(selectNextQueued(history, new Set()), "b");
+  // Active jobs are skipped.
+  assert.equal(selectNextQueued(history, new Set(["b"])), "a");
+  // Items without queueOrder go last, oldest first.
+  assert.equal(selectNextQueued(history, new Set(["a", "b"])), "c");
+  assert.equal(nextQueueOrder(history), 3);
+});
+
+test("reordering only touches still-queued records", () => {
+  const history = [
+    { id: "a", status: "queued", queueOrder: 1 },
+    { id: "b", status: "queued", queueOrder: 2 },
+    { id: "run", status: "running", queueOrder: 99 },
+  ];
+  const { history: updated, changed } = applyQueueOrder(history, [
+    "b",
+    "a",
+    "run",
+  ]);
+  assert.equal(changed, true);
+  assert.equal(updated.find((item) => item.id === "b")?.queueOrder, 1);
+  assert.equal(updated.find((item) => item.id === "a")?.queueOrder, 2);
+  // Running item keeps its original value: reordering never touches it.
+  assert.equal(updated.find((item) => item.id === "run")?.queueOrder, 99);
+});
 
 const NOW = "2026-07-11T00:00:00.000Z";
 

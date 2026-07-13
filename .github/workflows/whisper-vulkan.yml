@@ -1,0 +1,96 @@
+name: Build Whisper Vulkan runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing Prism release tag to receive the runtime assets
+        required: true
+        type: string
+      whisper_version:
+        description: whisper.cpp tag
+        required: true
+        default: v1.9.1
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Check out Prism
+        uses: actions/checkout@v4
+
+      - name: Check out pinned whisper.cpp source
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          ref: ${{ inputs.whisper_version }}
+          path: whisper.cpp
+
+      - name: Prepare Vulkan headers and loader
+        uses: humbletim/setup-vulkan-sdk@v1.2.1
+        with:
+          vulkan-query-version: 1.4.304.1
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      - name: Configure Vulkan build
+        shell: pwsh
+        run: >-
+          cmake -S whisper.cpp -B whisper.cpp/build -A x64
+          -DGGML_VULKAN=ON -DWHISPER_BUILD_TESTS=OFF
+          -DWHISPER_BUILD_SERVER=OFF -DWHISPER_BUILD_EXAMPLES=ON
+
+      - name: Build whisper-cli
+        run: cmake --build whisper.cpp/build --config Release --target whisper-cli --parallel
+
+      - name: Package runtime and checksum manifest
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          WHISPER_VERSION: ${{ inputs.whisper_version }}
+        run: |
+          $source = Resolve-Path 'whisper.cpp/build/bin/Release'
+          $stage = Join-Path $env:RUNNER_TEMP 'whisper-vulkan-runtime'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $source 'whisper-cli.exe') -Destination $stage
+          Get-ChildItem -LiteralPath $source -Filter '*.dll' | Copy-Item -Destination $stage
+          $version = "$($env:WHISPER_VERSION.TrimStart('v'))-vulkan"
+          $zipName = "whisper-vulkan-$version.zip"
+          $zipPath = Join-Path $env:RUNNER_TEMP $zipName
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipPath -Force
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item -LiteralPath $zipPath).Length
+          $files = @(Get-ChildItem -LiteralPath $stage -File | ForEach-Object Name)
+          $manifest = [ordered]@{
+            version = $version
+            url = "https://github.com/${{ github.repository }}/releases/download/$env:RELEASE_TAG/$zipName"
+            sha256 = $hash
+            bytes = $size
+            files = $files
+          }
+          $manifestPath = Join-Path $env:RUNNER_TEMP 'whisper-vulkan-runtime.json'
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+          "zip_path=$zipPath" >> $env:GITHUB_OUTPUT
+          "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: whisper-vulkan-runtime
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.package.outputs.manifest_path }}
+
+      - name: Attach verified runtime to Prism release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: >-
+          gh release upload '${{ inputs.release_tag }}'
+          '${{ steps.package.outputs.zip_path }}'
+          '${{ steps.package.outputs.manifest_path }}' --clobber

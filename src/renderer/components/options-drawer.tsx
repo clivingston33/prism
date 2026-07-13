@@ -13,6 +13,13 @@ interface OptionsDrawerProps {
   urls: string[];
   platform: string;
   setUrl: (v: string) => void;
+  playlist?: {
+    id: string;
+    title: string;
+    entries: { url: string; title: string; originalIndex: number }[];
+    totalCount: number;
+    useDirectory: boolean;
+  } | null;
 }
 
 interface QueueOptions {
@@ -24,7 +31,25 @@ interface QueueOptions {
   trimEnabled: boolean;
   trimStart: string;
   trimEnd: string;
+  subtitlesEnabled: boolean;
+  subtitleFormat: "srt" | "vtt" | "txt";
+  subtitleLanguages: string;
+  playlistId?: string;
+  playlistTitle?: string;
+  playlistIndex?: number;
+  playlistCount?: number;
+  playlistEntryTitle?: string;
+  playlistDirectory?: boolean;
 }
+
+const SUBTITLE_LANGUAGES = [
+  { value: "en.*", label: "English" },
+  { value: "es.*", label: "Spanish" },
+  { value: "fr.*", label: "French" },
+  { value: "de.*", label: "German" },
+  { value: "ja.*", label: "Japanese" },
+  { value: "all", label: "All available" },
+];
 
 const VIDEO_FORMATS: { value: VideoFormat; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -81,6 +106,9 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
     trimEnabled: false,
     trimStart: "00:00:00",
     trimEnd: "00:00:00",
+    subtitlesEnabled: false,
+    subtitleFormat: "srt",
+    subtitleLanguages: "en.*",
   };
 }
 
@@ -107,6 +135,7 @@ export function OptionsDrawer({
   urls,
   platform,
   setUrl,
+  playlist,
 }: OptionsDrawerProps) {
   const { settings } = useAppStore();
   const navigate = useNavigate();
@@ -122,12 +151,30 @@ export function OptionsDrawer({
   useEffect(() => {
     if (!isOpen) return;
     setSelectedIndex(0);
-    setQueueOptions(urls.map((itemUrl) => defaultOptions(settings, itemUrl)));
+    setQueueOptions(
+      urls.map((itemUrl) => {
+        const entry = playlist?.entries.find((item) => item.url === itemUrl);
+        return {
+          ...defaultOptions(settings, itemUrl),
+          ...(entry
+            ? {
+                playlistId: playlist?.id,
+                playlistTitle: playlist?.title,
+                playlistIndex: entry.originalIndex,
+                playlistCount: playlist?.totalCount,
+                playlistEntryTitle: entry.title,
+                playlistDirectory: playlist?.useDirectory,
+              }
+            : {}),
+        };
+      }),
+    );
   }, [
     isOpen,
     urlsKey,
     settings?.defaultVideoFormat,
     settings?.defaultAudioFormat,
+    playlist,
   ]);
 
   const current = queueOptions[selectedIndex];
@@ -215,6 +262,19 @@ export function OptionsDrawer({
               : (item.quality as DownloadOptions["quality"]),
           trimStart: item.trimEnabled ? item.trimStart : undefined,
           trimEnd: item.trimEnabled ? item.trimEnd : undefined,
+          transcript: item.subtitlesEnabled || undefined,
+          transcriptFormat: item.subtitlesEnabled
+            ? item.subtitleFormat
+            : undefined,
+          subtitleLanguages: item.subtitlesEnabled
+            ? item.subtitleLanguages
+            : undefined,
+          playlistId: item.playlistId,
+          playlistTitle: item.playlistTitle,
+          playlistIndex: item.playlistIndex,
+          playlistCount: item.playlistCount,
+          playlistEntryTitle: item.playlistEntryTitle,
+          playlistDirectory: item.playlistDirectory,
         });
       }
 
@@ -240,7 +300,7 @@ export function OptionsDrawer({
         aria-hidden="true"
       />
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-[min(390px,calc(100vw-44px))] bg-bg-elevated border-l border-border-subtle shadow-2xl transition-transform duration-180 ease-out flex flex-col ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 z-50 flex w-[min(390px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border transition-transform duration-180 ease-out sm:inset-y-3 sm:right-3 sm:rounded-2xl ${isOpen ? "translate-x-0" : "translate-x-[110%]"}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="download-options-title"
@@ -284,7 +344,8 @@ export function OptionsDrawer({
                   }`}
                 >
                   <span className="w-full truncate text-[11px] font-medium">
-                    {index + 1}. {item.url}
+                    {item.playlistIndex || index + 1}.{" "}
+                    {item.playlistEntryTitle || item.url}
                   </span>
                   <span className="text-[10px] opacity-80">
                     {formatSummary(item)}
@@ -406,6 +467,53 @@ export function OptionsDrawer({
               </select>
             </div>
           )}
+
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center justify-between text-xs font-medium text-text-secondary cursor-pointer">
+              <span>Save subtitles</span>
+              <input
+                type="checkbox"
+                checked={current.subtitlesEnabled}
+                onChange={(e) =>
+                  updateCurrent({ subtitlesEnabled: e.target.checked })
+                }
+                className="accent-accent rounded-lg border-border"
+              />
+            </label>
+            {current.subtitlesEnabled && (
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={current.subtitleLanguages}
+                  onChange={(e) =>
+                    updateCurrent({ subtitleLanguages: e.target.value })
+                  }
+                  aria-label="Subtitle language"
+                  className="h-8 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                >
+                  {SUBTITLE_LANGUAGES.map((lang) => (
+                    <option key={lang.value} value={lang.value}>
+                      {lang.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={current.subtitleFormat}
+                  onChange={(e) =>
+                    updateCurrent({
+                      subtitleFormat: e.target
+                        .value as QueueOptions["subtitleFormat"],
+                    })
+                  }
+                  aria-label="Subtitle format"
+                  className="h-8 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                >
+                  <option value="srt">SRT — subtitles</option>
+                  <option value="vtt">VTT — web subtitles</option>
+                  <option value="txt">TXT — plain text</option>
+                </select>
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-col gap-3">
             <label className="flex items-center justify-between text-xs font-medium text-text-secondary cursor-pointer">

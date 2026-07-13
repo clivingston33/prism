@@ -24,33 +24,33 @@ export function createThumbnail(
       .digest("hex");
     const output = path.join(directory, `media-${key}.jpg`);
     if (fs.existsSync(output)) return resolve(output);
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(
-        ffmpeg,
-        [
-          "-y",
-          "-ss",
-          "1",
-          "-i",
-          inputPath,
-          "-frames:v",
-          "1",
-          "-q:v",
-          "5",
-          "-vf",
-          "scale=320:-2",
-          output,
-        ],
-        { windowsHide: true, stdio: "ignore" },
+    // Ordered fallbacks: a 1s seek is fast but empty on sub-1s clips, the
+    // thumbnail filter needs frames, and the no-seek first-frame grab always
+    // produces something for a decodable video.
+    const attempts: string[][] = [
+      ["-y", "-ss", "1", "-i", inputPath, "-frames:v", "1", "-q:v", "5", "-vf", "scale=320:-2", output], // prettier-ignore
+      ["-y", "-i", inputPath, "-vf", "thumbnail,scale=320:-2", "-frames:v", "1", "-q:v", "5", output], // prettier-ignore
+      ["-y", "-i", inputPath, "-frames:v", "1", "-q:v", "5", "-vf", "scale=320:-2", output], // prettier-ignore
+    ];
+    const tryAttempt = (index: number) => {
+      if (index >= attempts.length) return resolve(undefined);
+      let child: ReturnType<typeof spawn>;
+      try {
+        child = spawn(ffmpeg, attempts[index], {
+          windowsHide: true,
+          stdio: "ignore",
+        });
+      } catch {
+        return resolve(undefined);
+      }
+      child.on("error", () => tryAttempt(index + 1));
+      child.on("close", (code) =>
+        code === 0 && fs.existsSync(output)
+          ? resolve(output)
+          : tryAttempt(index + 1),
       );
-    } catch {
-      return resolve(undefined);
-    }
-    child.on("error", () => resolve(undefined));
-    child.on("close", (code) =>
-      resolve(code === 0 && fs.existsSync(output) ? output : undefined),
-    );
+    };
+    tryAttempt(0);
   });
 }
 
@@ -171,6 +171,13 @@ export async function probeMediaFile(
         [
           "-v",
           "error",
+          // Some containers (notably MKV/TS) declare subtitle or secondary
+          // audio tracks well past the start of the file. The default probe
+          // window is small, so raise it to reliably enumerate every stream.
+          "-analyzeduration",
+          "100M",
+          "-probesize",
+          "100M",
           "-print_format",
           "json",
           "-show_format",

@@ -2,6 +2,13 @@ import { useEffect } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { useAppStore } from "./stores/app-store";
+import { Toasts } from "./components/toasts";
+
+function jobKind(item: DownloadItem | undefined) {
+  if (item?.jobType === "conversion") return "Conversion";
+  if (item?.jobType === "transcription") return "Transcription";
+  return "Download";
+}
 
 export function App() {
   const {
@@ -11,6 +18,7 @@ export function App() {
     updateDownload,
     applyProgress,
     setUpdate,
+    pushToast,
   } = useAppStore();
 
   useEffect(() => {
@@ -30,9 +38,28 @@ export function App() {
         filePath: data.filePath,
         filePaths: data.filePaths,
       });
+      const item = useAppStore
+        .getState()
+        .downloads.find((entry) => entry.id === data.id);
+      pushToast({
+        tone: "success",
+        title: `${jobKind(item)} complete`,
+        message: item?.title,
+        filePath: data.filePath,
+      });
     });
 
     const unsubError = window.prism.on("download:error", (data) => {
+      const item = useAppStore
+        .getState()
+        .downloads.find((entry) => entry.id === data.id);
+      if (data.code !== "JOB_CANCELLED") {
+        pushToast({
+          tone: "error",
+          title: `${jobKind(item)} failed`,
+          message: data.error,
+        });
+      }
       updateDownload(data.id, {
         status: "failed",
         error: data.error,
@@ -104,5 +131,10 @@ export function App() {
 
   if (!settings) return null;
 
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <RouterProvider router={router} />
+      <Toasts />
+    </>
+  );
 }

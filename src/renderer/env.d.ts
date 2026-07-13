@@ -85,6 +85,44 @@ interface Settings {
   theme: "dark" | "light" | "system";
 }
 
+interface GpuRuntimeState {
+  status:
+    | "not-installed"
+    | "downloading"
+    | "installing"
+    | "installed"
+    | "failed";
+  version: string;
+  downloadBytes: number;
+  path?: string;
+  error?: string;
+  supported: boolean;
+  gpuName?: string;
+  runtimeId: "cuda" | "vulkan";
+  runtimeLabel: "CUDA" | "Vulkan";
+}
+
+interface HardwareProfile {
+  cpuModel: string;
+  cpuCores: number;
+  totalMemoryBytes: number;
+  gpus: { name: string; vendor: "nvidia" | "amd" | "intel" | "unknown" }[];
+  hasNvidiaGpu: boolean;
+}
+
+interface YtDlpUpdateState {
+  status:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "installed"
+    | "failed";
+  currentVersion?: string;
+  latestVersion?: string;
+  error?: string;
+}
+
 interface WhisperModelState {
   id: string;
   displayName: string;
@@ -108,6 +146,7 @@ interface WhisperModelState {
   bytesDownloaded?: number;
   lastVerifiedAt?: string;
   error?: string;
+  recommended?: boolean;
 }
 
 interface DownloadItem {
@@ -150,6 +189,12 @@ interface DownloadItem {
   filePaths?: string[];
   error?: string;
   retryCount: number;
+  queueOrder?: number;
+  playlistId?: string;
+  playlistTitle?: string;
+  playlistIndex?: number;
+  playlistCount?: number;
+  playlistDirectory?: boolean;
   thumbnail?: string;
   fileState?: "present" | "missing" | "partial" | "unavailable";
   missingPaths?: string[];
@@ -163,6 +208,7 @@ interface DownloadItem {
   trimStart?: string;
   trimEnd?: string;
   transcriptPath?: string;
+  subtitlePaths?: string[];
   transcriptText?: string;
   transcriptError?: string;
   imageCount?: number;
@@ -188,8 +234,20 @@ interface DownloadOptions {
   quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
   transcript?: boolean;
   transcriptFormat?: "txt" | "srt" | "vtt" | "json";
+  subtitleLanguages?: string;
   trimStart?: string;
   trimEnd?: string;
+  playlistId?: string;
+  playlistTitle?: string;
+  playlistIndex?: number;
+  playlistCount?: number;
+  playlistEntryTitle?: string;
+  playlistDirectory?: boolean;
+}
+
+interface PlaylistInfo {
+  title: string;
+  entries: { url: string; title: string; durationSeconds?: number }[];
 }
 
 interface VideoMetadata {
@@ -267,6 +325,16 @@ interface PrismAPI {
     } | null>;
     downloadUpdate?(): Promise<void>;
     quitAndInstall?(): void;
+    hardwareProfile(): Promise<HardwareProfile>;
+    optimizeForDevice(): Promise<{
+      profile: HardwareProfile;
+      applied: Record<string, unknown>;
+      settings: Settings;
+    }>;
+    thumbnailCacheInfo(): Promise<{ sizeBytes: number; fileCount: number }>;
+    clearThumbnails(): Promise<{ sizeBytes: number; fileCount: number }>;
+    ytdlpUpdateState(checkLatest?: boolean): Promise<YtDlpUpdateState>;
+    updateYtdlp(): Promise<YtDlpUpdateState>;
   };
   history: {
     get(): Promise<DownloadItem[]>;
@@ -283,7 +351,9 @@ interface PrismAPI {
     addToQueue(options: DownloadOptions): Promise<string>;
     cancel(id: string): Promise<boolean>;
     cancelAll(): Promise<void>;
+    reorderQueue(ids: string[]): Promise<boolean>;
     getMetadata(url: string): Promise<VideoMetadata | null>;
+    getPlaylistInfo(url: string): Promise<PlaylistInfo | null>;
     isUrlSupported(url: string): Promise<boolean>;
     getActiveCount(): Promise<number>;
     getTranscript(url: string, format: string): Promise<string>;
@@ -309,6 +379,8 @@ interface PrismAPI {
       crf?: number;
       audioBitrate?: string;
       fps?: string;
+      trimStart?: string;
+      trimEnd?: string;
       durationSeconds?: number;
     }): Promise<{ id: string; filePath: string; title: string }>;
     startConversion(options: {
@@ -336,9 +408,16 @@ interface PrismAPI {
       crf?: number;
       audioBitrate?: string;
       fps?: string;
+      trimStart?: string;
+      trimEnd?: string;
     }): Promise<string>;
     startRemux(options: RemuxRequest): Promise<string>;
     probeFile(filePath: string): Promise<MediaProbe>;
+    getWaveform(filePath: string): Promise<{
+      durationSeconds: number;
+      peaks: { min: number; max: number }[];
+    }>;
+    getMediaPreviewUrl(filePath: string): Promise<string>;
     selectFile(): Promise<string | null>;
     selectMediaFiles(): Promise<string[]>;
     selectVideoFile(): Promise<string | null>;
@@ -360,7 +439,30 @@ interface PrismAPI {
       saveBesideSource?: boolean;
       outputDirectory?: string;
       threads?: number;
+      trimStart?: string;
+      trimEnd?: string;
     }): Promise<string>;
+    gpuRuntimeState(): Promise<GpuRuntimeState>;
+    installGpuRuntime(): Promise<GpuRuntimeState>;
+    cancelGpuRuntimeInstall(): Promise<void>;
+    removeGpuRuntime(): Promise<GpuRuntimeState>;
+    readTranscript(historyId: string): Promise<{
+      id: string;
+      title: string;
+      filePath: string;
+      format: "txt" | "srt" | "vtt" | "json";
+      content: string;
+    }>;
+    writeTranscript(
+      historyId: string,
+      content: string,
+    ): Promise<{
+      id: string;
+      title: string;
+      filePath: string;
+      format: "txt" | "srt" | "vtt" | "json";
+      content: string;
+    }>;
   };
   on(
     event: "download:progress",

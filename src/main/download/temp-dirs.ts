@@ -36,6 +36,22 @@ export function createJobTempDir(destination: string, jobId: string): string {
 }
 
 /**
+ * Removes the `.prism-tmp` root when it holds no job directories. Called after
+ * a job's own temp directory is deleted so a finished download does not leave a
+ * stray (empty) `.prism-tmp` folder sitting in the user's download location
+ * until the next launch. Safe to call unconditionally: a non-empty root (from a
+ * concurrent job) or a missing root is simply left alone.
+ */
+export function removeTempRootIfEmpty(destination: string): void {
+  const root = prismTempRoot(destination);
+  try {
+    if (fs.readdirSync(root).length === 0) fs.rmdirSync(root);
+  } catch {
+    // Missing, non-empty, or locked — nothing to do.
+  }
+}
+
+/**
  * Removes abandoned job directories under `.prism-tmp`, skipping any that
  * belong to currently active jobs. Async so it never blocks a download hot
  * path. Errors are ignored — a locked file just gets cleaned next launch.

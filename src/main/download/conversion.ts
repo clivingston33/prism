@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { app } from "electron";
 import { store } from "../store";
-import { convertMedia } from "./converter";
+import { convertMedia, estimateEtaSeconds } from "./converter";
 import { JobCancelledError, processRegistry } from "./process-registry";
 import { isJobCancelled, publishJobProgress } from "./job-state";
 import { formatStageLabel, type JobError } from "../../shared/jobs.ts";
@@ -95,6 +95,8 @@ export async function convertHistoryFile(
       audioBitrate: options.audioBitrate,
       fps: options.fps || "source",
       operation: getConversionOperation(options),
+      trimStart: options.trimStart,
+      trimEnd: options.trimEnd,
     },
     quality: sourceItem?.quality,
     status: "processing",
@@ -108,6 +110,8 @@ export async function convertHistoryFile(
     stageLabel: formatStageLabel("transcode"),
     retryCount: 0,
     conversionOf: options.sourceItemId,
+    trimStart: options.trimStart,
+    trimEnd: options.trimEnd,
     thumbnail: sourceItem?.thumbnail,
   };
 
@@ -124,6 +128,11 @@ export async function convertHistoryFile(
       stage: "transcode",
       patch: { stageProgress: 0, overallProgress: 0 },
     });
+    const hardwareAcceleration =
+      (store.get("settings") as Record<string, unknown> | undefined)
+        ?.hardwareAcceleration === "off"
+        ? "off"
+        : "auto";
     await convertMedia(ffmpeg, sourcePath, outputPath, options.format, {
       mode: record.mode === "split" ? "video_audio" : record.mode,
       videoCodec: options.videoCodec,
@@ -133,6 +142,9 @@ export async function convertHistoryFile(
       audioBitrate: options.audioBitrate,
       fps: options.fps,
       durationSeconds: options.durationSeconds,
+      trimStart: options.trimStart,
+      trimEnd: options.trimEnd,
+      hardwareAcceleration,
       jobId: id,
       onProgress: (progress, details) =>
         publishJobProgress(mainWindow, {
@@ -146,6 +158,14 @@ export async function convertHistoryFile(
             stageProgress: progress,
             processedSeconds: details?.processedSeconds,
             durationSeconds: details?.durationSeconds,
+            speedMultiplier: details?.speed,
+            etaSeconds: estimateEtaSeconds(
+              progress,
+              details?.elapsedSeconds,
+              details?.processedSeconds,
+              details?.durationSeconds,
+              details?.speed,
+            ),
           },
           elapsedSeconds: details?.elapsedSeconds,
         }),

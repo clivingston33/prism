@@ -1,6 +1,7 @@
 import { app } from "electron";
 import fs from "fs";
 import path from "path";
+import { updatedYtDlpPath } from "./ytdlp-updater";
 
 export type DownloadMode =
   | "video_audio"
@@ -124,6 +125,7 @@ export function getBinPaths() {
     binDir,
     process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
   );
+  const runtimeYtdlp = updatedYtDlpPath();
   const bundledFfmpeg = path.join(
     binDir,
     process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
@@ -144,7 +146,7 @@ export function getBinPaths() {
   return {
     ytdlp: resolveExecutable(
       "PRISM_YTDLP_PATH",
-      bundledYtdlp,
+      runtimeYtdlp || bundledYtdlp,
       "yt-dlp",
       !app.isPackaged,
     ),

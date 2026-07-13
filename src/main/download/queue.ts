@@ -15,9 +15,12 @@ import { app } from "electron";
 import { isActiveJobStatus, type JobError } from "../../shared/jobs.ts";
 import type { DownloadRequest, HistoryRecord } from "../../shared/contracts.ts";
 import {
+  applyQueueOrder,
   findTimedOutJobs,
+  nextQueueOrder,
   reconcileStartupHistory,
   selectCancelTargets,
+  selectNextQueued,
 } from "./queue-state";
 
 const ACTIVE_DOWNLOADS = new Map<string, { startedAt: number }>();
@@ -151,7 +154,7 @@ class DownloadManager {
       id,
       url: options.url,
       platform: "Unknown",
-      title: options.url,
+      title: options.playlistEntryTitle || options.url,
       mode,
       format,
       audioFormat:
@@ -171,6 +174,12 @@ class DownloadManager {
       stage: "metadata",
       stageLabel: "Queued",
       retryCount: 0,
+      queueOrder: nextQueueOrder(store.get("history", []) as HistoryRecord[]),
+      playlistId: options.playlistId,
+      playlistTitle: options.playlistTitle,
+      playlistIndex: options.playlistIndex,
+      playlistCount: options.playlistCount,
+      playlistDirectory: options.playlistDirectory,
       request: options,
     };
 
@@ -206,14 +215,24 @@ class DownloadManager {
   private processQueue(mainWindow: BrowserWindow) {
     while (this.activeCount < getMaxConcurrentDownloads()) {
       const history = store.get("history", []) as HistoryRecord[];
-      const next = history.find(
-        (item) =>
-          (item.status === "queued" || (item.status as string) === "pending") &&
-          !ACTIVE_DOWNLOADS.has(item.id),
+      const nextId = selectNextQueued(
+        history,
+        new Set(ACTIVE_DOWNLOADS.keys()),
       );
-      if (!next) break;
-      void this.startDownload(next.id, mainWindow);
+      if (!nextId) break;
+      void this.startDownload(nextId, mainWindow);
     }
+  }
+
+  /** Applies a user-chosen order to the pending queue. */
+  reorder(orderedIds: string[], mainWindow: BrowserWindow) {
+    const history = store.get("history", []) as Record<string, unknown>[];
+    const { history: updated, changed } = applyQueueOrder(history, orderedIds);
+    if (changed) {
+      store.set("history", updated);
+      sendHistory(mainWindow, updated);
+    }
+    return changed;
   }
 
   private async startDownload(id: string, mainWindow: BrowserWindow) {

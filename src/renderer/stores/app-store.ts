@@ -1,15 +1,27 @@
 import { create } from "zustand";
 import { mergeJobProgress, type JobProgress } from "../../shared/jobs.ts";
 
+export interface Toast {
+  id: string;
+  tone: "success" | "error";
+  title: string;
+  message?: string;
+  /** When set, the toast offers a "Show in folder" action. */
+  filePath?: string;
+}
+
 interface AppState {
   settings: Settings | null;
   downloads: DownloadItem[];
   sidebarExpanded: boolean;
   update: UpdateState;
+  toasts: Toast[];
   setSettings: (settings: Settings) => void;
   setDownloads: (downloads: DownloadItem[]) => void;
   setSidebarExpanded: (expanded: boolean) => void;
   setUpdate: (update: Partial<UpdateState>) => void;
+  pushToast: (toast: Omit<Toast, "id">) => void;
+  dismissToast: (id: string) => void;
   addDownload: (item: DownloadItem) => void;
   updateDownload: (id: string, partial: Partial<DownloadItem>) => void;
   applyProgress: (progress: JobProgress) => void;
@@ -91,6 +103,21 @@ export const useAppStore = create<AppState>((set) => ({
   setSidebarExpanded: (expanded) => set({ sidebarExpanded: expanded }),
   setUpdate: (update) =>
     set((state) => ({ update: { ...state.update, ...update } })),
+  toasts: [],
+  pushToast: (toast) =>
+    set((state) => ({
+      toasts: [
+        ...state.toasts.slice(-3),
+        {
+          ...toast,
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        },
+      ],
+    })),
+  dismissToast: (id) =>
+    set((state) => ({
+      toasts: state.toasts.filter((toast) => toast.id !== id),
+    })),
   addDownload: (item) =>
     set((state) => ({ downloads: [item, ...state.downloads] })),
   updateDownload: (id, partial) =>

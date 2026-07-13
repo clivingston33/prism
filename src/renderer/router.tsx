@@ -13,6 +13,7 @@ import { LibraryPage } from "./pages/library-page";
 import { SettingsPage } from "./pages/settings-page";
 import { TranscriptsPage } from "./pages/transcripts-page";
 import { MediaToolsPage } from "./pages/media-tools-page";
+import { TranscriptViewerPage } from "./pages/transcript-viewer-page";
 
 const rootRoute = createRootRoute({
   component: Shell,
@@ -40,6 +41,15 @@ const transcriptsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/transcript",
   component: TranscriptsPage,
+});
+
+const transcriptViewerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/transcript/$historyId",
+  component: () => {
+    const { historyId } = transcriptViewerRoute.useParams();
+    return <TranscriptViewerPage historyId={historyId} />;
+  },
 });
 
 const mediaToolsRoute = createRoute({
@@ -73,6 +83,7 @@ const routeTree = rootRoute.addChildren([
   historyRoute,
   libraryRoute,
   transcriptsRoute,
+  transcriptViewerRoute,
   mediaToolsRoute,
   convertRoute,
   settingsRoute,

@@ -18,7 +18,11 @@ import {
 } from "./format-selection";
 import { DownloadAggregator, parsePrismProgressLine } from "./progress-tracker";
 import { buildBaseYtDlpFlags } from "./ytdlp-args";
-import { createJobTempDir, moveFileFast } from "./temp-dirs";
+import {
+  createJobTempDir,
+  moveFileFast,
+  removeTempRootIfEmpty,
+} from "./temp-dirs";
 import {
   ensureUniqueDirectory,
   ensureUniquePath,
@@ -329,6 +333,88 @@ async function fetchMetadata(url: string): Promise<any> {
   });
 }
 
+export interface PlaylistEntry {
+  url: string;
+  title: string;
+  durationSeconds?: number;
+}
+
+export interface PlaylistInfo {
+  title: string;
+  entries: PlaylistEntry[];
+}
+
+/**
+ * Resolves a URL as a playlist using yt-dlp's flat extraction (fast: no
+ * per-video probing). Returns null when the URL is a single video or the
+ * extractor fails — callers fall back to the normal single-download flow.
+ */
+export async function getPlaylistInfo(
+  url: string,
+): Promise<PlaylistInfo | null> {
+  return new Promise((resolve) => {
+    const { ytdlp } = getBinPaths();
+    if (!isUsableExecutable(ytdlp)) return resolve(null);
+    const args = [
+      "--flat-playlist",
+      "--dump-single-json",
+      "--no-warnings",
+      url,
+    ];
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(ytdlp, args);
+    } catch {
+      return resolve(null);
+    }
+    let output = "";
+    const timeout = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {}
+    }, METADATA_TIMEOUT_MS);
+    child.stdout?.on("data", (data) => {
+      output += data.toString();
+    });
+    child.on("error", () => {
+      clearTimeout(timeout);
+      resolve(null);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code !== 0) return resolve(null);
+      try {
+        const parsed = JSON.parse(output);
+        if (parsed?._type !== "playlist" || !Array.isArray(parsed.entries))
+          return resolve(null);
+        const entries: PlaylistEntry[] = parsed.entries
+          .map((entry: any) => ({
+            url: firstUrlFrom(entry?.url) || firstUrlFrom(entry?.webpage_url),
+            title: typeof entry?.title === "string" ? entry.title : "",
+            durationSeconds: Number.isFinite(Number(entry?.duration))
+              ? Number(entry.duration)
+              : undefined,
+          }))
+          .filter((entry: PlaylistEntry) => Boolean(entry.url))
+          .map((entry: PlaylistEntry) => ({
+            ...entry,
+            title: entry.title || entry.url,
+          }));
+        if (entries.length < 2) return resolve(null);
+        resolve({
+          title:
+            typeof parsed.title === "string" && parsed.title
+              ? parsed.title
+              : "Playlist",
+          entries,
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  });
+}
+
 /**
  * Shared metadata cache: queueing an item and starting its download reuse a
  * single extraction, concurrent requests for the same URL share one in-flight
@@ -491,55 +577,49 @@ export function extractThumbnail(
       return;
     }
 
-    const args = [
-      "-y",
-      "-ss",
-      "5",
-      "-i",
-      cleanPath,
-      "-vframes",
-      "1",
-      "-q:v",
-      "4",
-      "-vf",
-      "scale=480:-2",
-      thumbPath,
+    // Try strategies in order of quality, each a reliable fallback for the
+    // previous one's failure mode. Seeking to 5s is fast but yields nothing on
+    // clips shorter than 5s; the thumbnail filter needs enough frames; the
+    // final no-seek grab of the very first frame works even on a 1-frame clip.
+    const attempts: string[][] = [
+      ["-y", "-ss", "5", "-i", cleanPath, "-frames:v", "1", "-q:v", "4", "-vf", "scale=480:-2", thumbPath], // prettier-ignore
+      ["-y", "-ss", "1", "-i", cleanPath, "-frames:v", "1", "-q:v", "4", "-vf", "scale=480:-2", thumbPath], // prettier-ignore
+      ["-y", "-i", cleanPath, "-vf", "thumbnail,scale=480:-2", "-frames:v", "1", "-q:v", "4", thumbPath], // prettier-ignore
+      ["-y", "-i", cleanPath, "-frames:v", "1", "-q:v", "4", "-vf", "scale=480:-2", thumbPath], // prettier-ignore
     ];
 
-    const child = spawn(ffmpeg, args, { windowsHide: true });
-    processRegistry.register(itemId, child);
-    child.on("close", (code) => {
-      if (code === 0 && fs.existsSync(thumbPath)) {
-        resolve(thumbPath);
+    const tryAttempt = (index: number) => {
+      if (index >= attempts.length) {
+        resolve(null);
         return;
       }
-
       if (processRegistry.isCancelled(itemId)) {
         resolve(null);
         return;
       }
-
-      // Keep media paths and extractor diagnostics out of production logs.
-      const retryArgs = [
-        "-y",
-        "-i",
-        cleanPath,
-        "-vf",
-        "thumbnail=100",
-        "-vframes",
-        "1",
-        "-q:v",
-        "4",
-        thumbPath,
-      ];
-      const retry = spawn(ffmpeg, retryArgs, { windowsHide: true });
-      processRegistry.register(itemId, retry);
-      retry.on("close", (retryCode) => {
-        resolve(retryCode === 0 && fs.existsSync(thumbPath) ? thumbPath : null);
+      const child = spawn(ffmpeg, attempts[index], { windowsHide: true });
+      processRegistry.register(itemId, child);
+      child.on("close", (code) => {
+        if (code === 0 && fs.existsSync(thumbPath)) {
+          resolve(thumbPath);
+          return;
+        }
+        if (processRegistry.isCancelled(itemId)) {
+          resolve(null);
+          return;
+        }
+        tryAttempt(index + 1);
       });
-      retry.on("error", () => resolve(null));
-    });
-    child.on("error", () => resolve(null));
+      child.on("error", () => {
+        if (processRegistry.isCancelled(itemId)) {
+          resolve(null);
+          return;
+        }
+        tryAttempt(index + 1);
+      });
+    };
+
+    tryAttempt(0);
   });
 }
 
@@ -551,6 +631,7 @@ export function getConcurrentFragments(): number {
 
 function baseYtDlpArgs(tempDir: string, item: any) {
   const { ffmpeg } = getBinPaths();
+  const requestedTranscript = normalizeTranscriptFormat(item.transcriptFormat);
   const args = buildBaseYtDlpFlags({
     tempDir,
     concurrentFragments: getConcurrentFragments(),
@@ -563,6 +644,13 @@ function baseYtDlpArgs(tempDir: string, item: any) {
     ),
     trimStart: item.trimStart,
     trimEnd: item.trimEnd,
+    subtitles: item.transcript
+      ? {
+          languages: String(item.subtitleLanguages || "en.*"),
+          // txt is produced by stripping a vtt after download.
+          format: requestedTranscript === "srt" ? "srt" : "vtt",
+        }
+      : undefined,
   });
 
   const jsRuntime = getJsRuntimeArg();
@@ -608,6 +696,72 @@ function mediaFilesIn(
   if (fs.existsSync(directory)) visit(directory);
   const sizes = new Map(files.map((file) => [file, fs.statSync(file).size]));
   return files.sort((a, b) => (sizes.get(b) || 0) - (sizes.get(a) || 0));
+}
+
+function subtitleFilesIn(directory: string) {
+  const files: string[] = [];
+  const visit = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+        continue;
+      }
+      if (/\.(srt|vtt)$/i.test(entry.name)) files.push(fullPath);
+    }
+  };
+  if (fs.existsSync(directory)) visit(directory);
+  return files;
+}
+
+/**
+ * Moves downloaded subtitle files next to the delivered media file, renamed to
+ * share its basename (`Video.en.srt` style). When the user asked for plain
+ * text, each subtitle is stripped of cues instead. Returns the delivered
+ * paths, first entry being the primary transcript.
+ */
+async function deliverSubtitles(
+  tempDir: string,
+  outputPath: string,
+  requestedFormat: "txt" | "srt" | "vtt",
+): Promise<string[]> {
+  const delivered: string[] = [];
+  const outputDir = path.dirname(outputPath);
+  const outputBase = path.basename(outputPath, path.extname(outputPath));
+  for (const file of subtitleFilesIn(tempDir)) {
+    // yt-dlp names subs "<title>.<lang>.<ext>"; keep the language tag.
+    const fileBase = path.basename(file, path.extname(file));
+    const langMatch = fileBase.match(/\.([A-Za-z0-9-]{2,10})$/);
+    const lang = langMatch ? langMatch[1] : "";
+    const suffix = lang ? `.${lang}` : "";
+    try {
+      if (requestedFormat === "txt") {
+        const text = stripSubtitleToText(
+          await fs.promises.readFile(file, "utf8"),
+        );
+        if (!text.trim()) continue;
+        const target = ensureUniquePath(
+          outputDir,
+          `${outputBase}${suffix}`,
+          "txt",
+        );
+        await fs.promises.writeFile(target, text, "utf8");
+        delivered.push(target);
+      } else {
+        const ext = path.extname(file).replace(/^\./, "") || requestedFormat;
+        const target = ensureUniquePath(
+          outputDir,
+          `${outputBase}${suffix}`,
+          ext,
+        );
+        await moveFileFast(file, target);
+        delivered.push(target);
+      }
+    } catch (error) {
+      console.warn("[subtitles] failed to deliver", error);
+    }
+  }
+  return delivered;
 }
 
 interface RunYtDlpOptions {
@@ -1048,13 +1202,44 @@ async function downloadSingleMedia(
       if (containerNote) console.log(`[download] ${item.id} ${containerNote}`);
     }
 
+    let subtitleOverrides: Record<string, any> = {};
+    if (item.transcript) {
+      const requested = normalizeTranscriptFormat(item.transcriptFormat);
+      const subtitlePaths = await deliverSubtitles(
+        tempDir,
+        outputPath,
+        requested,
+      );
+      if (subtitlePaths.length) {
+        let transcriptText: string | undefined;
+        try {
+          const raw = await fs.promises.readFile(subtitlePaths[0], "utf8");
+          transcriptText = requested === "txt" ? raw : stripSubtitleToText(raw);
+        } catch {
+          // The file itself still exists; text preview is best-effort.
+        }
+        subtitleOverrides = {
+          transcriptPath: subtitlePaths[0],
+          subtitlePaths,
+          ...(transcriptText ? { transcriptText } : {}),
+        };
+      } else {
+        subtitleOverrides = {
+          transcriptError:
+            "No subtitles were available for the requested languages.",
+        };
+      }
+    }
+
     await completeDownload(item, outputPath, [outputPath], mainWindow, {
       resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
       format: path.extname(outputPath).replace(/^\./, "") || item.format,
       ...(containerNote ? { containerNote } : {}),
+      ...subtitleOverrides,
     });
   } finally {
     removeDirectorySafe(tempDir);
+    removeTempRootIfEmpty(dest);
   }
 }
 
@@ -1140,6 +1325,7 @@ async function downloadSplitMedia(
     );
   } finally {
     removeDirectorySafe(tempDir);
+    removeTempRootIfEmpty(dest);
   }
 }
 
@@ -1156,7 +1342,11 @@ export async function startDownload(
   }
 
   const settings = (store.get("settings") || {}) as any;
-  const dest = settings.downloadLocation || app.getPath("downloads");
+  const baseDest = settings.downloadLocation || app.getPath("downloads");
+  const dest =
+    item.playlistDirectory && item.playlistTitle
+      ? path.join(baseDest, sanitizeFileName(item.playlistTitle, "Playlist"))
+      : baseDest;
   fs.mkdirSync(dest, { recursive: true });
 
   // Metadata was already requested when the item was queued; the cache makes

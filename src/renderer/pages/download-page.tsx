@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Clipboard, Link as LinkIcon } from "lucide-react";
+import { X, Clipboard, Link as LinkIcon, ListVideo } from "lucide-react";
 import { OptionsDrawer } from "../components/options-drawer";
+import { useAppStore } from "../stores/app-store";
 
 function detectPlatform(url: string): string | null {
   try {
@@ -36,45 +37,106 @@ export function DownloadPage() {
   const [url, setUrl] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const settings = useAppStore((state) => state.settings);
+  const watchClipboard = settings?.watchClipboard !== false;
 
   const [clipboardUrl, setClipboardUrl] = useState<string | null>(null);
+  // URLs the user dismissed or already acted on; never re-offer them.
+  const seenClipboardUrls = useRef(new Set<string>());
   const [metadata, setMetadata] = useState<any>(null);
   const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
+  const [playlist, setPlaylist] = useState<PlaylistInfo | null>(null);
+  const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<
+    Set<number>
+  >(new Set());
+  const [playlistDirectory, setPlaylistDirectory] = useState(true);
 
   const urls = extractUrls(url);
   const platform = url ? detectPlatform(urls[0] || url.trim()) : null;
 
   useEffect(() => {
-    // Check clipboard for valid URL on focus
+    const handoff = window.localStorage.getItem("prism.download.url");
+    if (!handoff) return;
+    window.localStorage.removeItem("prism.download.url");
+    setUrl(normalizeUrls(handoff));
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  }, []);
+
+  useEffect(() => {
+    const onPasteShortcut = (event: KeyboardEvent) => {
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLocaleLowerCase() !== "v"
+      )
+        return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, [contenteditable=true]")) return;
+      event.preventDefault();
+      void navigator.clipboard.readText().then((text) => {
+        const normalized = normalizeUrls(text);
+        if (normalized) {
+          setUrl(normalized);
+          textareaRef.current?.focus();
+        }
+      });
+    };
+    window.addEventListener("keydown", onPasteShortcut);
+    return () => window.removeEventListener("keydown", onPasteShortcut);
+  }, []);
+
+  useEffect(() => {
+    if (!watchClipboard) {
+      setClipboardUrl(null);
+      return;
+    }
+    // Watch the clipboard while this page is open: on window focus and on a
+    // slow poll, offering each detected link once.
     const checkClipboard = async () => {
+      if (document.hidden) return;
       try {
         const text = await navigator.clipboard.readText();
         const extracted = extractUrls(text);
-        if (extracted.length > 0 && !url.includes(extracted[0])) {
-          setClipboardUrl(extracted[0]);
-        } else {
+        const candidate = extracted[0];
+        if (
+          candidate &&
+          !url.includes(candidate) &&
+          !seenClipboardUrls.current.has(candidate)
+        ) {
+          setClipboardUrl(candidate);
+        } else if (!candidate) {
           setClipboardUrl(null);
         }
-      } catch (e) {
-        // Ignore clipboard read errors
+      } catch {
+        // Clipboard unavailable (permission or non-text content).
       }
     };
 
     window.addEventListener("focus", checkClipboard);
-    checkClipboard();
-    return () => window.removeEventListener("focus", checkClipboard);
-  }, [url]);
+    const interval = window.setInterval(() => void checkClipboard(), 3000);
+    void checkClipboard();
+    return () => {
+      window.removeEventListener("focus", checkClipboard);
+      window.clearInterval(interval);
+    };
+  }, [url, watchClipboard]);
 
   useEffect(() => {
     if (urls.length === 1) {
       setIsFetchingMetadata(true);
       setMetadata(null);
+      setPlaylist(null);
       let isCurrent = true;
-      window.prism.download
-        .getMetadata(urls[0])
-        .then((m) => {
+      Promise.all([
+        window.prism.download.getMetadata(urls[0]),
+        window.prism.download.getPlaylistInfo(urls[0]),
+      ])
+        .then(([m, playlistInfo]) => {
           if (isCurrent) {
             setMetadata(m);
+            setPlaylist(playlistInfo);
+            setSelectedPlaylistEntries(
+              new Set(playlistInfo?.entries.map((_, index) => index) || []),
+            );
             setIsFetchingMetadata(false);
           }
         })
@@ -86,13 +148,15 @@ export function DownloadPage() {
       };
     } else {
       setMetadata(null);
+      setPlaylist(null);
       setIsFetchingMetadata(false);
       return undefined;
     }
   }, [urls.length === 1 ? urls[0] : null]);
 
   const handleSubmit = async () => {
-    if (urls.length === 0) return;
+    if (urls.length === 0 || (playlist && selectedPlaylistEntries.size === 0))
+      return;
 
     setDrawerOpen(true);
   };
@@ -116,9 +180,15 @@ export function DownloadPage() {
 
   const handleSmartPaste = () => {
     if (clipboardUrl) {
+      seenClipboardUrls.current.add(clipboardUrl);
       setUrl(clipboardUrl);
       setClipboardUrl(null);
     }
+  };
+
+  const dismissClipboardUrl = () => {
+    if (clipboardUrl) seenClipboardUrls.current.add(clipboardUrl);
+    setClipboardUrl(null);
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -134,6 +204,11 @@ export function DownloadPage() {
   const lineCount = url ? url.split("\n").length : 1;
   const textareaHeight = Math.min(Math.max(lineCount * 22 + 24, 48), 168);
   const needsScroll = lineCount > 5;
+  const queueUrls = playlist
+    ? playlist.entries
+        .filter((_, index) => selectedPlaylistEntries.has(index))
+        .map((entry) => entry.url)
+    : urls;
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-4">
@@ -236,22 +311,113 @@ export function DownloadPage() {
                 ) : null}
               </div>
             )}
+            {playlist && (
+              <section className="border-t border-border-subtle bg-bg/50 px-5 py-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-text-primary">
+                      <ListVideo size={15} />
+                      <span className="truncate">{playlist.title}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] tabular-nums text-text-tertiary">
+                      {selectedPlaylistEntries.size} of{" "}
+                      {playlist.entries.length} selected
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="min-h-10 shrink-0 rounded-lg px-3 text-[11px] font-medium text-accent transition-[background-color,transform] hover:bg-accent/10 active:scale-[0.96]"
+                    onClick={() =>
+                      setSelectedPlaylistEntries((current) =>
+                        current.size === playlist.entries.length
+                          ? new Set()
+                          : new Set(playlist.entries.map((_, index) => index)),
+                      )
+                    }
+                  >
+                    {selectedPlaylistEntries.size === playlist.entries.length
+                      ? "Clear all"
+                      : "Select all"}
+                  </button>
+                </div>
+                <div className="max-h-52 space-y-1 overflow-y-auto pr-1">
+                  {playlist.entries.map((entry, index) => (
+                    <label
+                      key={`${entry.url}-${index}`}
+                      className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-2 text-xs text-text-secondary transition-[background-color,color] hover:bg-bg-elevated hover:text-text-primary"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPlaylistEntries.has(index)}
+                        onChange={() =>
+                          setSelectedPlaylistEntries((current) => {
+                            const next = new Set(current);
+                            if (next.has(index)) next.delete(index);
+                            else next.add(index);
+                            return next;
+                          })
+                        }
+                        className="h-4 w-4 accent-accent"
+                      />
+                      <span className="w-6 shrink-0 text-right tabular-nums text-text-tertiary">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {entry.title}
+                      </span>
+                      {entry.durationSeconds != null && (
+                        <span className="shrink-0 tabular-nums text-[10px] text-text-tertiary">
+                          {Math.floor(entry.durationSeconds / 60)}:
+                          {String(
+                            Math.floor(entry.durationSeconds % 60),
+                          ).padStart(2, "0")}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+                <label className="mt-2 flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2 text-[11px] text-text-secondary transition-colors hover:bg-bg-elevated">
+                  <input
+                    type="checkbox"
+                    checked={playlistDirectory}
+                    onChange={(event) =>
+                      setPlaylistDirectory(event.target.checked)
+                    }
+                    className="h-4 w-4 accent-accent"
+                  />
+                  Save into a folder named after the playlist
+                </label>
+              </section>
+            )}
           </div>
 
           {/* Smart Paste Toast */}
           {clipboardUrl && !url && (
-            <button
-              onClick={handleSmartPaste}
-              className="absolute -bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-text-primary px-4 py-2 text-xs font-medium text-bg shadow-lg transition-[transform,background-color] hover:scale-105"
-            >
-              <Clipboard size={14} />
-              Paste from Clipboard
-            </button>
+            <div className="absolute -bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center overflow-hidden rounded-full bg-text-primary shadow-lg">
+              <button
+                onClick={handleSmartPaste}
+                className="flex items-center gap-2 py-2 pl-4 pr-2 text-xs font-medium text-bg transition-opacity hover:opacity-85"
+              >
+                <Clipboard size={14} />
+                <span className="max-w-[220px] truncate">
+                  {detectPlatform(clipboardUrl)
+                    ? `Download from ${detectPlatform(clipboardUrl)}`
+                    : "Paste from Clipboard"}
+                </span>
+              </button>
+              <button
+                onClick={dismissClipboardUrl}
+                aria-label="Dismiss clipboard suggestion"
+                className="flex h-full items-center py-2 pl-1 pr-3 text-bg/70 transition-colors hover:text-bg"
+              >
+                <X size={13} />
+              </button>
+            </div>
           )}
 
           <button
             onClick={handleSubmit}
-            disabled={!url}
+            disabled={!url || Boolean(playlist && queueUrls.length === 0)}
             className="flex h-[48px] w-full items-center justify-center rounded-xl bg-accent text-sm font-medium text-accent-fg shadow-md transition-[background-color,opacity,transform] hover:bg-accent/90 disabled:opacity-50 active:scale-[0.98]"
           >
             Add to Queue
@@ -276,9 +442,26 @@ export function DownloadPage() {
       <OptionsDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        urls={urls}
+        urls={queueUrls}
         platform={platform || "Unknown"}
         setUrl={setUrl}
+        playlist={
+          playlist
+            ? {
+                id: urls[0],
+                title: playlist.title,
+                totalCount: playlist.entries.length,
+                useDirectory: playlistDirectory,
+                entries: playlist.entries
+                  .map((entry, index) => ({
+                    url: entry.url,
+                    title: entry.title,
+                    originalIndex: index + 1,
+                  }))
+                  .filter((_, index) => selectedPlaylistEntries.has(index)),
+              }
+            : null
+        }
       />
     </div>
   );

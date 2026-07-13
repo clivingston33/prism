@@ -18,6 +18,7 @@ import {
 import { useAppStore } from "../stores/app-store";
 import type { ConversionFormat } from "../../shared/contracts.ts";
 import type { MediaProbe, RemuxContainer } from "../../shared/media-tools.ts";
+import { Waveform, secondsToTimestamp } from "../components/waveform";
 
 type Mode = "remux" | "convert";
 type ItemStatus =
@@ -282,19 +283,53 @@ export function MediaToolsPage() {
   const [fps, setFps] = useState("source");
   const [crf, setCrf] = useState("20");
   const [audioBitrate, setAudioBitrate] = useState("192k");
+  const [trimEnabled, setTrimEnabled] = useState(false);
+  const [trimRange, setTrimRange] = useState({ start: 0, end: 0, duration: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressSnapshot, setProgressSnapshot] =
     useState<DownloadProgress | null>(null);
   const cancelAllRef = useRef(false);
+  const nameEdited = useRef(false);
+  const dirEdited = useRef(false);
   const activeJob = useRef<string | null>(null);
   const waiters = useRef(
     new Map<string, (result: "completed" | "failed" | "cancelled") => void>(),
   );
 
+  // File handed off from another page (Library "Convert", drag-and-drop
+  // router): attach it to the queue on arrival, same pattern the
+  // transcription page uses. The handoff also pins Convert mode so the
+  // settings-driven default below cannot override the user's intent.
+  const handoffMode = useRef(false);
+  useEffect(() => {
+    const handoff = window.localStorage.getItem("prism.mediatools.file");
+    const handoffFiles = window.localStorage.getItem("prism.mediatools.files");
+    const requestedMode = window.localStorage.getItem("prism.mediatools.mode");
+    if (handoff || handoffFiles) {
+      window.localStorage.removeItem("prism.mediatools.file");
+      window.localStorage.removeItem("prism.mediatools.files");
+      window.localStorage.removeItem("prism.mediatools.mode");
+      handoffMode.current = true;
+      let paths = handoff ? [handoff] : [];
+      try {
+        const parsed = JSON.parse(handoffFiles || "[]");
+        if (Array.isArray(parsed))
+          paths = parsed.filter(
+            (value): value is string => typeof value === "string",
+          );
+      } catch {}
+      addPaths(paths);
+      setMode(requestedMode === "remux" ? "remux" : "convert");
+    }
+  }, []);
+
   useEffect(() => {
     if (!settings) return;
-    setMode(settings.defaultMediaToolsMode === "convert" ? "convert" : "remux");
+    if (!handoffMode.current)
+      setMode(
+        settings.defaultMediaToolsMode === "convert" ? "convert" : "remux",
+      );
     const configuredContainer = String(
       settings.defaultRemuxContainer || "auto",
     ) as RemuxContainer;
@@ -416,8 +451,10 @@ export function MediaToolsPage() {
 
   useEffect(() => {
     if (!selected) return;
-    setOutputDirectory((current) => current || directoryName(selected.path));
-    setOutputName((current) => current || baseName(selected.path));
+    // Follow the selected file so a newly attached (or swapped-in) file drives
+    // the output name and folder. Only preserve values the user typed by hand.
+    if (!dirEdited.current) setOutputDirectory(directoryName(selected.path));
+    if (!nameEdited.current) setOutputName(baseName(selected.path));
     const video =
       selected.probe?.streams
         .filter((stream) => stream.type === "video" && !stream.attachedPicture)
@@ -461,12 +498,21 @@ export function MediaToolsPage() {
   };
   const chooseOutputDirectory = async () => {
     const value = await window.prism.settings.selectDirectory();
-    if (value) setOutputDirectory(value);
+    if (value) {
+      dirEdited.current = true;
+      setOutputDirectory(value);
+    }
   };
   const removeItem = (id: string) => {
-    setItems((current) => current.filter((item) => item.id !== id));
-    if (selectedId === id)
-      setSelectedId(items.find((item) => item.id !== id)?.id || null);
+    const remaining = items.filter((item) => item.id !== id);
+    setItems(remaining);
+    if (selectedId === id) setSelectedId(remaining[0]?.id || null);
+    // Emptying the queue clears manual overrides so the next file attached
+    // drives a fresh output name and folder again.
+    if (remaining.length === 0) {
+      nameEdited.current = false;
+      dirEdited.current = false;
+    }
   };
   const moveItem = (id: string, direction: -1 | 1) =>
     setItems((current) => {
@@ -524,6 +570,10 @@ export function MediaToolsPage() {
         fps,
         crf: Number(crf),
         audioBitrate,
+        trimStart: trimEnabled
+          ? secondsToTimestamp(trimRange.start)
+          : undefined,
+        trimEnd: trimEnabled ? secondsToTimestamp(trimRange.end) : undefined,
       });
     }
     activeJob.current = jobId;
@@ -696,6 +746,8 @@ export function MediaToolsPage() {
                         if (!isProcessing) {
                           setItems([]);
                           setSelectedId(null);
+                          nameEdited.current = false;
+                          dirEdited.current = false;
                         }
                       }}
                     >
@@ -852,6 +904,35 @@ export function MediaToolsPage() {
                     )}
                   </div>
                 </div>
+              </section>
+            )}
+
+            {selected && mode === "convert" && (
+              <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <SectionHeading eyebrow="3 · Trim" title="Choose a range" />
+                  <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-elevated">
+                    <input
+                      type="checkbox"
+                      checked={trimEnabled}
+                      onChange={(event) => setTrimEnabled(event.target.checked)}
+                      className="h-4 w-4 accent-accent"
+                    />
+                    Trim output
+                  </label>
+                </div>
+                <p className="mt-1 text-xs text-text-secondary">
+                  Preview the audio and drag either handle to keep only part of
+                  the file.
+                </p>
+                {trimEnabled && (
+                  <div className="mt-4">
+                    <Waveform
+                      filePath={selected.path}
+                      onChange={setTrimRange}
+                    />
+                  </div>
+                )}
               </section>
             )}
 
@@ -1198,7 +1279,10 @@ export function MediaToolsPage() {
                   <input
                     className="field-input"
                     value={outputName}
-                    onChange={(event) => setOutputName(event.target.value)}
+                    onChange={(event) => {
+                      nameEdited.current = true;
+                      setOutputName(event.target.value);
+                    }}
                     placeholder="media-output"
                   />
                 </Field>

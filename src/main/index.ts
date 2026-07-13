@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, protocol, net } from "electron";
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
+import { Readable } from "stream";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { setupSettingsIPC } from "./ipc/settings";
 import { setupHistoryIPC } from "./ipc/history";
@@ -12,6 +13,40 @@ import { queueManager } from "./download/queue";
 import { setupTranscriptionIPC } from "./ipc/transcription";
 import { maybeAutoUpdateYtDlp } from "./download/ytdlp-updater";
 import { resolveMediaPreview } from "./media-preview";
+
+function serveAudioPreview(filePath: string, request: Request) {
+  const stat = fs.statSync(filePath);
+  const size = stat.size;
+  const range = request.headers.get("range");
+  let start = 0;
+  let end = size - 1;
+  let status = 200;
+  if (range) {
+    const match = range.match(/^bytes=(\d*)-(\d*)$/);
+    if (!match) return new Response(null, { status: 416 });
+    if (match[1]) start = Number(match[1]);
+    if (match[2]) end = Number(match[2]);
+    if (!match[1] && match[2]) start = Math.max(0, size - Number(match[2]));
+    end = Math.min(end, size - 1);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= size) {
+      return new Response(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${size}` },
+      });
+    }
+    status = 206;
+  }
+  const headers: Record<string, string> = {
+    "Accept-Ranges": "bytes",
+    "Content-Type": "audio/mpeg",
+    "Content-Length": String(end - start + 1),
+    "Cache-Control": "private, max-age=3600",
+  };
+  if (status === 206) headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+  if (request.method === "HEAD") return new Response(null, { status, headers });
+  const stream = Readable.toWeb(fs.createReadStream(filePath, { start, end }));
+  return new Response(stream as BodyInit, { status, headers });
+}
 
 // Register custom protocol scheme
 protocol.registerSchemesAsPrivileged([
@@ -108,13 +143,12 @@ app.whenReady().then(() => {
     const filePath = path.normalize(
       rawPath.replace(/^\/+/, process.platform === "win32" ? "" : "/"),
     );
-    const thumbnailRoot = path.resolve(app.getPath("userData"), "thumbnails");
     const absolutePath = path.resolve(filePath);
     const settings = store.get("settings", {}) as { downloadLocation?: string };
     const downloadRoot = path.resolve(
       settings.downloadLocation || app.getPath("downloads"),
     );
-    const allowedRoots = [thumbnailRoot, downloadRoot];
+    const allowedRoots = [downloadRoot];
     for (const root of allowedRoots) {
       const resolvedRoot = path.resolve(root);
       if (
@@ -142,9 +176,7 @@ app.whenReady().then(() => {
     const filePath = resolveMediaPreview(token);
     if (!filePath) return new Response("Not found", { status: 404 });
     try {
-      return net.fetch(pathToFileURL(filePath).toString(), {
-        headers: request.headers,
-      });
+      return serveAudioPreview(filePath, request);
     } catch {
       return new Response("Not found", { status: 404 });
     }
@@ -156,13 +188,6 @@ app.whenReady().then(() => {
 
   createWindow();
   setupUpdater();
-  // Off the critical path: remove orphaned/over-cap thumbnails from previous
-  // sessions without blocking window creation.
-  setTimeout(() => {
-    void import("./thumbnails").then(({ pruneThumbnailCache }) =>
-      pruneThumbnailCache().catch(() => undefined),
-    );
-  }, 5000);
   setTimeout(() => void maybeAutoUpdateYtDlp(), 10_000);
 
   app.on("activate", function () {

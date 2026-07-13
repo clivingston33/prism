@@ -159,6 +159,8 @@ class DownloadManager {
       format,
       audioFormat:
         options.audioFormat || String(settings.defaultAudioFormat || "mp3"),
+      audioTrackId: options.audioTrackId,
+      conflictAction: options.conflictAction || "rename",
       quality: options.quality || String(settings.defaultQuality || "best"),
       transcript: options.transcript,
       transcriptFormat: options.transcriptFormat || "txt",
@@ -199,7 +201,6 @@ class DownloadManager {
           {
             title: meta.title || current.title,
             platform: meta.platform || current.platform,
-            thumbnail: meta.thumbnail || current.thumbnail,
             duration: meta.duration,
             resolution: meta.height || meta.resolution,
           },

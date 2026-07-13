@@ -226,6 +226,12 @@ export function parseDownloadRequest(value: unknown): DownloadRequest {
     AUDIO_FORMATS,
     "audioFormat",
   );
+  const audioTrackId = optionalString(raw.audioTrackId, "audioTrackId")?.trim();
+  const conflictAction = optionalEnum(
+    raw.conflictAction,
+    ["rename", "overwrite", "skip"] as const,
+    "conflictAction",
+  );
   const quality = optionalEnum(raw.quality, QUALITIES, "quality");
   const transcript = optionalBoolean(raw.transcript, "transcript");
   const transcriptFormat = optionalEnum(
@@ -237,6 +243,12 @@ export function parseDownloadRequest(value: unknown): DownloadRequest {
   const trimEnd = optionalTimestamp(raw.trimEnd, "trimEnd");
   if (mode !== undefined) request.mode = mode;
   if (audioFormat !== undefined) request.audioFormat = audioFormat;
+  if (audioTrackId !== undefined) {
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(audioTrackId))
+      throw new Error("The selected audio track id is invalid.");
+    request.audioTrackId = audioTrackId;
+  }
+  if (conflictAction !== undefined) request.conflictAction = conflictAction;
   if (quality !== undefined) request.quality = quality;
   if (transcript !== undefined) request.transcript = transcript;
   if (transcriptFormat !== undefined) {
@@ -521,7 +533,6 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
       ["mark", "remove", "ask"] as const,
       "missingFileBehavior",
     ),
-  generateThumbnails: (value) => optionalBoolean(value, "generateThumbnails"),
   transcriptionModelId: (value) => requireString(value, "transcriptionModelId"),
   transcriptionLanguage: (value) =>
     requireString(value, "transcriptionLanguage"),

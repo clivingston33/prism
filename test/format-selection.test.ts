@@ -85,6 +85,21 @@ test("audio source mode extracts without forcing a codec", () => {
   assert.equal(plan.kind, "audio");
 });
 
+test("exact source audio track ids are respected", () => {
+  const audio = buildDownloadPlan({
+    mode: "audio_only",
+    audioFormat: "source",
+    audioTrackId: "251-en",
+  });
+  assert.equal(audio.formatSelector, "251-en");
+  const combined = buildDownloadPlan({
+    mode: "video_audio",
+    container: "auto",
+    audioTrackId: "251-en",
+  });
+  assert.match(combined.formatSelector, /\+251-en/);
+});
+
 test("explicit audio format still uses yt-dlp extraction", () => {
   const plan = buildDownloadPlan({ mode: "audio_only", audioFormat: "mp3" });
   assert.ok(plan.extraArgs.includes("-x"));

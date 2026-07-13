@@ -213,6 +213,14 @@ interface DownloadItem {
   transcriptError?: string;
   imageCount?: number;
   containerNote?: string;
+  diagnostics?: {
+    command?: string;
+    estimatedSizeBytes?: number;
+    freeSpaceBytes?: number;
+    destination?: string;
+    outputContainer?: string;
+    logTail?: string;
+  };
   request?: DownloadOptions;
 }
 
@@ -231,6 +239,8 @@ interface DownloadOptions {
     | "flac"
     | "prores";
   audioFormat?: "source" | "mp3" | "wav" | "aac" | "flac";
+  audioTrackId?: string;
+  conflictAction?: "rename" | "overwrite" | "skip";
   quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
   transcript?: boolean;
   transcriptFormat?: "txt" | "srt" | "vtt" | "json";
@@ -259,6 +269,9 @@ interface VideoMetadata {
   qualities?: string[];
   mediaType?: "video" | "image";
   imageCount?: number;
+  estimatedSizeBytes?: number;
+  audioTracks?: { id: string; label: string; language?: string }[];
+  subtitleTracks?: { language: string; label: string; automatic?: boolean }[];
 }
 
 interface DownloadProgress {

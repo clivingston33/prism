@@ -142,6 +142,32 @@
   .icon-button {
     @apply inline-flex h-9 w-9 items-center justify-center rounded-lg text-text-secondary transition-[background-color,color,transform] hover:bg-bg-elevated hover:text-text-primary active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-25;
   }
+
+  .library-select {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23888888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: right 0.7rem center;
+    background-repeat: no-repeat;
+    background-size: 14px;
+    color-scheme: dark;
+  }
+
+  .library-select option {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+
+  input[type="checkbox"] {
+    @apply h-4 w-4 cursor-pointer appearance-none rounded border border-border bg-bg transition-[background-color,border-color,box-shadow] checked:border-accent checked:bg-accent focus:ring-2 focus:ring-accent/20;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 11px 11px;
+  }
+
+  input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='m3 8 3 3 7-7' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -166,4 +192,27 @@
 
 .animate-indeterminate {
   animation: prism-indeterminate 1.4s ease-in-out infinite;
+}
+
+.prism-loader {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 14px;
+}
+
+.prism-loader i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: prism-loader-bounce 0.5s alternate infinite ease-in;
+}
+
+.prism-loader i:nth-child(2) { animation-delay: 0.16s; }
+.prism-loader i:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes prism-loader-bounce {
+  from { transform: translateY(0) scaleX(1.35); opacity: 0.55; }
+  to { transform: translateY(-9px) scaleX(1); opacity: 1; }
 }

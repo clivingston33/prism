@@ -19,6 +19,10 @@ export function setupUpdater() {
     ? path.join(process.resourcesPath, "dev-app-update.yml")
     : path.join(__dirname, "../../dev-app-update.yml");
 
+  // electron-updater cannot check an unpackaged app without an explicit dev
+  // feed. Avoid its noisy "application is not packed" warning in normal dev.
+  if (!app.isPackaged && !fs.existsSync(devConfigPath)) return;
+
   if (!app.isPackaged && fs.existsSync(devConfigPath)) {
     autoUpdater.forceDevUpdateConfig = true;
     console.log("[updater] Using dev update config:", devConfigPath);

@@ -32,7 +32,6 @@ const LibraryCard = memo(function LibraryCard({
   onSelect,
   onLocate,
   onRemove,
-  onRegenerate,
   onTranscribe,
 }: {
   item: DownloadItem;
@@ -40,7 +39,6 @@ const LibraryCard = memo(function LibraryCard({
   onSelect: (item: DownloadItem) => void;
   onLocate: (item: DownloadItem) => void;
   onRemove: (item: DownloadItem) => void;
-  onRegenerate: (item: DownloadItem) => void;
   onTranscribe: (item: DownloadItem) => void;
 }) {
   const [imageState, setImageState] = useState<"loading" | "loaded" | "failed">(
@@ -51,13 +49,13 @@ const LibraryCard = memo(function LibraryCard({
     item.fileState === "partial" ||
     item.fileState === "unavailable";
   return (
-    <article className="group overflow-hidden rounded-xl border border-border bg-bg-subtle">
+    <article className="group flex overflow-hidden rounded-xl border border-border bg-bg-subtle">
       <button
-        className="block w-full text-left"
+        className="flex min-w-0 flex-1 items-center text-left"
         onClick={() => onOpen(item)}
         disabled={missing}
       >
-        <div className="relative flex aspect-video items-center justify-center overflow-hidden bg-bg">
+        <div className="hidden relative flex aspect-video items-center justify-center overflow-hidden bg-bg">
           {item.thumbnail && imageState !== "failed" && (
             <>
               <div
@@ -103,7 +101,7 @@ const LibraryCard = memo(function LibraryCard({
             )}
           </div>
         </div>
-        <div className="p-3">
+        <div className="min-w-0 flex-1 p-3">
           <h3 className="truncate text-[13px] font-medium text-text-primary">
             {item.title}
           </h3>
@@ -120,7 +118,7 @@ const LibraryCard = memo(function LibraryCard({
           </div>
         </div>
       </button>
-      <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-1 px-2 py-1.5">
         <button
           className="icon-button h-8 w-8"
           title="Details"
@@ -148,16 +146,7 @@ const LibraryCard = memo(function LibraryCard({
           >
             <RotateCcw size={14} />
           </button>
-        ) : (
-          <button
-            className="icon-button h-8 w-8"
-            title="Regenerate thumbnail"
-            aria-label={`Regenerate thumbnail for ${item.title}`}
-            onClick={() => onRegenerate(item)}
-          >
-            <RefreshCw size={14} />
-          </button>
-        )}
+        ) : null}
         {!missing && item.filePath && (
           <button
             className="icon-button h-8 w-8"
@@ -219,8 +208,8 @@ export function LibraryPage() {
       if (needle && !item.title.toLocaleLowerCase().includes(needle))
         return false;
       if (typeFilter === "all") return true;
-      if (typeFilter === "images")
-        return item.format === "images" || item.imageCount;
+      if (typeFilter === "transcripts")
+        return Boolean(item.transcriptPath || item.transcriptText);
       const isAudio =
         item.mode === "audio_only" ||
         audio.has(item.format.toLocaleLowerCase());
@@ -284,14 +273,6 @@ export function LibraryPage() {
     const path = await window.prism.history.locate(item.id);
     if (path) setDownloads(await window.prism.history.get());
   };
-  const regenerate = async (item: DownloadItem) => {
-    try {
-      await window.prism.history.regenerateThumbnail(item.id);
-      setDownloads(await window.prism.history.get());
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : String(error));
-    }
-  };
   const transcribe = (item: DownloadItem) => {
     if (!item.filePath) return;
     window.localStorage.setItem("prism.transcription.file", item.filePath);
@@ -334,25 +315,25 @@ export function LibraryPage() {
             )}
           </div>
         </header>
-        <section className="rounded-2xl bg-bg-subtle p-3 shadow-sm">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
-            <label className="relative">
+        <section className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex min-w-0 flex-1 gap-2">
+            <label className="relative min-w-0 flex-1">
               <Search
-                size={15}
+                size={16}
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
               />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search Library"
-                className="h-11 w-full rounded-xl border border-border bg-bg pl-10 pr-3 text-sm text-text-primary outline-none focus:border-accent"
+                placeholder="Search downloads..."
+                className="h-10 w-full rounded-xl border border-border bg-transparent pl-10 pr-3 text-sm text-text-primary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
               />
             </label>
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value)}
               aria-label="Sort Library"
-              className="h-11 rounded-xl border border-border bg-bg px-3 text-xs text-text-primary outline-none focus:border-accent"
+              className="library-select h-10 min-w-32 rounded-xl border border-border bg-transparent px-3 text-xs font-medium text-text-secondary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
             >
               <option value="date-desc">Newest first</option>
               <option value="date-asc">Oldest first</option>
@@ -361,11 +342,11 @@ export function LibraryPage() {
             </select>
           </div>
           <div
-            className="mt-2 flex flex-wrap gap-1"
+            className="flex shrink-0 flex-wrap gap-1"
             role="group"
             aria-label="Filter by media type"
           >
-            {(["all", "video", "audio", "images"] as const).map((value) => (
+            {(["all", "video", "audio", "transcripts"] as const).map((value) => (
               <button
                 type="button"
                 key={value}
@@ -380,7 +361,7 @@ export function LibraryPage() {
         </section>
         {notice && <p className="text-xs text-text-tertiary">{notice}</p>}
         {completed.length ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-2">
             {completed.map((item) => (
               <LibraryCard
                 key={item.id}
@@ -389,7 +370,6 @@ export function LibraryPage() {
                 onSelect={setSelected}
                 onLocate={(value) => void locate(value)}
                 onRemove={(value) => void remove(value)}
-                onRegenerate={(value) => void regenerate(value)}
                 onTranscribe={(value) => transcribe(value)}
               />
             ))}

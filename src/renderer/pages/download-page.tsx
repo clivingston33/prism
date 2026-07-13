@@ -218,7 +218,7 @@ export function DownloadPage() {
             Prism
           </h1>
           <p className="text-xs text-text-tertiary">
-            Paste any video or audio link to begin.
+            Paste any downloadable media or file link to begin.
           </p>
         </div>
 
@@ -267,35 +267,9 @@ export function DownloadPage() {
                   </>
                 ) : metadata ? (
                   <>
-                    {metadata.thumbnail ? (
-                      <div className="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden border border-border-subtle bg-bg shadow-sm">
-                        <img
-                          src={metadata.thumbnail}
-                          alt="thumbnail"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display =
-                              "none";
-                            (
-                              e.target as HTMLImageElement
-                            ).parentElement!.classList.add(
-                              "flex",
-                              "items-center",
-                              "justify-center",
-                              "bg-bg-subtle",
-                            );
-                            (
-                              e.target as HTMLImageElement
-                            ).parentElement!.innerHTML =
-                              '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-text-tertiary"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-14 h-14 shrink-0 rounded-lg bg-bg-subtle border border-border-subtle flex items-center justify-center text-text-tertiary shadow-sm">
-                        <LinkIcon size={20} />
-                      </div>
-                    )}
+                    <div className="w-14 h-14 shrink-0 rounded-lg bg-bg-subtle border border-border-subtle flex items-center justify-center text-text-tertiary shadow-sm">
+                      <LinkIcon size={20} />
+                    </div>
                     <div className="flex flex-col flex-1 overflow-hidden gap-1">
                       <span className="text-sm font-semibold text-text-primary truncate">
                         {metadata.title || "Unknown video"}

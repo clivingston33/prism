@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, FolderOpen, Settings2 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
+import { LoadingIndicator } from "../components/loading-indicator";
 
 const sections = [
   "Downloads",
@@ -80,13 +81,11 @@ export function SettingsPage() {
   const setSettings = useAppStore((state) => state.setSettings);
   const [section, setSection] = useState<Section>("Downloads");
   const [models, setModels] = useState<WhisperModelState[]>([]);
+  const [thumbCache, setThumbCache] = useState({ sizeBytes: 0, fileCount: 0 });
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
   const [ytdlpUpdate, setYtdlpUpdate] = useState<YtDlpUpdateState | null>(null);
   const [optimizeSummary, setOptimizeSummary] = useState("");
-  const [thumbCache, setThumbCache] = useState<{
-    sizeBytes: number;
-    fileCount: number;
-  } | null>(null);
   const optimizeForDevice = async () => {
     const result = await window.prism.settings.optimizeForDevice();
     setSettings(result.settings);
@@ -104,8 +103,13 @@ export function SettingsPage() {
     setSettings(next);
   };
   useEffect(() => {
-    if (section === "Transcription")
-      void window.prism.transcription.listModels().then(setModels);
+    if (section === "Transcription") {
+      setModelsLoading(true);
+      void window.prism.transcription
+        .listModels()
+        .then(setModels)
+        .finally(() => setModelsLoading(false));
+    }
     if (section === "Library")
       void window.prism.settings.thumbnailCacheInfo().then(setThumbCache);
     if (section === "Advanced")
@@ -299,12 +303,7 @@ export function SettingsPage() {
             onChange={(v) => void update("missingFileBehavior", v)}
             help="Permission errors and unavailable drives are never removed automatically."
           />
-          <Toggle
-            label="Automatically generate thumbnails"
-            value={settings.generateThumbnails !== false}
-            onChange={(v) => void update("generateThumbnails", v)}
-          />
-          <div className="flex items-center justify-between border-b border-border py-3 last:border-0">
+          {false && <div className="flex items-center justify-between border-b border-border py-3 last:border-0">
             <span>
               <span className="block text-sm text-text-primary">
                 Thumbnail cache
@@ -323,7 +322,7 @@ export function SettingsPage() {
             >
               Clear
             </button>
-          </div>
+          </div>}
           <button
             className="button-secondary mt-4"
             onClick={() => void window.prism.history.removeMissing()}
@@ -338,12 +337,16 @@ export function SettingsPage() {
           title="Transcription"
           description="Local Whisper transcription stays offline after a verified model is installed."
         >
-          <Select
-            label="Default model"
-            value={value("transcriptionModelId", "base")}
-            options={models.map((model) => [model.id, model.displayName])}
-            onChange={(v) => void update("transcriptionModelId", v)}
-          />
+          {modelsLoading ? (
+            <div className="border-b border-border py-4"><LoadingIndicator label="Checking installed transcription models…" /></div>
+          ) : (
+            <Select
+              label="Default model"
+              value={value("transcriptionModelId", "base")}
+              options={models.map((model) => [model.id, model.displayName])}
+              onChange={(v) => void update("transcriptionModelId", v)}
+            />
+          )}
           <Select
             label="Whisper runtime"
             value={value("whisperRuntime", "auto")}

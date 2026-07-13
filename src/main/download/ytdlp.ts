@@ -99,6 +99,22 @@ function updateHistoryItem(
   }
 }
 
+function updateDiagnostics(
+  id: string,
+  partial: Record<string, unknown>,
+  mainWindow?: Electron.BrowserWindow,
+) {
+  const current = (store.get("history", []) as any[]).find((item) => item.id === id);
+  updateHistoryItem(id, { diagnostics: { ...(current?.diagnostics || {}), ...partial } }, mainWindow);
+}
+
+function diagnosticCommand(executable: string, args: string[]) {
+  const quote = (value: string) => /^[A-Za-z0-9_./:=+-]+$/.test(value)
+    ? value
+    : `"${value.replace(/"/g, '\\"')}"`;
+  return [executable, ...args].map(quote).join(" ");
+}
+
 function setProgress(
   itemId: string,
   progress: number | undefined,
@@ -218,10 +234,14 @@ function fallbackMetadata(url: string) {
     title: `Video from ${hostname}`,
     platform,
     formats: ["mp4", "webm", "mov", "mp3", "prores"],
-    qualities: ["1080p", "720p", "480p", "360p"],
+    // Do not advertise guessed resolutions. The UI must only offer streams
+    // yt-dlp actually reported as downloadable.
+    qualities: [],
     mediaType: "video",
     imageUrls: [],
     imageCount: 0,
+    audioTracks: [],
+    subtitleTracks: [],
     fromFallback: true,
   };
 }
@@ -245,6 +265,14 @@ async function fetchMetadata(url: string): Promise<any> {
     args.push(url);
 
     let child: ReturnType<typeof spawn>;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const finish = (value: any) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      resolve(value);
+    };
     try {
       child = spawn(ytdlp, args);
     } catch (err) {
@@ -252,15 +280,16 @@ async function fetchMetadata(url: string): Promise<any> {
         `[yt-dlp] metadata spawn failed: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
         err,
       );
-      resolve(fallback);
+      finish(fallback);
       return;
     }
     let output = "";
     // A hung extractor must not block the queue forever.
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       try {
         child.kill();
       } catch {}
+      finish(fallback);
     }, METADATA_TIMEOUT_MS);
 
     child.stdout?.on("data", (data) => {
@@ -268,9 +297,8 @@ async function fetchMetadata(url: string): Promise<any> {
     });
 
     child.on("close", (code) => {
-      clearTimeout(timeout);
       if (code !== 0) {
-        resolve(fallback);
+        finish(fallback);
         return;
       }
 
@@ -290,8 +318,24 @@ async function fetchMetadata(url: string): Promise<any> {
           platform === "TikTok" &&
           imageUrls.length > 0 &&
           (!hasVideo || imageUrls.length > 1);
+        const audioTracks = parsedFormats
+          .filter((format: any) => format?.format_id && format?.acodec && format.acodec !== "none" && (!format.vcodec || format.vcodec === "none"))
+          .map((format: any) => ({
+            id: String(format.format_id),
+            language: format.language ? String(format.language) : undefined,
+            label: [format.language, format.format_note, format.acodec, format.abr ? `${Math.round(format.abr)} kbps` : null]
+              .filter(Boolean).join(" · ") || `Audio ${format.format_id}`,
+          }))
+          .filter((track: any, index: number, all: any[]) => all.findIndex((entry) => entry.id === track.id) === index)
+          .slice(0, 40);
+        const subtitleTracks = [
+          ...Object.keys(parsed.subtitles || {}).map((language) => ({ language, label: `${language} · subtitles`, automatic: false })),
+          ...Object.keys(parsed.automatic_captions || {}).map((language) => ({ language, label: `${language} · auto captions`, automatic: true })),
+        ].filter((track, index, all) => all.findIndex((entry) => entry.language === track.language && entry.automatic === track.automatic) === index).slice(0, 80);
+        const videoBytes = Math.max(0, ...parsedFormats.filter((format: any) => format?.vcodec && format.vcodec !== "none").map((format: any) => Number(format.filesize || format.filesize_approx || 0)));
+        const audioBytes = Math.max(0, ...parsedFormats.filter((format: any) => format?.acodec && format.acodec !== "none").map((format: any) => Number(format.filesize || format.filesize_approx || 0)));
 
-        resolve({
+        finish({
           title: parsed.title || fallback.title,
           platform,
           duration: parsed.duration,
@@ -316,19 +360,21 @@ async function fetchMetadata(url: string): Promise<any> {
           mediaType: isTikTokImages ? "image" : "video",
           imageUrls,
           imageCount: imageUrls.length,
+          estimatedSizeBytes: Number(parsed.filesize || parsed.filesize_approx || 0) || videoBytes + audioBytes || undefined,
+          audioTracks,
+          subtitleTracks,
         });
       } catch {
-        resolve(fallback);
+        finish(fallback);
       }
     });
 
     child.on("error", (err) => {
-      clearTimeout(timeout);
       console.warn(
         `[yt-dlp] metadata process error: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
         err,
       );
-      resolve(fallback);
+      finish(fallback);
     });
   });
 }
@@ -790,6 +836,7 @@ async function runYtDlp(
   console.log(
     `[yt-dlp] id=${item.id} mode=${item.mode} format=${item.format} quality=${item.quality || "best"}`,
   );
+  updateDiagnostics(item.id, { command: diagnosticCommand(ytdlp, args) }, mainWindow);
 
   return new Promise<{ outputFiles: string[] }>((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
@@ -892,6 +939,7 @@ async function runYtDlp(
     });
 
     child.on("close", (code) => {
+      updateDiagnostics(item.id, { logTail: stderr.slice(-4000) }, mainWindow);
       for (const line of stdoutBuffer.flush()) handleLine(line);
       for (const line of stderrBuffer.flush()) handleLine(line);
       if (processRegistry.isCancelled(item.id)) {
@@ -1004,35 +1052,8 @@ async function completeDownload(
     throw new JobCancelledError();
   }
 
-  // Downloads never auto-transcribe: transcription is an explicit action the
-  // user can run later from the Transcript page or Library.
-  const settings = (store.get("settings") || {}) as Record<string, unknown>;
-  const thumbSource =
-    settings.generateThumbnails === false
-      ? undefined
-      : overrides.thumbnail ||
-        filePaths.find((entry) => {
-          try {
-            return fs.existsSync(entry) && fs.statSync(entry).isFile();
-          } catch {
-            return false;
-          }
-        });
-  if (thumbSource) {
-    publishJobProgress(mainWindow, {
-      jobId: item.id,
-      attemptId: item.attemptId || item.id,
-      jobType: item.jobType || "download",
-      status: "processing",
-      stage: "thumbnail",
-      patch: { overallProgress: 98, stageProgress: 0 },
-    });
-    const thumbPath = await extractThumbnail(thumbSource, item.id);
-    if (thumbPath) overrides.thumbnail = thumbPath;
-  }
-
-  // A cancel that arrived while the thumbnail was being generated must win:
-  // a cancelled job can never be flipped to completed afterwards.
+  // Downloads never auto-transcribe and do not generate thumbnail sidecars.
+  // Both are explicit actions so completion is not delayed by decorative work.
   if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
     throw new JobCancelledError();
   }
@@ -1126,9 +1147,21 @@ async function deliverDownloadedFile(
   sourcePath: string,
   dest: string,
   baseName: string,
+  conflictAction: "rename" | "overwrite" | "skip" = "rename",
 ) {
   const extension = path.extname(sourcePath).replace(/^\./, "") || "mkv";
-  const outputPath = ensureUniquePath(dest, baseName, extension);
+  const requestedPath = path.join(dest, `${sanitizeFileName(baseName, "download")}.${extension}`);
+  if (fs.existsSync(requestedPath)) {
+    if (conflictAction === "skip") {
+      await fs.promises.rm(sourcePath, { force: true });
+      return requestedPath;
+    }
+    if (conflictAction === "overwrite")
+      await fs.promises.rm(requestedPath, { force: true });
+  }
+  const outputPath = conflictAction === "rename"
+    ? ensureUniquePath(dest, baseName, extension)
+    : requestedPath;
   await moveFileFast(sourcePath, outputPath);
   return outputPath;
 }
@@ -1147,6 +1180,7 @@ async function downloadSingleMedia(
       mode === "audio_only"
         ? item.audioFormat || item.format
         : item.audioFormat,
+    audioTrackId: item.audioTrackId,
     heightForQuality: qualityToHeight(item.quality),
   });
   const tempDir = createJobTempDir(dest, item.id);
@@ -1194,6 +1228,7 @@ async function downloadSingleMedia(
         sourcePath,
         dest,
         item.title || "download",
+        item.conflictAction || "rename",
       );
       containerNote = describeContainerFallback(
         plan.requestedContainer,
@@ -1289,12 +1324,14 @@ async function downloadSplitMedia(
         videoSource,
         dest,
         `${item.title || "download"} video`,
+        item.conflictAction || "rename",
       );
     }
 
     const audioPlan = buildDownloadPlan({
       mode: "audio_only",
       audioFormat: item.audioFormat || "mp3",
+      audioTrackId: item.audioTrackId,
     });
     const audioArgs = baseYtDlpArgs(audioTemp, item);
     audioArgs.push(...audioPlan.extraArgs, item.url);
@@ -1312,6 +1349,7 @@ async function downloadSplitMedia(
       audioSource,
       dest,
       `${item.title || "download"} audio`,
+      item.conflictAction || "rename",
     );
 
     await completeDownload(
@@ -1353,6 +1391,24 @@ export async function startDownload(
   // this a no-op reuse (or joins the still-in-flight request) instead of a
   // second extractor run.
   const metadata = await getMetadata(item.url).catch(() => null);
+  const estimatedSizeBytes = Number(metadata?.estimatedSizeBytes || 0);
+  let freeSpaceBytes: number | undefined;
+  try {
+    const stats = fs.statfsSync(dest);
+    freeSpaceBytes = Number(stats.bavail) * Number(stats.bsize);
+    const required = estimatedSizeBytes > 0
+      ? Math.ceil(estimatedSizeBytes * 1.25 + 256 * 1024 * 1024)
+      : 512 * 1024 * 1024;
+    updateDiagnostics(item.id, { estimatedSizeBytes, freeSpaceBytes, destination: dest }, mainWindow);
+    if (freeSpaceBytes < required) {
+      throw new Error(
+        `Not enough free space in ${dest}. Prism requires approximately ${Math.ceil(required / 1024 / 1024)} MB but only ${Math.floor(freeSpaceBytes / 1024 / 1024)} MB is available.`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Not enough free space")) throw error;
+    console.warn("[download] disk-space preflight unavailable", error);
+  }
   const mode = normalizeMode(item);
   const title = sanitizeFileName(metadata?.title || item.title || "download");
   const effectiveItem = {
@@ -1360,7 +1416,6 @@ export async function startDownload(
     mode,
     title,
     platform: metadata?.platform || item.platform || "Unknown",
-    thumbnail: metadata?.thumbnail || item.thumbnail,
     duration: metadata?.duration ?? item.duration,
     resolution: metadata?.height || metadata?.resolution || item.resolution,
     quality: item.quality || "best",

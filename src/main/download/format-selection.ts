@@ -82,15 +82,19 @@ function heightFilter(height: number | null | undefined): string {
 function videoAudioSelector(
   container: ContainerChoice,
   height: number | null | undefined,
+  audioTrackId?: string,
 ): string {
   const h = heightFilter(height);
+  const audio = audioTrackId || "bestaudio";
 
   if (container === "mp4" || container === "mov") {
     // Prefer H.264 + AAC sources so an MP4/MOV remux needs no encoding.
     return [
-      `bestvideo[vcodec^=avc1]${h}+bestaudio[acodec^=mp4a]`,
-      `bestvideo[vcodec^=avc1]${h}+bestaudio[ext=m4a]`,
-      `bestvideo[ext=mp4]${h}+bestaudio[ext=m4a]`,
+      ...(audioTrackId ? [`bestvideo[vcodec^=avc1]${h}+${audio}`, `bestvideo${h}+${audio}`] : [
+        `bestvideo[vcodec^=avc1]${h}+bestaudio[acodec^=mp4a]`,
+        `bestvideo[vcodec^=avc1]${h}+bestaudio[ext=m4a]`,
+        `bestvideo[ext=mp4]${h}+bestaudio[ext=m4a]`,
+      ]),
       `best[ext=mp4]${h}`,
       `bestvideo${h}+bestaudio`,
       `best${h}`,
@@ -101,7 +105,7 @@ function videoAudioSelector(
 
   if (container === "webm") {
     return [
-      `bestvideo[ext=webm]${h}+bestaudio[ext=webm]`,
+      audioTrackId ? `bestvideo[ext=webm]${h}+${audio}` : `bestvideo[ext=webm]${h}+bestaudio[ext=webm]`,
       `best[ext=webm]${h}`,
       `bestvideo${h}+bestaudio`,
       `best${h}`,
@@ -112,7 +116,7 @@ function videoAudioSelector(
 
   // auto, mkv, prores: take the best source streams as-is.
   return [
-    `bestvideo${h}+bestaudio`,
+    `bestvideo${h}+${audio}`,
     `best${h}`,
     "bestvideo+bestaudio",
     "best",
@@ -178,6 +182,7 @@ export interface BuildPlanInput {
   /** item.format for video modes; item.audioFormat (or format) for audio */
   container?: string;
   audioFormat?: string;
+  audioTrackId?: string;
   heightForQuality?: number | null;
 }
 
@@ -186,14 +191,15 @@ export function buildDownloadPlan(input: BuildPlanInput): DownloadPlan {
 
   if (input.mode === "audio_only") {
     const audio = normalizeAudioChoice(input.audioFormat || input.container);
-    const extraArgs = ["-f", "bestaudio/best"];
+    const selector = input.audioTrackId || "bestaudio/best";
+    const extraArgs = ["-f", selector];
     if (audio !== "source") {
       // Explicit audio codec choice: yt-dlp handles the (fast, audio-only)
       // conversion. "source" keeps the native codec via stream copy.
       extraArgs.push("-x", "--audio-format", audio, "--audio-quality", "0");
     }
     return {
-      formatSelector: "bestaudio/best",
+      formatSelector: selector,
       extraArgs,
       postProcess: "none",
       kind: "audio",
@@ -217,7 +223,7 @@ export function buildDownloadPlan(input: BuildPlanInput): DownloadPlan {
   }
 
   // video_audio (split downloads reuse video_only + audio_only plans)
-  const selector = videoAudioSelector(container, height);
+  const selector = videoAudioSelector(container, height, input.audioTrackId);
   const extraArgs = [
     "-f",
     selector,

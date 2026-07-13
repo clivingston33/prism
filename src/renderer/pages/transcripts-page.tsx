@@ -15,6 +15,7 @@ import { useAppStore } from "../stores/app-store";
 import { ConfirmDialog, Modal } from "../components/modal";
 import { COMPUTE_INTENSIVE_MODEL_IDS } from "../../shared/transcription.ts";
 import { Waveform, secondsToTimestamp } from "../components/waveform";
+import { LoadingIndicator } from "../components/loading-indicator";
 
 type Format = "txt" | "srt" | "vtt" | "json";
 
@@ -47,6 +48,7 @@ export function TranscriptsPage() {
   const navigate = useNavigate();
   const settings = useAppStore((state) => state.settings);
   const [models, setModels] = useState<WhisperModelState[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<WhisperModelState | null>(
     null,
@@ -85,8 +87,14 @@ export function TranscriptsPage() {
       (model) => model.id === String(settings?.transcriptionModelId || "base"),
     ) || installedModels[0];
 
-  const refreshModels = async () =>
-    setModels(await window.prism.transcription.listModels());
+  const refreshModels = async () => {
+    setModelsLoading(true);
+    try {
+      setModels(await window.prism.transcription.listModels());
+    } finally {
+      setModelsLoading(false);
+    }
+  };
   const installModel = async (modelId: string) => {
     // Optimistically flip the row to "downloading" and seed a 0% bar so the
     // progress UI appears immediately, instead of only after the whole download
@@ -242,7 +250,9 @@ export function TranscriptsPage() {
                   : selectedModel?.displayName || "Select"}
               </span>
             </span>
-            {needsModel && (
+            {modelsLoading ? (
+              <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm"><LoadingIndicator label="Checking installed transcription models…" /></section>
+            ) : needsModel && (
               <>
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-ping rounded-full bg-warning/70" />
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-warning ring-2 ring-bg" />
@@ -375,6 +385,11 @@ export function TranscriptsPage() {
                     Limit range
                   </label>
                 </div>
+                {!trimEnabled && (
+                  <p className="mt-2 text-[11px] text-text-tertiary">
+                    Enable Limit range to generate an interactive waveform and choose the section to transcribe.
+                  </p>
+                )}
                 {trimEnabled && (
                   <div className="mt-4">
                     <Waveform filePath={filePath} onChange={setTrimRange} />

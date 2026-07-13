@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, Video, Music } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { useNavigate } from "@tanstack/react-router";
+import { LoadingIndicator } from "./loading-indicator";
 
 type DownloadMode = "video_audio" | "video_only" | "audio_only" | "split";
 type VideoFormat = "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
@@ -27,6 +28,8 @@ interface QueueOptions {
   mode: DownloadMode;
   format: VideoFormat;
   audioFormat: AudioFormat;
+  audioTrackId: string;
+  conflictAction: "rename" | "overwrite" | "skip";
   quality: string;
   trimEnabled: boolean;
   trimStart: string;
@@ -97,11 +100,12 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
   return {
     url,
     mode: "video_audio",
-    format:
-      settings?.defaultDownloadMode === "mp4-compatible"
-        ? "mp4"
-        : settings?.defaultVideoFormat || "auto",
+    // Auto preserves the source streams and reports the real container after
+    // download. A pasted link should never silently inherit an MP4 preference.
+    format: "auto",
     audioFormat: settings?.defaultAudioFormat || "source",
+    audioTrackId: "",
+    conflictAction: "rename",
     quality: (settings?.defaultQuality as QueueOptions["quality"]) || "best",
     trimEnabled: false,
     trimStart: "00:00:00",
@@ -223,10 +227,7 @@ export function OptionsDrawer({
   }, [isOpen, onClose]);
 
   const qualityOptions = useMemo(() => {
-    const defaults = ["1080p", "720p", "480p", "360p"];
-    const available = metadata?.qualities?.length
-      ? metadata.qualities
-      : defaults;
+    const available = metadata?.qualities || [];
     return ["best", ...available.filter((quality) => quality !== "best")];
   }, [metadata?.qualities]);
 
@@ -256,6 +257,8 @@ export function OptionsDrawer({
             ? item.audioFormat
             : item.format) as DownloadOptions["format"],
           audioFormat: item.audioFormat,
+          audioTrackId: item.audioTrackId || undefined,
+          conflictAction: item.conflictAction,
           quality:
             item.mode === "audio_only"
               ? undefined
@@ -300,7 +303,7 @@ export function OptionsDrawer({
         aria-hidden="true"
       />
       <div
-        className={`fixed inset-y-0 right-0 z-50 flex w-[min(390px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border transition-transform duration-180 ease-out sm:inset-y-3 sm:right-3 sm:rounded-2xl ${isOpen ? "translate-x-0" : "translate-x-[110%]"}`}
+        className={`fixed bottom-0 right-0 top-10 z-50 flex w-[min(390px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border transition-transform duration-180 ease-out sm:bottom-3 sm:right-3 sm:top-12 sm:rounded-2xl ${isOpen ? "translate-x-0" : "translate-x-[110%]"}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="download-options-title"
@@ -356,9 +359,7 @@ export function OptionsDrawer({
           )}
 
           {metadataState?.loading && (
-            <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
-              <Loader2 size={12} className="animate-spin" /> Loading formats...
-            </div>
+            <LoadingIndicator label="Checking available streams…" />
           )}
           {metadata?.mediaType === "image" && (
             <div className="rounded-lg border border-border bg-bg px-3 py-2 text-[11px] text-text-secondary">
@@ -449,6 +450,16 @@ export function OptionsDrawer({
             </div>
           )}
 
+          {current.mode !== "video_only" && (metadata?.audioTracks?.length || 0) > 1 && (
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-text-secondary">Source audio track</label>
+              <select value={current.audioTrackId} onChange={(event) => updateCurrent({ audioTrackId: event.target.value })} className="field-input">
+                <option value="">Best available / default</option>
+                {metadata!.audioTracks!.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}
+              </select>
+            </div>
+          )}
+
           {current.mode !== "audio_only" && (
             <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-text-secondary">
@@ -490,7 +501,12 @@ export function OptionsDrawer({
                   aria-label="Subtitle language"
                   className="h-8 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
                 >
-                  {SUBTITLE_LANGUAGES.map((lang) => (
+                  {metadata?.subtitleTracks?.length ? (
+                    <option value="en.*">English (recommended)</option>
+                  ) : null}
+                  {(metadata?.subtitleTracks?.length
+                    ? metadata.subtitleTracks.map((track) => ({ value: track.language, label: track.label }))
+                    : SUBTITLE_LANGUAGES).map((lang) => (
                     <option key={lang.value} value={lang.value}>
                       {lang.label}
                     </option>
@@ -513,6 +529,15 @@ export function OptionsDrawer({
                 </select>
               </div>
             )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-text-secondary">If a file already exists</label>
+            <select value={current.conflictAction} onChange={(event) => updateCurrent({ conflictAction: event.target.value as QueueOptions["conflictAction"] })} className="field-input">
+              <option value="rename">Keep both (rename new file)</option>
+              <option value="overwrite">Replace existing file</option>
+              <option value="skip">Skip download</option>
+            </select>
           </div>
 
           <div className="flex flex-col gap-3">

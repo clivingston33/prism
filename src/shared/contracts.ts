@@ -28,17 +28,21 @@ export type Quality =
   | "480p"
   | "360p";
 export type TranscriptFormat = "txt" | "srt" | "vtt" | "json";
+export type DownloadConflictAction = "rename" | "overwrite" | "skip";
 
 export interface DownloadRequest {
   url: string;
   mode?: DownloadMode;
   format: DownloadFormat;
   audioFormat?: AudioFormat;
+  /** Exact yt-dlp audio format id, when the user selected a source track. */
+  audioTrackId?: string;
   quality?: Quality;
   transcript?: boolean;
   transcriptFormat?: TranscriptFormat;
   /** yt-dlp --sub-langs expression, e.g. "en.*" or "en,es". */
   subtitleLanguages?: string;
+  conflictAction?: DownloadConflictAction;
   trimStart?: string;
   trimEnd?: string;
   playlistId?: string;
@@ -88,6 +92,8 @@ export interface HistoryRecord {
   format: string;
   mode?: DownloadMode;
   audioFormat?: string;
+  audioTrackId?: string;
+  conflictAction?: DownloadConflictAction;
   quality?: string;
   status: JobStatus;
   progress: number;
@@ -141,6 +147,14 @@ export interface HistoryRecord {
   imageCount?: number;
   /** Explains a container fallback (e.g. MP4 requested, MKV delivered). */
   containerNote?: string;
+  diagnostics?: {
+    command?: string;
+    estimatedSizeBytes?: number;
+    freeSpaceBytes?: number;
+    destination?: string;
+    outputContainer?: string;
+    logTail?: string;
+  };
   request?: DownloadRequest;
   conversionOf?: string;
   conversionOptions?: Record<string, unknown>;

@@ -3,8 +3,6 @@ import fs from "fs";
 import path from "path";
 import { store } from "../store";
 import type { HistoryRecord } from "../../shared/contracts.ts";
-import { createThumbnail } from "../download/media-probe";
-import { getBinPaths } from "../download/utils";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
 import { requireString } from "../../shared/ipc-schemas.ts";
 
@@ -116,7 +114,6 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
     "history:reconcile",
     "history:removeMissing",
     "history:locate",
-    "history:regenerateThumbnail",
   ]) {
     ipcMain.removeHandler(channel);
   }
@@ -183,29 +180,8 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
     return selected;
   });
 
-  ipcMain.handle("history:regenerateThumbnail", async (_, id) => {
-    const target = requireString(id, "history id");
-    const history = store.get("history", []) as HistoryRecord[];
-    const item = history.find((entry) => entry.id === target);
-    if (!item?.filePath)
-      throw new Error("This Library item has no media file.");
-    const thumbnail = await createThumbnail(
-      getBinPaths().ffmpeg,
-      item.filePath,
-    );
-    const next = history.map((entry) =>
-      entry.id === target
-        ? {
-            ...entry,
-            thumbnail: thumbnail || undefined,
-            thumbnailGeneratedAt: new Date().toISOString(),
-          }
-        : entry,
-    );
-    store.set("history", next);
-    mainWindow?.webContents.send("history:update", next);
-    return thumbnail || null;
-  });
+  ipcMain.handle("history:regenerateThumbnail", () => null);
+
 
   ipcMain.handle("history:clear", () => {
     const history = store.get("history", []) as HistoryRecord[];

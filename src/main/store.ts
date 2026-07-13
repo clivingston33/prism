@@ -24,7 +24,6 @@ export const defaultSettings = {
   mediaToolsPreserveChapters: true,
   mediaToolsPreserveAllTracks: true,
   missingFileBehavior: "mark" as MissingFileBehavior,
-  generateThumbnails: true,
   transcriptionModelId: "base",
   transcriptionLanguage: "auto",
   transcriptionFormat: "txt",

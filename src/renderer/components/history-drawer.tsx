@@ -4,7 +4,6 @@ import {
   FolderOpen,
   RefreshCw,
   Trash2,
-  Image as ImageIcon,
   FileText,
   Copy,
   ArrowRightLeft,
@@ -39,6 +38,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   const { setDownloads } = useAppStore();
   const navigate = useNavigate();
   const [copiedTranscript, setCopiedTranscript] = useState(false);
+  const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
 
   useEffect(() => {
     if (!item) return;
@@ -121,6 +121,23 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
     });
   };
 
+  const handleCopyDiagnostics = async () => {
+    const report = [
+      `Job: ${item.id}`,
+      `Status: ${item.status}`,
+      `Source: ${item.url}`,
+      item.diagnostics?.destination ? `Destination: ${item.diagnostics.destination}` : "",
+      item.diagnostics?.freeSpaceBytes != null ? `Free space: ${(item.diagnostics.freeSpaceBytes / 1024 / 1024).toFixed(0)} MB` : "",
+      item.diagnostics?.estimatedSizeBytes ? `Estimated size: ${(item.diagnostics.estimatedSizeBytes / 1024 / 1024).toFixed(0)} MB` : "",
+      item.diagnostics?.command ? `Command: ${item.diagnostics.command}` : "",
+      item.jobError?.technicalDetails ? `Error: ${item.jobError.technicalDetails}` : "",
+      item.diagnostics?.logTail ? `Log:\n${item.diagnostics.logTail}` : "",
+    ].filter(Boolean).join("\n");
+    await navigator.clipboard.writeText(report);
+    setCopiedDiagnostics(true);
+    window.setTimeout(() => setCopiedDiagnostics(false), 1200);
+  };
+
   const canActOnFile =
     item.status === "completed" && !!item.filePath && item.format !== "images";
 
@@ -132,7 +149,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
         aria-hidden="true"
       />
       <div
-        className="fixed inset-y-0 right-0 z-50 flex w-[min(380px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border animate-in slide-in-from-right duration-180 ease-out sm:inset-y-3 sm:right-3 sm:rounded-2xl"
+        className="fixed bottom-0 right-0 top-10 z-50 flex w-[min(380px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border animate-in slide-in-from-right duration-180 ease-out sm:bottom-3 sm:right-3 sm:top-12 sm:rounded-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="history-drawer-title"
@@ -151,27 +168,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
         </div>
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5">
-          <div className="overflow-hidden rounded-2xl bg-bg-subtle shadow-sm">
-            <div className="flex aspect-video w-full items-center justify-center overflow-hidden bg-bg-elevated">
-              {item.thumbnail ? (
-                <img
-                  src={
-                    item.thumbnail.startsWith("http")
-                      ? item.thumbnail
-                      : `local://${encodeURIComponent(item.thumbnail)}`
-                  }
-                  alt={item.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <ImageIcon
-                  size={30}
-                  strokeWidth={1.2}
-                  className="text-text-tertiary"
-                />
-              )}
-            </div>
-            <div className="p-4">
+          <div className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
               <div className="mb-1.5 flex items-center gap-2">
                 <span className="shrink-0 rounded-md bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-tertiary shadow-sm">
                   {item.platform}
@@ -199,7 +196,6 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
               >
                 {item.url}
               </p>
-            </div>
           </div>
 
           <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
@@ -284,6 +280,19 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
                   Reveal transcript in folder
                 </button>
               )}
+            </section>
+          )}
+
+          {(item.diagnostics || item.jobError?.technicalDetails) && (
+            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">Diagnostics</p>
+                <button type="button" onClick={() => void handleCopyDiagnostics()} className="min-h-10 rounded-lg px-3 text-[11px] text-text-secondary transition-[background-color,color,transform] hover:bg-bg hover:text-text-primary active:scale-[0.96]">
+                  <Copy size={13} className="mr-1 inline" /> {copiedDiagnostics ? "Copied" : "Copy report"}
+                </button>
+              </div>
+              {item.diagnostics?.command && <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">{item.diagnostics.command}</pre>}
+              {(item.jobError?.technicalDetails || item.diagnostics?.logTail) && <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">{item.jobError?.technicalDetails || item.diagnostics?.logTail}</pre>}
             </section>
           )}
 

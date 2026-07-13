@@ -3,7 +3,6 @@ import { store, defaultSettings } from "../store";
 import { autoUpdater } from "electron-updater";
 import { parseSettingsPatch } from "../../shared/ipc-schemas.ts";
 import { getHardwareProfile, optimizedSettingsFor } from "../hardware";
-import { clearThumbnailCache, getThumbnailCacheInfo } from "../thumbnails";
 import {
   getYtDlpUpdateState,
   installLatestYtDlp,
@@ -35,8 +34,6 @@ export function setupSettingsIPC() {
     "settings:quitAndInstall",
     "settings:hardwareProfile",
     "settings:optimizeForDevice",
-    "settings:thumbnailCacheInfo",
-    "settings:clearThumbnails",
     "settings:ytdlpUpdateState",
     "settings:updateYtdlp",
   ]) {
@@ -74,12 +71,10 @@ export function setupSettingsIPC() {
     return { profile, applied: tuned, settings: settingsForRenderer(updated) };
   });
 
-  ipcMain.handle("settings:thumbnailCacheInfo", () => getThumbnailCacheInfo());
+  // Kept as a harmless compatibility response for older renderer builds.
+  ipcMain.handle("settings:thumbnailCacheInfo", () => ({ sizeBytes: 0, fileCount: 0 }));
+  ipcMain.handle("settings:clearThumbnails", () => ({ sizeBytes: 0, fileCount: 0 }));
 
-  ipcMain.handle("settings:clearThumbnails", async () => {
-    await clearThumbnailCache();
-    return getThumbnailCacheInfo();
-  });
   ipcMain.handle("settings:ytdlpUpdateState", (_, checkLatest) =>
     getYtDlpUpdateState(Boolean(checkLatest)),
   );

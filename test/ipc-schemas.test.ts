@@ -109,6 +109,28 @@ test("parseDownloadRequest defaults format and rejects invalid vocabulary", () =
   );
 });
 
+test("parseDownloadRequest accepts source track and conflict selections", () => {
+  const request = parseDownloadRequest({
+    url: "https://example.com/video",
+    format: "auto",
+    audioTrackId: "251-en",
+    subtitleLanguages: "en,es",
+    conflictAction: "overwrite",
+  });
+  assert.equal(request.audioTrackId, "251-en");
+  assert.equal(request.subtitleLanguages, "en,es");
+  assert.equal(request.conflictAction, "overwrite");
+  assert.throws(
+    () =>
+      parseDownloadRequest({
+        url: "https://example.com/video",
+        format: "auto",
+        audioTrackId: "bad id;--flag",
+      }),
+    /audio track id/i,
+  );
+});
+
 test("parseConversionRequest validates shape and numeric fields", () => {
   const parsed = parseConversionRequest({
     filePath: "C:\\media\\input.mov",

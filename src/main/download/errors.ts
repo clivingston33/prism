@@ -29,7 +29,7 @@ const RULES: ErrorRule[] = [
   {
     code: "DISK_FULL",
     userMessage: "The download failed because the disk is full.",
-    pattern: /enospc|no space left|not enough space|disk full/i,
+    pattern: /enospc|no space left|not enough (?:free )?space|disk full/i,
     retryable: false,
   },
   {

@@ -52,6 +52,9 @@ jobs:
       - name: Run unit tests
         run: pnpm test
 
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
       - name: Verify native resources
         run: pnpm run verify:resources
 

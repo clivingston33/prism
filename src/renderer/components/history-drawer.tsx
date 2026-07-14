@@ -12,6 +12,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useAppStore } from "../stores/app-store";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
+import { useExitPresence } from "../hooks/use-exit-presence";
 
 interface HistoryDrawerProps {
   item: DownloadItem | null;
@@ -25,7 +26,7 @@ function InfoCell({ label, value }: { label: string; value: string }) {
         {label}
       </span>
       <span
-        className="mt-0.5 block truncate text-xs font-medium text-text-primary"
+        className="mt-0.5 block truncate text-xs font-medium tabular-nums text-text-primary"
         title={value}
       >
         {value}
@@ -34,22 +35,32 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
+export function HistoryDrawer({
+  item: selectedItem,
+  onClose,
+}: HistoryDrawerProps) {
   const { setDownloads } = useAppStore();
   const navigate = useNavigate();
   const [copiedTranscript, setCopiedTranscript] = useState(false);
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
+  const [retainedItem, setRetainedItem] = useState(selectedItem);
+  const { present, active } = useExitPresence(!!selectedItem, 180);
 
   useEffect(() => {
-    if (!item) return;
+    if (selectedItem) setRetainedItem(selectedItem);
+  }, [selectedItem]);
+
+  useEffect(() => {
+    if (!selectedItem) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [item, onClose]);
+  }, [selectedItem, onClose]);
 
-  if (!item) return null;
+  const item = selectedItem ?? retainedItem;
+  if (!present || !item) return null;
 
   const handleOpenFolder = async () => {
     if (item.filePath) {
@@ -126,13 +137,23 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
       `Job: ${item.id}`,
       `Status: ${item.status}`,
       `Source: ${item.url}`,
-      item.diagnostics?.destination ? `Destination: ${item.diagnostics.destination}` : "",
-      item.diagnostics?.freeSpaceBytes != null ? `Free space: ${(item.diagnostics.freeSpaceBytes / 1024 / 1024).toFixed(0)} MB` : "",
-      item.diagnostics?.estimatedSizeBytes ? `Estimated size: ${(item.diagnostics.estimatedSizeBytes / 1024 / 1024).toFixed(0)} MB` : "",
+      item.diagnostics?.destination
+        ? `Destination: ${item.diagnostics.destination}`
+        : "",
+      item.diagnostics?.freeSpaceBytes != null
+        ? `Free space: ${(item.diagnostics.freeSpaceBytes / 1024 / 1024).toFixed(0)} MB`
+        : "",
+      item.diagnostics?.estimatedSizeBytes
+        ? `Estimated size: ${(item.diagnostics.estimatedSizeBytes / 1024 / 1024).toFixed(0)} MB`
+        : "",
       item.diagnostics?.command ? `Command: ${item.diagnostics.command}` : "",
-      item.jobError?.technicalDetails ? `Error: ${item.jobError.technicalDetails}` : "",
+      item.jobError?.technicalDetails
+        ? `Error: ${item.jobError.technicalDetails}`
+        : "",
       item.diagnostics?.logTail ? `Log:\n${item.diagnostics.logTail}` : "",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     await navigator.clipboard.writeText(report);
     setCopiedDiagnostics(true);
     window.setTimeout(() => setCopiedDiagnostics(false), 1200);
@@ -144,23 +165,28 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity duration-150 animate-in fade-in"
+        className="prism-overlay fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        data-state={active ? "open" : "closed"}
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className="fixed bottom-0 right-0 top-10 z-50 flex w-[min(380px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border animate-in slide-in-from-right duration-180 ease-out sm:bottom-3 sm:right-3 sm:top-12 sm:rounded-2xl"
+        className="prism-drawer fixed bottom-0 right-0 top-10 z-50 flex w-[min(380px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] sm:bottom-3 sm:right-3 sm:top-12 sm:rounded-2xl"
+        data-state={active ? "open" : "closed"}
         role="dialog"
         aria-modal="true"
         aria-labelledby="history-drawer-title"
       >
         <div className="flex items-center justify-between px-5 pb-3 pt-5">
-          <h2 id="history-drawer-title" className="text-base font-semibold">
+          <h2
+            id="history-drawer-title"
+            className="text-balance text-base font-semibold"
+          >
             Details
           </h2>
           <button
             onClick={onClose}
-            className="icon-button -mr-1.5 h-8 w-8"
+            className="icon-button -mr-2.5"
             aria-label="Close details"
           >
             <X size={15} />
@@ -168,37 +194,37 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
         </div>
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5">
-          <div className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="shrink-0 rounded-md bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-tertiary shadow-sm">
-                  {item.platform}
-                </span>
-                <span
-                  className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${
-                    item.status === "completed"
-                      ? "text-success"
-                      : item.status === "failed"
-                        ? "text-error"
-                        : isActiveJobStatus(item.status)
-                          ? "text-accent"
-                          : "text-warning"
-                  }`}
-                >
-                  {item.status}
-                </span>
-              </div>
-              <h3 className="text-sm font-semibold leading-tight text-text-primary">
-                {item.title}
-              </h3>
-              <p
-                className="mt-1 truncate font-mono text-[10px] text-text-tertiary"
-                title={item.url}
+          <div className="rounded-xl bg-bg-subtle p-4 shadow-sm">
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className="shrink-0 rounded-md bg-bg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-tertiary shadow-sm">
+                {item.platform}
+              </span>
+              <span
+                className={`shrink-0 text-[10px] font-bold uppercase tracking-wider ${
+                  item.status === "completed"
+                    ? "text-success"
+                    : item.status === "failed"
+                      ? "text-error"
+                      : isActiveJobStatus(item.status)
+                        ? "text-accent"
+                        : "text-warning"
+                }`}
               >
-                {item.url}
-              </p>
+                {item.status}
+              </span>
+            </div>
+            <h3 className="text-sm font-semibold leading-tight text-text-primary">
+              {item.title}
+            </h3>
+            <p
+              className="mt-1 truncate font-mono text-[10px] text-text-tertiary"
+              title={item.url}
+            >
+              {item.url}
+            </p>
           </div>
 
-          <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
+          <section className="rounded-xl bg-bg-subtle p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
               Metadata
             </p>
@@ -237,7 +263,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
           {(item.transcriptText ||
             item.transcriptPath ||
             item.transcriptError) && (
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
+            <section className="rounded-xl bg-bg-subtle p-4 shadow-sm">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
                 Transcript
               </p>
@@ -284,15 +310,31 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
           )}
 
           {(item.diagnostics || item.jobError?.technicalDetails) && (
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm">
+            <section className="rounded-xl bg-bg-subtle p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">Diagnostics</p>
-                <button type="button" onClick={() => void handleCopyDiagnostics()} className="min-h-10 rounded-lg px-3 text-[11px] text-text-secondary transition-[background-color,color,transform] hover:bg-bg hover:text-text-primary active:scale-[0.96]">
-                  <Copy size={13} className="mr-1 inline" /> {copiedDiagnostics ? "Copied" : "Copy report"}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
+                  Diagnostics
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyDiagnostics()}
+                  className="inline-flex min-h-10 items-center gap-1 rounded-lg px-3 text-[11px] text-text-secondary transition-[background-color,color,transform] hover:bg-bg hover:text-text-primary active:scale-[0.96]"
+                >
+                  <Copy size={13} />{" "}
+                  {copiedDiagnostics ? "Copied" : "Copy report"}
                 </button>
               </div>
-              {item.diagnostics?.command && <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">{item.diagnostics.command}</pre>}
-              {(item.jobError?.technicalDetails || item.diagnostics?.logTail) && <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">{item.jobError?.technicalDetails || item.diagnostics?.logTail}</pre>}
+              {item.diagnostics?.command && (
+                <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">
+                  {item.diagnostics.command}
+                </pre>
+              )}
+              {(item.jobError?.technicalDetails ||
+                item.diagnostics?.logTail) && (
+                <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">
+                  {item.jobError?.technicalDetails || item.diagnostics?.logTail}
+                </pre>
+              )}
             </section>
           )}
 
@@ -352,7 +394,7 @@ export function HistoryDrawer({ item, onClose }: HistoryDrawerProps) {
             {!isActiveJobStatus(item.status) && (
               <button
                 onClick={handleDeleteRecord}
-                className="mt-1 inline-flex min-h-10 w-full items-center gap-1.5 rounded-lg bg-error/10 px-4 text-xs font-medium text-error transition-[background-color,transform] hover:bg-error/15 active:scale-[0.98]"
+                className="mt-1 inline-flex min-h-10 w-full items-center gap-1.5 rounded-lg bg-error/10 px-4 text-xs font-medium text-error transition-[background-color,transform] hover:bg-error/15 active:scale-[0.96]"
               >
                 <Trash2 size={15} strokeWidth={1.5} />
                 Delete Record

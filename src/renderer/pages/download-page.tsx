@@ -213,17 +213,17 @@ export function DownloadPage() {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-4">
       <div className="w-full max-w-xl flex flex-col items-center space-y-6">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight">
+        <div className="prism-page-enter text-center space-y-1">
+          <h1 className="text-balance text-2xl font-bold tracking-tight text-text-primary">
             Prism
           </h1>
-          <p className="text-xs text-text-tertiary">
+          <p className="text-pretty text-xs text-text-tertiary">
             Paste any downloadable media or file link to begin.
           </p>
         </div>
 
-        <div className="w-full flex flex-col gap-3 relative">
-          <div className="w-full rounded-xl border border-border bg-bg-subtle shadow-sm transition-[border-color,box-shadow] duration-200 focus-within:border-text-tertiary focus-within:shadow-md">
+        <div className="prism-page-enter prism-page-enter-delay w-full flex flex-col gap-3 relative">
+          <div className="surface-card w-full rounded-xl bg-bg-subtle focus-within:ring-2 focus-within:ring-accent/20">
             <div className="relative">
               <textarea
                 ref={textareaRef}
@@ -244,47 +244,64 @@ export function DownloadPage() {
               />
               <button
                 onClick={handleIconClick}
-                className="absolute right-3 top-3 p-2 text-text-tertiary hover:text-text-primary transition-colors rounded-xl"
+                aria-label={url ? "Clear URL" : "Paste from clipboard"}
+                className="absolute right-2 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-text-tertiary transition-[color,transform] hover:text-text-primary active:scale-[0.96]"
               >
-                {url ? (
-                  <X size={18} strokeWidth={1.5} />
-                ) : (
-                  <Clipboard size={18} strokeWidth={1.5} />
-                )}
+                <X
+                  size={18}
+                  strokeWidth={1.5}
+                  className={`transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${url ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]"}`}
+                />
+                <Clipboard
+                  size={18}
+                  strokeWidth={1.5}
+                  className={`absolute transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${url ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0"}`}
+                />
               </button>
             </div>
 
             {/* Visual Feedback (Mini Preview) */}
-            {urls.length === 1 && (isFetchingMetadata || metadata) && (
-              <div className="px-5 py-4 border-t border-border-subtle bg-bg/50 rounded-b-xl flex items-center gap-4 animate-in fade-in duration-200">
-                {isFetchingMetadata ? (
-                  <>
-                    <div className="w-12 h-12 rounded-lg bg-border-subtle animate-pulse shrink-0" />
-                    <div className="flex flex-col gap-2 flex-1">
-                      <div className="h-3.5 bg-border-subtle rounded w-3/4 animate-pulse" />
-                      <div className="h-2.5 bg-border-subtle rounded w-1/4 animate-pulse" />
-                    </div>
-                  </>
-                ) : metadata ? (
-                  <>
-                    <div className="w-14 h-14 shrink-0 rounded-lg bg-bg-subtle border border-border-subtle flex items-center justify-center text-text-tertiary shadow-sm">
-                      <LinkIcon size={20} />
-                    </div>
-                    <div className="flex flex-col flex-1 overflow-hidden gap-1">
-                      <span className="text-sm font-semibold text-text-primary truncate">
-                        {metadata.title || "Unknown video"}
-                      </span>
-                      <span className="text-[11px] text-text-secondary uppercase tracking-wider font-medium">
-                        {metadata.platform || platform || "Unknown"}
-                        {metadata.duration
-                          ? ` • ${Math.floor(metadata.duration / 60)}:${(metadata.duration % 60).toString().padStart(2, "0")}`
-                          : ""}
-                      </span>
-                    </div>
-                  </>
-                ) : null}
+            <div
+              aria-hidden={
+                !(urls.length === 1 && (isFetchingMetadata || metadata))
+              }
+              className={`grid transition-[grid-template-rows,opacity] duration-200 ${urls.length === 1 && (isFetchingMetadata || metadata) ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+            >
+              <div className="min-h-0 overflow-hidden">
+                <div className="flex items-center gap-4 rounded-b-xl border-t border-border-subtle bg-bg/50 px-5 py-4">
+                  {isFetchingMetadata ? (
+                    <>
+                      <div className="h-12 w-12 shrink-0 animate-pulse rounded-lg bg-border-subtle" />
+                      <div className="flex flex-1 flex-col gap-2">
+                        <div className="h-3.5 w-3/4 animate-pulse rounded bg-border-subtle" />
+                        <div className="h-2.5 w-1/4 animate-pulse rounded bg-border-subtle" />
+                      </div>
+                    </>
+                  ) : metadata ? (
+                    <>
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-border-subtle bg-bg-subtle text-text-tertiary shadow-sm">
+                        <LinkIcon size={20} />
+                      </div>
+                      <div className="flex flex-1 flex-col gap-1 overflow-hidden">
+                        <span className="truncate text-sm font-semibold text-text-primary">
+                          {metadata.title || "Unknown video"}
+                        </span>
+                        <span className="text-[11px] font-medium uppercase tracking-wider text-text-secondary">
+                          {metadata.platform || platform || "Unknown"}
+                          {metadata.duration ? (
+                            <span className="tabular-nums">
+                              {` • ${Math.floor(metadata.duration / 60)}:${(metadata.duration % 60).toString().padStart(2, "0")}`}
+                            </span>
+                          ) : (
+                            ""
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
               </div>
-            )}
+            </div>
             {playlist && (
               <section className="border-t border-border-subtle bg-bg/50 px-5 py-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -367,10 +384,10 @@ export function DownloadPage() {
 
           {/* Smart Paste Toast */}
           {clipboardUrl && !url && (
-            <div className="absolute -bottom-14 left-1/2 z-10 flex -translate-x-1/2 items-center overflow-hidden rounded-full bg-text-primary shadow-lg">
+            <div className="absolute -bottom-14 left-1/2 z-10 flex h-10 -translate-x-1/2 items-center overflow-hidden rounded-2xl bg-text-primary shadow-lg">
               <button
                 onClick={handleSmartPaste}
-                className="flex items-center gap-2 py-2 pl-4 pr-2 text-xs font-medium text-bg transition-opacity hover:opacity-85"
+                className="flex min-h-10 items-center gap-2 pl-4 pr-2 text-xs font-medium text-bg transition-[opacity,transform] hover:opacity-85 active:scale-[0.96]"
               >
                 <Clipboard size={14} />
                 <span className="max-w-[220px] truncate">
@@ -382,7 +399,7 @@ export function DownloadPage() {
               <button
                 onClick={dismissClipboardUrl}
                 aria-label="Dismiss clipboard suggestion"
-                className="flex h-full items-center py-2 pl-1 pr-3 text-bg/70 transition-colors hover:text-bg"
+                className="flex h-10 w-10 items-center justify-center text-bg/70 transition-[color,transform] hover:text-bg active:scale-[0.96]"
               >
                 <X size={13} />
               </button>
@@ -392,25 +409,26 @@ export function DownloadPage() {
           <button
             onClick={handleSubmit}
             disabled={!url || Boolean(playlist && queueUrls.length === 0)}
-            className="flex h-[48px] w-full items-center justify-center rounded-xl bg-accent text-sm font-medium text-accent-fg shadow-md transition-[background-color,opacity,transform] hover:bg-accent/90 disabled:opacity-50 active:scale-[0.98]"
+            className="flex h-[48px] w-full items-center justify-center rounded-lg bg-accent text-sm font-medium text-accent-fg shadow-md transition-[background-color,opacity,transform] hover:bg-accent/90 disabled:opacity-50 active:scale-[0.96]"
           >
             Add to Queue
           </button>
         </div>
 
         {/* Empty State Hint */}
-        {!url && !clipboardUrl && (
-          <div className="flex items-center gap-2 text-text-tertiary/70 text-[11px] font-medium uppercase tracking-wider animate-in fade-in duration-500 mt-4">
-            <kbd className="font-sans px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border-subtle shadow-sm">
-              Ctrl
-            </kbd>{" "}
-            +{" "}
-            <kbd className="font-sans px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border-subtle shadow-sm">
-              V
-            </kbd>{" "}
-            to paste
-          </div>
-        )}
+        <div
+          aria-hidden={Boolean(url || clipboardUrl)}
+          className={`mt-4 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-tertiary/70 transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${!url && !clipboardUrl ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
+        >
+          <kbd className="font-sans px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border-subtle shadow-sm">
+            Ctrl
+          </kbd>{" "}
+          +{" "}
+          <kbd className="font-sans px-1.5 py-0.5 rounded-md bg-bg-subtle border border-border-subtle shadow-sm">
+            V
+          </kbd>{" "}
+          to paste
+        </div>
       </div>
 
       <OptionsDrawer

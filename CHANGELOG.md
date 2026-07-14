@@ -4,7 +4,7 @@ All notable changes to Prism will be documented here.
 
 ## [Unreleased]
 
-## [1.2.0-beta.1] - 2026-07-12
+## [0.1.0-alpha.1]
 
 - Final release-readiness audit and targeted reliability, security, and packaging fixes.
 - Local transcription failures now become terminal history records and clean partial output.
@@ -14,7 +14,3 @@ All notable changes to Prism will be documented here.
 - Added checksum-pinned Windows native resources, reproducible preparation, and packaged real-media verification.
 - Added hardened Electron boundaries, runtime IPC validation, recovery improvements, and public project documentation.
 - Refreshed the GitHub README with genuine packaged-app screenshots and Windows-only release guidance.
-
-## [1.1.3]
-
-- Existing release. See the GitHub release notes for the published artifact details.

@@ -18,7 +18,7 @@ interface ConversionResult {
 
 // Custom APIs for renderer
 const prismAPI = {
-  version: "1.1.3",
+  version: "0.1.0-alpha.1",
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     update: (settings: Record<string, unknown>) =>

@@ -49,7 +49,7 @@ const LibraryCard = memo(function LibraryCard({
     item.fileState === "partial" ||
     item.fileState === "unavailable";
   return (
-    <article className="group flex overflow-hidden rounded-xl border border-border bg-bg-subtle">
+    <article className="surface-card group flex overflow-hidden rounded-xl bg-bg-subtle">
       <button
         className="flex min-w-0 flex-1 items-center text-left"
         onClick={() => onOpen(item)}
@@ -64,7 +64,7 @@ const LibraryCard = memo(function LibraryCard({
               <img
                 src={localUrl(item.thumbnail)}
                 alt=""
-                className={`relative h-full w-full object-cover transition-opacity duration-200 ${imageState === "loaded" ? "opacity-100" : "opacity-0"}`}
+                className={`relative h-full w-full -outline-offset-1 object-cover outline outline-1 outline-black/10 transition-opacity duration-200 dark:outline-white/10 ${imageState === "loaded" ? "opacity-100" : "opacity-0"}`}
                 onLoad={() => setImageState("loaded")}
                 onError={() => setImageState("failed")}
                 loading="lazy"
@@ -90,12 +90,12 @@ const LibraryCard = memo(function LibraryCard({
           )}
           <div className="absolute bottom-2 right-2 flex gap-1.5">
             {item.duration && (
-              <span className="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+              <span className="rounded-md border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] tabular-nums text-white">
                 {duration(item.duration)}
               </span>
             )}
             {(item.resolution || item.quality) && (
-              <span className="rounded border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
+              <span className="rounded-md border border-white/10 bg-black/70 px-1.5 py-0.5 text-[10px] text-white">
                 {item.resolution || item.quality}
               </span>
             )}
@@ -105,7 +105,7 @@ const LibraryCard = memo(function LibraryCard({
           <h3 className="truncate text-[13px] font-medium text-text-primary">
             {item.title}
           </h3>
-          <div className="mt-1 flex gap-1.5 text-[11px] text-text-tertiary">
+          <div className="mt-1 flex gap-1.5 text-[11px] tabular-nums text-text-tertiary">
             <span>{item.format}</span>
             {item.size ? (
               <>
@@ -120,7 +120,7 @@ const LibraryCard = memo(function LibraryCard({
       </button>
       <div className="flex shrink-0 items-center gap-1 px-2 py-1.5">
         <button
-          className="icon-button h-8 w-8"
+          className="icon-button h-10 w-10"
           title="Details"
           aria-label={`Details for ${item.title}`}
           onClick={() => onSelect(item)}
@@ -128,7 +128,7 @@ const LibraryCard = memo(function LibraryCard({
           <Info size={14} />
         </button>
         <button
-          className="icon-button h-8 w-8"
+          className="icon-button h-10 w-10"
           title="Open containing folder"
           aria-label={`Open containing folder for ${item.title}`}
           onClick={() =>
@@ -139,7 +139,7 @@ const LibraryCard = memo(function LibraryCard({
         </button>
         {missing ? (
           <button
-            className="icon-button h-8 w-8"
+            className="icon-button h-10 w-10"
             title="Locate file"
             aria-label={`Locate ${item.title}`}
             onClick={() => onLocate(item)}
@@ -149,7 +149,7 @@ const LibraryCard = memo(function LibraryCard({
         ) : null}
         {!missing && item.filePath && (
           <button
-            className="icon-button h-8 w-8"
+            className="icon-button h-10 w-10"
             title="Transcribe"
             aria-label={`Transcribe ${item.title}`}
             onClick={() => onTranscribe(item)}
@@ -158,7 +158,7 @@ const LibraryCard = memo(function LibraryCard({
           </button>
         )}
         <button
-          className="icon-button h-8 w-8 text-error"
+          className="icon-button h-10 w-10 text-error"
           title="Remove from Library"
           aria-label={`Remove ${item.title} from Library`}
           onClick={() => onRemove(item)}
@@ -287,10 +287,12 @@ export function LibraryPage() {
   return (
     <main className="h-full overflow-y-auto px-6 pb-12 pt-8">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="flex flex-wrap items-end justify-between gap-3">
+        <header className="prism-page-enter flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-text-primary">Library</h1>
-            <p className="mt-1 text-sm text-text-tertiary">
+            <h1 className="text-balance text-xl font-semibold text-text-primary">
+              Library
+            </h1>
+            <p className="mt-1 text-pretty text-sm text-text-tertiary">
               Completed downloads, checked without filesystem work during
               rendering.
             </p>
@@ -315,7 +317,7 @@ export function LibraryPage() {
             )}
           </div>
         </header>
-        <section className="flex flex-col gap-2 sm:flex-row">
+        <section className="prism-page-enter prism-page-enter-delay flex flex-col gap-2 sm:flex-row">
           <div className="flex min-w-0 flex-1 gap-2">
             <label className="relative min-w-0 flex-1">
               <Search
@@ -326,14 +328,14 @@ export function LibraryPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search downloads..."
-                className="h-10 w-full rounded-xl border border-border bg-transparent pl-10 pr-3 text-sm text-text-primary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
+                className="h-10 w-full rounded-lg border border-border bg-transparent pl-10 pr-3 text-sm text-text-primary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
               />
             </label>
             <select
               value={sort}
               onChange={(event) => setSort(event.target.value)}
               aria-label="Sort Library"
-              className="library-select h-10 min-w-32 rounded-xl border border-border bg-transparent px-3 text-xs font-medium text-text-secondary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
+              className="library-select h-10 min-w-32 rounded-lg border border-border bg-transparent px-3 text-xs font-medium text-text-secondary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
             >
               <option value="date-desc">Newest first</option>
               <option value="date-asc">Oldest first</option>
@@ -346,17 +348,19 @@ export function LibraryPage() {
             role="group"
             aria-label="Filter by media type"
           >
-            {(["all", "video", "audio", "transcripts"] as const).map((value) => (
-              <button
-                type="button"
-                key={value}
-                aria-pressed={typeFilter === value}
-                onClick={() => setTypeFilter(value)}
-                className={`min-h-10 rounded-lg px-3 text-[11px] font-medium capitalize transition-[background-color,color,transform] active:scale-[0.96] ${typeFilter === value ? "bg-accent text-accent-fg" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"}`}
-              >
-                {value}
-              </button>
-            ))}
+            {(["all", "video", "audio", "transcripts"] as const).map(
+              (value) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={typeFilter === value}
+                  onClick={() => setTypeFilter(value)}
+                  className={`min-h-10 rounded-lg px-3 text-[11px] font-medium capitalize transition-[background-color,color,transform] active:scale-[0.96] ${typeFilter === value ? "bg-accent text-accent-fg" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"}`}
+                >
+                  {value}
+                </button>
+              ),
+            )}
           </div>
         </section>
         {notice && <p className="text-xs text-text-tertiary">{notice}</p>}

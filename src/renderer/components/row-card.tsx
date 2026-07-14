@@ -146,7 +146,7 @@ export function RowCard({
 
   return (
     <div
-      className={`group relative flex flex-col justify-center rounded-2xl bg-bg-subtle border border-border px-4 overflow-hidden transition-[background-color,border-color,box-shadow] duration-200 hover:border-border-subtle hover:bg-bg-elevated hover:shadow-sm ${compact ? "h-[64px]" : "h-[84px]"}`}
+      className={`surface-card group relative flex flex-col justify-center overflow-hidden rounded-xl bg-bg-subtle px-4 hover:bg-bg-elevated focus-within:ring-2 focus-within:ring-accent/20 ${compact ? "h-[64px]" : "h-[84px]"}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 overflow-hidden flex-1">
@@ -159,7 +159,7 @@ export function RowCard({
         </div>
         <div className="flex items-center shrink-0">
           <span
-            className={`text-[10px] font-bold uppercase tracking-wider group-hover:invisible px-2 py-0.5 rounded-full transition-colors border shadow-sm ${
+            className={`text-[10px] font-bold uppercase tracking-wider group-hover:invisible px-2 py-0.5 rounded-md transition-colors border shadow-sm ${
               item.status === "completed"
                 ? "bg-success/10 text-success border-success/20"
                 : item.status === "failed" || item.status === "interrupted"
@@ -171,7 +171,7 @@ export function RowCard({
           >
             {item.status}
           </span>
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 flex translate-x-2 gap-1.5 rounded-l-2xl bg-bg-subtle pl-4 pr-3 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 flex translate-x-2 gap-1.5 rounded-l-xl bg-bg-subtle pl-4 pr-3 opacity-0 transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
             {item.status === "queued" && onMoveInQueue && (
               <>
                 <button
@@ -179,7 +179,7 @@ export function RowCard({
                     e.stopPropagation();
                     onMoveInQueue(-1);
                   }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                   title="Move up in queue"
                   aria-label={`Move ${item.title || "job"} up in queue`}
                 >
@@ -190,7 +190,7 @@ export function RowCard({
                     e.stopPropagation();
                     onMoveInQueue(1);
                   }}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                   title="Move down in queue"
                   aria-label={`Move ${item.title || "job"} down in queue`}
                 >
@@ -201,7 +201,7 @@ export function RowCard({
             {isDownloading && (
               <button
                 onClick={handleCancel}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                 title="Cancel"
                 aria-label={`Cancel ${item.title || "job"}`}
               >
@@ -211,7 +211,7 @@ export function RowCard({
             {(item.status === "failed" || item.status === "interrupted") && (
               <button
                 onClick={handleRetry}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-error transition-[background-color,border-color,transform] hover:border-error/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-error transition-[background-color,border-color,transform] hover:border-error/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                 title="Retry"
                 aria-label={`Retry ${item.title || "job"}`}
               >
@@ -222,15 +222,15 @@ export function RowCard({
               <>
                 <button
                   onClick={handlePlay}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                   title="Play File"
                   aria-label={`Open ${item.title || "file"}`}
                 >
-                  <Play size={14} strokeWidth={2} />
+                  <Play size={14} strokeWidth={2} className="translate-x-px" />
                 </button>
                 <button
                   onClick={handleOpenFolder}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                   title="Reveal in Explorer"
                   aria-label={`Reveal ${item.title || "file"} in folder`}
                 >
@@ -241,7 +241,7 @@ export function RowCard({
             {!isDownloading && (
               <button
                 onClick={handleDelete}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-error/20 hover:bg-bg hover:text-error focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-error/20 hover:bg-bg hover:text-error focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
                 title="Delete Record"
                 aria-label={`Delete ${item.title || "record"}`}
               >
@@ -252,7 +252,7 @@ export function RowCard({
         </div>
       </div>
 
-      <div className="mt-1 flex items-center justify-between text-[11px] text-text-secondary opacity-80 group-hover:opacity-100 transition-opacity">
+      <div className="mt-1 flex items-center justify-between text-[11px] tabular-nums text-text-secondary opacity-80 transition-opacity group-hover:opacity-100">
         <div className="flex items-center gap-2">
           <span className="font-semibold text-text-secondary">
             {item.mode === "split" ? "SPLIT" : item.format.toUpperCase()}
@@ -294,7 +294,7 @@ export function RowCard({
         </div>
 
         {isDownloading && (
-          <span className="flex items-center gap-2 font-mono text-[11px] font-semibold text-text-secondary whitespace-nowrap">
+          <span className="flex items-center gap-2 whitespace-nowrap font-mono text-[11px] font-semibold tabular-nums text-text-secondary">
             <span className="truncate max-w-[260px] font-sans font-medium text-text-tertiary">
               {activityLine(item)}
             </span>

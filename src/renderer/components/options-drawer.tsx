@@ -298,14 +298,18 @@ export function OptionsDrawer({
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] transition-opacity duration-150 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        className={`prism-overlay fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+        data-state={isOpen ? "open" : "closed"}
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className={`fixed bottom-0 right-0 top-10 z-50 flex w-[min(390px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] ring-1 ring-border transition-transform duration-180 ease-out sm:bottom-3 sm:right-3 sm:top-12 sm:rounded-2xl ${isOpen ? "translate-x-0" : "translate-x-[110%]"}`}
+        className={`prism-drawer fixed bottom-0 right-0 top-10 z-50 flex w-[min(390px,calc(100vw-44px))] flex-col bg-bg shadow-[var(--queue-shadow)] sm:bottom-3 sm:right-3 sm:top-12 sm:rounded-2xl ${isOpen ? "pointer-events-auto" : "pointer-events-none"}`}
+        data-state={isOpen ? "open" : "closed"}
         role="dialog"
         aria-modal="true"
+        aria-hidden={!isOpen}
+        inert={!isOpen}
         aria-labelledby="download-options-title"
       >
         <div className="flex items-center justify-between p-6 pb-4">
@@ -317,7 +321,7 @@ export function OptionsDrawer({
           </h2>
           <button
             onClick={onClose}
-            className="text-text-tertiary hover:text-text-primary transition-colors"
+            className="icon-button -mr-2.5 text-text-tertiary"
             aria-label="Close download options"
           >
             <X size={18} strokeWidth={1.5} />
@@ -326,7 +330,7 @@ export function OptionsDrawer({
 
         <div className="px-6 pb-5 border-b border-border-subtle flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <span className="shrink-0 rounded bg-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-secondary border border-border">
+            <span className="shrink-0 rounded-md bg-bg px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-secondary border border-border">
               {metadata?.platform || platform}
             </span>
             <span className="truncate text-xs text-text-secondary font-mono">
@@ -335,12 +339,12 @@ export function OptionsDrawer({
           </div>
 
           {queueOptions.length > 1 && (
-            <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-lg border border-border bg-bg p-1">
+            <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-xl border border-border bg-bg p-1">
               {queueOptions.map((item, index) => (
                 <button
                   key={`${item.url}-${index}`}
                   onClick={() => setSelectedIndex(index)}
-                  className={`flex flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors ${
+                  className={`flex min-h-10 flex-col items-start justify-center gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
                     selectedIndex === index
                       ? "bg-accent text-accent-fg"
                       : "text-text-secondary hover:bg-bg-subtle hover:text-text-primary"
@@ -362,7 +366,7 @@ export function OptionsDrawer({
             <LoadingIndicator label="Checking available streams…" />
           )}
           {metadata?.mediaType === "image" && (
-            <div className="rounded-lg border border-border bg-bg px-3 py-2 text-[11px] text-text-secondary">
+            <div className="rounded-xl border border-border bg-bg px-3 py-2 text-[11px] text-text-secondary">
               TikTok image post detected. Prism will save all detected images
               into a new folder.
             </div>
@@ -379,7 +383,7 @@ export function OptionsDrawer({
                 <button
                   key={option.value}
                   onClick={() => handleModeChange(option.value)}
-                  className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                  className={`min-h-10 rounded-lg border px-3 py-2 text-left transition-colors ${
                     current.mode === option.value
                       ? "border-accent bg-accent text-accent-fg"
                       : "border-border bg-bg text-text-secondary hover:text-text-primary"
@@ -411,7 +415,7 @@ export function OptionsDrawer({
                   <button
                     key={f.value}
                     onClick={() => updateCurrent({ format: f.value })}
-                    className={`rounded-lg py-1.5 text-[11px] font-medium transition-colors border ${
+                    className={`min-h-10 rounded-lg border py-1.5 text-[11px] font-medium transition-colors ${
                       current.format === f.value
                         ? "border-accent bg-accent text-accent-fg"
                         : "border-border bg-bg text-text-secondary hover:text-text-primary"
@@ -437,7 +441,7 @@ export function OptionsDrawer({
                   <button
                     key={f.value}
                     onClick={() => updateCurrent({ audioFormat: f.value })}
-                    className={`rounded-lg py-1.5 text-xs font-medium transition-colors border ${
+                    className={`min-h-10 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
                       current.audioFormat === f.value
                         ? "border-accent bg-accent text-accent-fg"
                         : "border-border bg-bg text-text-secondary hover:text-text-primary"
@@ -450,15 +454,28 @@ export function OptionsDrawer({
             </div>
           )}
 
-          {current.mode !== "video_only" && (metadata?.audioTracks?.length || 0) > 1 && (
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium text-text-secondary">Source audio track</label>
-              <select value={current.audioTrackId} onChange={(event) => updateCurrent({ audioTrackId: event.target.value })} className="field-input">
-                <option value="">Best available / default</option>
-                {metadata!.audioTracks!.map((track) => <option key={track.id} value={track.id}>{track.label}</option>)}
-              </select>
-            </div>
-          )}
+          {current.mode !== "video_only" &&
+            (metadata?.audioTracks?.length || 0) > 1 && (
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-medium text-text-secondary">
+                  Source audio track
+                </label>
+                <select
+                  value={current.audioTrackId}
+                  onChange={(event) =>
+                    updateCurrent({ audioTrackId: event.target.value })
+                  }
+                  className="field-input"
+                >
+                  <option value="">Best available / default</option>
+                  {metadata!.audioTracks!.map((track) => (
+                    <option key={track.id} value={track.id}>
+                      {track.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
           {current.mode !== "audio_only" && (
             <div className="flex flex-col gap-2">
@@ -468,7 +485,7 @@ export function OptionsDrawer({
               <select
                 value={current.quality}
                 onChange={(e) => updateCurrent({ quality: e.target.value })}
-                className="h-9 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text-primary outline-none focus:border-text-primary"
+                className="h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text-primary outline-none focus:border-text-primary"
               >
                 {qualityOptions.map((quality) => (
                   <option key={quality} value={quality}>
@@ -499,14 +516,18 @@ export function OptionsDrawer({
                     updateCurrent({ subtitleLanguages: e.target.value })
                   }
                   aria-label="Subtitle language"
-                  className="h-8 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                  className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
                 >
                   {metadata?.subtitleTracks?.length ? (
                     <option value="en.*">English (recommended)</option>
                   ) : null}
                   {(metadata?.subtitleTracks?.length
-                    ? metadata.subtitleTracks.map((track) => ({ value: track.language, label: track.label }))
-                    : SUBTITLE_LANGUAGES).map((lang) => (
+                    ? metadata.subtitleTracks.map((track) => ({
+                        value: track.language,
+                        label: track.label,
+                      }))
+                    : SUBTITLE_LANGUAGES
+                  ).map((lang) => (
                     <option key={lang.value} value={lang.value}>
                       {lang.label}
                     </option>
@@ -521,7 +542,7 @@ export function OptionsDrawer({
                     })
                   }
                   aria-label="Subtitle format"
-                  className="h-8 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                  className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
                 >
                   <option value="srt">SRT — subtitles</option>
                   <option value="vtt">VTT — web subtitles</option>
@@ -532,8 +553,19 @@ export function OptionsDrawer({
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium text-text-secondary">If a file already exists</label>
-            <select value={current.conflictAction} onChange={(event) => updateCurrent({ conflictAction: event.target.value as QueueOptions["conflictAction"] })} className="field-input">
+            <label className="text-xs font-medium text-text-secondary">
+              If a file already exists
+            </label>
+            <select
+              value={current.conflictAction}
+              onChange={(event) =>
+                updateCurrent({
+                  conflictAction: event.target
+                    .value as QueueOptions["conflictAction"],
+                })
+              }
+              className="field-input"
+            >
               <option value="rename">Keep both (rename new file)</option>
               <option value="overwrite">Replace existing file</option>
               <option value="skip">Skip download</option>

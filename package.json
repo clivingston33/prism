@@ -1,7 +1,7 @@
 {
   "name": "prism",
-  "version": "1.2.0-beta.1",
-  "description": "Prism - Video Downloader",
+  "version": "0.1.0-alpha.1",
+  "description": "Prism - Private media download, conversion, and transcription suite",
   "main": "./out/main/index.js",
   "author": "clivingston33",
   "license": "MIT",

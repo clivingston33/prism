@@ -314,7 +314,7 @@ export function ConvertPage() {
           </p>
         </header>
 
-        <section className="rounded-2xl border border-border bg-bg-subtle p-4 shadow-sm sm:p-5">
+        <section className="surface-card rounded-xl bg-bg-subtle p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
@@ -354,7 +354,7 @@ export function ConvertPage() {
             onDrop={(event) => void handleDrop(event)}
             className={`mt-4 flex min-h-[138px] cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-5 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent ${isDragging ? "border-accent bg-accent/10" : "border-border bg-bg hover:border-text-tertiary hover:bg-bg-elevated"}`}
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-bg-subtle text-accent shadow-sm">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-border bg-bg-subtle text-accent shadow-sm">
               {localPath ? <FilePlus2 size={21} /> : <UploadCloud size={22} />}
             </div>
             <p className="mt-3 max-w-full truncate text-sm font-semibold text-text-primary">
@@ -412,7 +412,7 @@ export function ConvertPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-border bg-bg-subtle p-4 shadow-sm sm:p-5">
+        <section className="surface-card rounded-xl bg-bg-subtle p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
@@ -422,7 +422,7 @@ export function ConvertPage() {
                 Build the output plan
               </h2>
             </div>
-            <span className="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-medium text-accent">
+            <span className="rounded-md border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-medium text-accent">
               {operation === "extract_audio"
                 ? "Audio extraction"
                 : operation === "stream_copy"
@@ -442,7 +442,7 @@ export function ConvertPage() {
                   setFormat(option.value);
                   setCompleted(null);
                 }}
-                className={`rounded-xl border px-3 py-2 text-left transition-transform transition-colors active:scale-[0.96] ${format === option.value ? "border-accent bg-accent text-accent-fg shadow-sm" : "border-border bg-bg text-text-secondary hover:border-text-tertiary hover:text-text-primary"}`}
+                className={`rounded-lg border px-3 py-2 text-left transition-[background-color,border-color,color,transform] active:scale-[0.96] ${format === option.value ? "border-accent bg-accent text-accent-fg shadow-sm" : "border-border bg-bg text-text-secondary hover:border-text-tertiary hover:text-text-primary"}`}
                 aria-pressed={format === option.value}
               >
                 <div className="text-xs font-semibold">{option.label}</div>
@@ -494,7 +494,7 @@ export function ConvertPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border bg-bg-subtle p-4 shadow-sm sm:p-5">
+        <section className="surface-card rounded-xl bg-bg-subtle p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
@@ -631,7 +631,7 @@ export function ConvertPage() {
 
         {(isConverting || progress) && (
           <section
-            className="rounded-2xl border border-accent/20 bg-accent/5 p-4 sm:p-5"
+            className="rounded-xl border border-accent/20 bg-accent/5 p-4 sm:p-5"
             aria-live="polite"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -672,7 +672,7 @@ export function ConvertPage() {
                 <div className="h-full w-1/3 animate-pulse rounded-full bg-accent" />
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-secondary">
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular-nums text-text-secondary">
               <span>
                 Stage{" "}
                 {progress?.stageProgress !== undefined
@@ -713,7 +713,7 @@ export function ConvertPage() {
         )}
 
         {completed && (
-          <section className="rounded-2xl border border-success/20 bg-success/5 p-4 sm:p-5">
+          <section className="rounded-xl border border-success/20 bg-success/5 p-4 sm:p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <CheckCircle2 className="shrink-0 text-success" size={22} />
@@ -785,7 +785,7 @@ export function ConvertPage() {
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg px-3 py-2">
+    <div className="rounded-xl border border-border-subtle bg-bg px-3 py-2">
       <span className="text-[10px] uppercase tracking-wider text-text-tertiary">
         {label}
       </span>
@@ -862,7 +862,7 @@ function PresetButton({
     <button
       type="button"
       onClick={onClick}
-      className="rounded-xl border border-border bg-bg px-3 py-2 text-left transition-colors hover:border-text-tertiary hover:bg-bg-elevated active:scale-[0.96]"
+      className="rounded-lg border border-border bg-bg px-3 py-2 text-left transition-[background-color,border-color,color,transform] hover:border-text-tertiary hover:bg-bg-elevated active:scale-[0.96]"
     >
       <span className="block text-xs font-semibold text-text-primary">
         {label}

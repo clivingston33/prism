@@ -15,7 +15,7 @@ import { useAppStore } from "../stores/app-store";
 import { ConfirmDialog, Modal } from "../components/modal";
 import { COMPUTE_INTENSIVE_MODEL_IDS } from "../../shared/transcription.ts";
 import { Waveform, secondsToTimestamp } from "../components/waveform";
-import { LoadingIndicator } from "../components/loading-indicator";
+import { useExitPresence } from "../hooks/use-exit-presence";
 
 type Format = "txt" | "srt" | "vtt" | "json";
 
@@ -73,6 +73,7 @@ export function TranscriptsPage() {
   >({});
   const [gpuRuntime, setGpuRuntime] = useState<GpuRuntimeState | null>(null);
   const [trimEnabled, setTrimEnabled] = useState(false);
+  const trimPresence = useExitPresence(trimEnabled, 150);
   const [trimRange, setTrimRange] = useState({ start: 0, end: 0, duration: 0 });
 
   const refreshGpuRuntime = async () =>
@@ -210,18 +211,19 @@ export function TranscriptsPage() {
     }
   };
 
-  const needsModel = installedModels.length === 0;
-  const canStart = Boolean(filePath && selectedModel) && !runningId;
+  // An empty array means "not checked yet" while the model catalog is loading.
+  // Keep that state distinct from a completed check that found no installs so
+  // the page never flashes a false warning during navigation.
+  const needsModel = !modelsLoading && installedModels.length === 0;
+  const canStart =
+    !modelsLoading && Boolean(filePath && selectedModel) && !runningId;
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
-        <header className="flex flex-wrap items-end justify-between gap-4">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
+        <header className="prism-page-enter flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-tertiary">
-              Workspace
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary [text-wrap:balance]">
+            <h1 className="text-2xl font-semibold tracking-tight text-text-primary [text-wrap:balance]">
               Local Transcription
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-text-secondary [text-wrap:pretty]">
@@ -233,26 +235,11 @@ export function TranscriptsPage() {
             type="button"
             onClick={() => setModelsOpen(true)}
             title="Manage Whisper models"
-            className="relative flex items-center gap-2 rounded-xl bg-bg-subtle px-3 py-2.5 text-left shadow-sm transition-[background-color,transform] hover:bg-bg-elevated active:scale-[0.98]"
+            aria-label="Manage Whisper models"
+            className="relative flex h-10 w-10 shrink-0 items-center justify-center text-white transition-[color,transform] hover:text-white/80 active:scale-[0.96]"
           >
-            <span
-              className={`flex h-8 w-8 items-center justify-center rounded-lg ${needsModel ? "bg-warning/15 text-warning" : "bg-accent text-accent-fg"}`}
-            >
-              <Cpu size={16} strokeWidth={1.7} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-                Model
-              </span>
-              <span className="block truncate text-xs font-semibold text-text-primary">
-                {needsModel
-                  ? "None installed"
-                  : selectedModel?.displayName || "Select"}
-              </span>
-            </span>
-            {modelsLoading ? (
-              <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm"><LoadingIndicator label="Checking installed transcription models…" /></section>
-            ) : needsModel && (
+            <Cpu size={17} strokeWidth={1.7} />
+            {!modelsLoading && needsModel && (
               <>
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-ping rounded-full bg-warning/70" />
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-warning ring-2 ring-bg" />
@@ -261,15 +248,15 @@ export function TranscriptsPage() {
           </button>
         </header>
 
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <main className="min-w-0 space-y-5">
+        <div className="prism-page-enter prism-page-enter-delay grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <main className="min-w-0 divide-y divide-border-subtle">
             {needsModel && (
-              <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-warning/10 p-4 shadow-sm sm:p-5">
+              <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning/10 p-4 shadow-sm sm:p-5">
                 <div>
                   <h2 className="text-sm font-semibold text-text-primary">
                     No transcription model installed yet
                   </h2>
-                  <p className="mt-1 text-xs text-text-secondary">
+                  <p className="mt-1 text-pretty text-xs text-text-secondary">
                     Install a Whisper model to transcribe on this device — no
                     audio ever leaves it.
                   </p>
@@ -285,7 +272,7 @@ export function TranscriptsPage() {
             )}
 
             <section
-              className={`rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5 ${isDragging ? "ring-2 ring-accent" : ""}`}
+              className={`py-5 first:pt-0 ${isDragging ? "rounded-xl ring-2 ring-accent ring-offset-4 ring-offset-bg" : ""}`}
               onDragOver={(event) => {
                 event.preventDefault();
                 setIsDragging(true);
@@ -303,7 +290,7 @@ export function TranscriptsPage() {
               }}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <SectionHeading eyebrow="1 · File" title="Choose media" />
+                <SectionHeading title="Choose media" />
                 {filePath && (
                   <button
                     type="button"
@@ -332,7 +319,7 @@ export function TranscriptsPage() {
                   </div>
                   <button
                     type="button"
-                    className="icon-button h-8 w-8 shrink-0"
+                    className="icon-button h-10 w-10 shrink-0"
                     aria-label="Clear selected file"
                     onClick={() => setFilePath(null)}
                   >
@@ -348,13 +335,13 @@ export function TranscriptsPage() {
                       void chooseFile();
                   }}
                 >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-sm">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent text-accent-fg shadow-sm">
                     <UploadCloud size={22} />
                   </div>
                   <h3 className="mt-4 text-sm font-semibold">
                     Drop a video or audio file here
                   </h3>
-                  <p className="mt-1 text-xs text-text-tertiary">
+                  <p className="mt-1 text-pretty text-xs text-text-tertiary">
                     Everything is processed locally · nothing is uploaded
                   </p>
                   <button
@@ -369,12 +356,9 @@ export function TranscriptsPage() {
             </section>
 
             {filePath && (
-              <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+              <section className="py-5">
                 <div className="flex items-center justify-between gap-3">
-                  <SectionHeading
-                    eyebrow="2 · Range"
-                    title="Transcribe a selection"
-                  />
+                  <SectionHeading title="Transcribe a selection" />
                   <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-elevated">
                     <input
                       type="checkbox"
@@ -386,30 +370,32 @@ export function TranscriptsPage() {
                   </label>
                 </div>
                 {!trimEnabled && (
-                  <p className="mt-2 text-[11px] text-text-tertiary">
-                    Enable Limit range to generate an interactive waveform and choose the section to transcribe.
+                  <p className="mt-2 text-pretty text-[11px] text-text-tertiary">
+                    Enable Limit range to generate an interactive waveform and
+                    choose the section to transcribe.
                   </p>
                 )}
-                {trimEnabled && (
-                  <div className="mt-4">
-                    <Waveform filePath={filePath} onChange={setTrimRange} />
+                {trimPresence.present && (
+                  <div
+                    className={`transition-[opacity,transform] duration-150 ${trimPresence.active ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"}`}
+                  >
+                    <div className="mt-4">
+                      <Waveform filePath={filePath} onChange={setTrimRange} />
+                    </div>
                   </div>
                 )}
               </section>
             )}
 
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
-              <SectionHeading eyebrow="2 · Output" title="Transcript format" />
-              <p className="mt-1 text-xs text-text-secondary">
-                Pick a file format and the spoken language of the source.
-              </p>
+            <section className="py-5">
+              <SectionHeading title="Transcript format" />
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {FORMAT_OPTIONS.map((option) => (
                   <button
                     type="button"
                     key={option.value}
                     onClick={() => setFormat(option.value)}
-                    className={`rounded-xl px-3 py-3 text-left transition-[background-color,border-color,transform] active:scale-[0.96] ${format === option.value ? "bg-accent text-accent-fg shadow-sm" : "bg-bg text-text-secondary hover:bg-bg-elevated"}`}
+                    className={`rounded-lg px-3 py-3 text-left transition-[background-color,border-color,transform] active:scale-[0.96] ${format === option.value ? "bg-accent text-accent-fg shadow-sm" : "bg-bg text-text-secondary hover:bg-bg-elevated"}`}
                   >
                     <div className="text-xs font-semibold">{option.label}</div>
                     <div className="mt-1 text-[10px] opacity-70">
@@ -470,22 +456,15 @@ export function TranscriptsPage() {
             </section>
           </main>
 
-          <aside className="min-w-0 space-y-5 xl:sticky xl:top-0 xl:self-start">
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-                    Run
-                  </p>
-                  <h2 className="mt-1 text-base font-semibold">
-                    {runningId ? "Transcribing" : "Ready when you are"}
-                  </h2>
-                </div>
-                {runningId && (
+          <aside className="min-w-0 xl:sticky xl:top-0 xl:self-start xl:border-l xl:border-border-subtle xl:pl-6">
+            <section className="py-1">
+              {runningId && (
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold">Transcribing</h2>
                   <Loader2 size={17} className="animate-spin text-accent" />
-                )}
-              </div>
-              <div className="mt-4 flex gap-2">
+                </div>
+              )}
+              <div className={`flex gap-2 ${runningId ? "mt-4" : ""}`}>
                 {runningId ? (
                   <button
                     type="button"
@@ -516,7 +495,7 @@ export function TranscriptsPage() {
                 </p>
               )}
               {!message && !error && (
-                <p className="mt-3 text-[11px] leading-relaxed text-text-tertiary">
+                <p className="mt-3 text-pretty text-[11px] leading-relaxed text-text-tertiary">
                   Transcription runs offline and speed depends on the model and
                   your CPU.
                 </p>
@@ -565,7 +544,7 @@ export function TranscriptsPage() {
                     </span>
                   )}
                 </div>
-                <div className="mt-1 text-xs text-text-tertiary">
+                <div className="mt-1 text-pretty text-xs text-text-tertiary">
                   {gpuRuntime.gpuName || "Compatible GPU"} ·{" "}
                   {gpuRuntime.runtimeLabel}
                   {gpuRuntime.downloadBytes > 0 &&
@@ -573,7 +552,7 @@ export function TranscriptsPage() {
                   {" · makes every model much faster"}
                 </div>
                 {gpuRuntime.status === "failed" && gpuRuntime.error && (
-                  <div className="mt-2 rounded-lg bg-error/10 px-2 py-1.5 text-[11px] text-error">
+                  <div className="mt-2 rounded-xl bg-error/10 px-2 py-1.5 text-[11px] text-error">
                     {gpuRuntime.error}
                   </div>
                 )}
@@ -581,7 +560,7 @@ export function TranscriptsPage() {
               {gpuRuntime.status === "installed" ? (
                 <button
                   type="button"
-                  className="field-button min-h-8 shrink-0 px-2.5 text-[11px] text-error"
+                  className="field-button min-h-10 shrink-0 px-2.5 text-[11px] text-error"
                   onClick={() =>
                     void window.prism.transcription
                       .removeGpuRuntime()
@@ -595,7 +574,7 @@ export function TranscriptsPage() {
               ) : gpuRuntime.status === "downloading" ? (
                 <button
                   type="button"
-                  className="field-button min-h-8 shrink-0 px-2.5 text-[11px]"
+                  className="field-button min-h-10 shrink-0 px-2.5 text-[11px]"
                   onClick={() =>
                     void window.prism.transcription
                       .cancelGpuRuntimeInstall()
@@ -607,7 +586,7 @@ export function TranscriptsPage() {
               ) : (
                 <button
                   type="button"
-                  className="field-button min-h-8 shrink-0 px-2.5 text-[11px]"
+                  className="field-button min-h-10 shrink-0 px-2.5 text-[11px]"
                   onClick={() => {
                     setGpuRuntime({ ...gpuRuntime, status: "downloading" });
                     setModelProgress((current) => ({
@@ -653,7 +632,7 @@ export function TranscriptsPage() {
                       }}
                     />
                   </div>
-                  <div className="mt-1 text-[11px] text-text-tertiary">
+                  <div className="mt-1 text-[11px] tabular-nums text-text-tertiary">
                     {modelProgress[
                       gpuRuntime.runtimeId === "cuda"
                         ? "cuda-runtime"
@@ -698,7 +677,7 @@ export function TranscriptsPage() {
                     </div>
                     {COMPUTE_INTENSIVE_MODEL_IDS.includes(model.id) &&
                       gpuRuntime?.status !== "installed" && (
-                        <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
+                        <div className="mt-2 flex items-start gap-1.5 rounded-xl bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
                           <AlertTriangle size={13} className="mt-px shrink-0" />
                           <span>
                             Very compute-intensive on the CPU and often slower
@@ -719,7 +698,7 @@ export function TranscriptsPage() {
                   ) : (
                     <button
                       type="button"
-                      className="field-button min-h-8 shrink-0 px-2.5 text-[11px]"
+                      className="field-button min-h-10 shrink-0 px-2.5 text-[11px]"
                       onClick={() => void installModel(model.id)}
                     >
                       {model.status === "paused" ? "Resume" : "Install"}
@@ -734,7 +713,7 @@ export function TranscriptsPage() {
                         style={{ width: `${progress.value}%` }}
                       />
                     </div>
-                    <div className="mt-1 text-[11px] text-text-tertiary">
+                    <div className="mt-1 text-[11px] tabular-nums text-text-tertiary">
                       {progress.value.toFixed(0)}%
                       {progress.speed
                         ? ` · ${(progress.speed / 1024 / 1024).toFixed(1)} MB/s`
@@ -792,19 +771,10 @@ export function TranscriptsPage() {
   );
 }
 
-function SectionHeading({
-  eyebrow,
-  title,
-}: {
-  eyebrow: string;
-  title: string;
-}) {
+function SectionHeading({ title }: { title: string }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-        {eyebrow}
-      </p>
-      <h2 className="mt-1 text-base font-semibold text-text-primary">
+      <h2 className="text-base font-semibold text-text-primary [text-wrap:balance]">
         {title}
       </h2>
     </div>
@@ -836,7 +806,7 @@ function Toggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-bg px-3 text-xs text-text-secondary">
+    <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-bg px-3 text-xs text-text-secondary">
       <input
         type="checkbox"
         checked={checked}

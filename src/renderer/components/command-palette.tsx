@@ -110,7 +110,7 @@ export function CommandPalette({
             if (event.key === "Enter" && visible[0]) run(visible[0].run);
           }}
           placeholder="Type a command"
-          className="h-11 w-full rounded-xl border border-border bg-bg-subtle pl-10 pr-3 text-sm text-text-primary outline-none focus:border-accent"
+          className="h-11 w-full rounded-lg border border-border bg-bg-subtle pl-10 pr-3 text-sm text-text-primary outline-none focus:border-accent"
         />
       </div>
       <div className="mt-3 space-y-1">
@@ -119,7 +119,7 @@ export function CommandPalette({
             type="button"
             key={action.label}
             onClick={() => run(action.run)}
-            className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left transition-[background-color,transform] hover:bg-bg-subtle active:scale-[0.96]"
+            className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left transition-[background-color,transform] hover:bg-bg-subtle active:scale-[0.96]"
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-subtle text-text-secondary">
               <action.icon size={15} />

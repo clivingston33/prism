@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, FolderOpen, Settings2 } from "lucide-react";
+import { FolderOpen, Settings2 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { LoadingIndicator } from "../components/loading-indicator";
 
@@ -129,10 +129,7 @@ export function SettingsPage() {
   const render = () => {
     if (section === "Downloads")
       return (
-        <Panel
-          title="Downloads"
-          description="Defaults used when new downloads are added to the queue."
-        >
+        <Panel title="Downloads">
           <DirectoryRow
             label="Download location"
             value={value("downloadLocation")}
@@ -164,10 +161,7 @@ export function SettingsPage() {
       );
     if (section === "Performance")
       return (
-        <Panel
-          title="Performance"
-          description="Fragment concurrency controls parallel segments inside one download. Maximum simultaneous downloads controls separate queue jobs."
-        >
+        <Panel title="Performance">
           <NumberRow
             label="Maximum simultaneous downloads"
             value={Number(settings.maxConcurrentDownloads || 2)}
@@ -234,10 +228,7 @@ export function SettingsPage() {
       );
     if (section === "Media Tools")
       return (
-        <Panel
-          title="Media Tools"
-          description="Defaults for the Remux and Convert workspaces."
-        >
+        <Panel title="Media Tools">
           <Select
             label="Default mode"
             value={value("defaultMediaToolsMode", "remux")}
@@ -288,10 +279,7 @@ export function SettingsPage() {
       );
     if (section === "Library")
       return (
-        <Panel
-          title="Library"
-          description="Library checks happen when it opens, on refresh, and on a throttled background interval."
-        >
+        <Panel title="Library">
           <Select
             label="Missing-file behavior"
             value={value("missingFileBehavior", "mark")}
@@ -303,26 +291,30 @@ export function SettingsPage() {
             onChange={(v) => void update("missingFileBehavior", v)}
             help="Permission errors and unavailable drives are never removed automatically."
           />
-          {false && <div className="flex items-center justify-between border-b border-border py-3 last:border-0">
-            <span>
-              <span className="block text-sm text-text-primary">
-                Thumbnail cache
+          {false && (
+            <div className="flex items-center justify-between border-b border-border py-3 last:border-0">
+              <span>
+                <span className="block text-sm text-text-primary">
+                  Thumbnail cache
+                </span>
+                <span className="mt-1 block text-xs text-text-tertiary">
+                  {thumbCache
+                    ? `${(thumbCache.sizeBytes / 1024 / 1024).toFixed(1)} MB · ${thumbCache.fileCount} files. Orphans are pruned automatically at startup.`
+                    : "Calculating…"}
+                </span>
               </span>
-              <span className="mt-1 block text-xs text-text-tertiary">
-                {thumbCache
-                  ? `${(thumbCache.sizeBytes / 1024 / 1024).toFixed(1)} MB · ${thumbCache.fileCount} files. Orphans are pruned automatically at startup.`
-                  : "Calculating…"}
-              </span>
-            </span>
-            <button
-              className="button-secondary"
-              onClick={() =>
-                void window.prism.settings.clearThumbnails().then(setThumbCache)
-              }
-            >
-              Clear
-            </button>
-          </div>}
+              <button
+                className="button-secondary"
+                onClick={() =>
+                  void window.prism.settings
+                    .clearThumbnails()
+                    .then(setThumbCache)
+                }
+              >
+                Clear
+              </button>
+            </div>
+          )}
           <button
             className="button-secondary mt-4"
             onClick={() => void window.prism.history.removeMissing()}
@@ -338,7 +330,9 @@ export function SettingsPage() {
           description="Local Whisper transcription stays offline after a verified model is installed."
         >
           {modelsLoading ? (
-            <div className="border-b border-border py-4"><LoadingIndicator label="Checking installed transcription models…" /></div>
+            <div className="border-b border-border py-4">
+              <LoadingIndicator label="Checking installed transcription models…" />
+            </div>
           ) : (
             <Select
               label="Default model"
@@ -392,18 +386,18 @@ export function SettingsPage() {
             max={64}
             onChange={(v) => void update("transcriptionThreads", v)}
           />
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 divide-y divide-border border-y border-border">
             {models.map((model) => (
               <div
                 key={model.id}
-                className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-xs"
+                className="flex items-center justify-between py-2 text-xs"
               >
                 <span>{model.displayName}</span>
                 {model.status === "installed" ? (
                   <span className="text-success">Installed</span>
                 ) : (
                   <button
-                    className="text-accent hover:underline"
+                    className="min-h-10 rounded-lg px-2 text-accent transition-transform hover:underline active:scale-[0.96]"
                     onClick={() =>
                       void window.prism.transcription
                         .downloadModel(model.id)
@@ -426,10 +420,7 @@ export function SettingsPage() {
       );
     if (section === "Application")
       return (
-        <Panel
-          title="Application"
-          description="Behavior and appearance preferences."
-        >
+        <Panel title="Application">
           <Select
             label="Theme"
             value={value("theme", "system")}
@@ -449,10 +440,7 @@ export function SettingsPage() {
         </Panel>
       );
     return (
-      <Panel
-        title="Advanced and diagnostics"
-        description="Runtime health and maintenance actions."
-      >
+      <Panel title="Advanced and diagnostics">
         <div className="grid gap-2 text-sm text-text-secondary">
           <div>
             Prism version{" "}
@@ -460,14 +448,8 @@ export function SettingsPage() {
               {window.prism.version}
             </span>
           </div>
-          <div>
-            yt-dlp, FFmpeg, FFprobe, Whisper{" "}
-            <span className="float-right text-xs text-text-tertiary">
-              Validated when used
-            </span>
-          </div>
         </div>
-        <div className="mt-5 rounded-xl bg-bg p-4 shadow-sm">
+        <div className="mt-5 border-t border-border pt-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-medium text-text-primary">
@@ -478,7 +460,7 @@ export function SettingsPage() {
                 keeps the previous binary if verification fails.
               </p>
             </div>
-            <span className="rounded-lg bg-bg-subtle px-2 py-1 font-mono text-[10px] tabular-nums text-text-secondary">
+            <span className="rounded-md bg-bg-subtle px-2 py-1 font-mono text-[10px] tabular-nums text-text-secondary">
               {ytdlpUpdate?.currentVersion || "Bundled"}
             </span>
           </div>
@@ -557,33 +539,21 @@ export function SettingsPage() {
   return (
     <main className="h-full overflow-y-auto px-6 pb-12 pt-8">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-7 flex items-center gap-3">
+        <div className="prism-page-enter mb-7 flex items-center gap-3">
           <Settings2 size={20} className="text-accent" />
-          <div>
-            <h1 className="text-xl font-semibold text-text-primary">
-              Settings
-            </h1>
-            <p className="mt-1 text-sm text-text-tertiary">
-              Controls that affect downloads, media tools, Library, and local
-              transcription.
-            </p>
-          </div>
+          <h1 className="text-balance text-xl font-semibold text-text-primary">
+            Settings
+          </h1>
         </div>
-        <div className="grid gap-6 md:grid-cols-[180px_1fr]">
+        <div className="prism-page-enter prism-page-enter-delay grid gap-6 md:grid-cols-[180px_1fr]">
           <nav className="space-y-1">
             {sections.map((entry) => (
               <button
                 key={entry}
                 onClick={() => setSection(entry)}
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm ${entry === section ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"}`}
+                className={`min-h-10 w-full rounded-lg px-3 text-left text-sm transition-[background-color,color,transform] active:scale-[0.96] ${entry === section ? "bg-accent/10 text-accent" : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"}`}
               >
                 {entry}
-                {entry === "Transcription" && (
-                  <Check
-                    size={13}
-                    className="float-right mt-0.5 text-success"
-                  />
-                )}
               </button>
             ))}
           </nav>
@@ -600,14 +570,18 @@ function Panel({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-bg-subtle p-5 shadow-sm">
-      <h2 className="font-medium text-text-primary">{title}</h2>
-      <p className="mt-1 text-sm text-text-tertiary">{description}</p>
-      <div className="mt-4">{children}</div>
+    <section>
+      <h2 className="text-balance font-medium text-text-primary">{title}</h2>
+      {description && (
+        <p className="mt-1 text-pretty text-sm text-text-tertiary">
+          {description}
+        </p>
+      )}
+      <div className="mt-4 border-t border-border">{children}</div>
     </section>
   );
 }
@@ -656,7 +630,7 @@ function NumberRow({
         )}
       </span>
       <input
-        className="field-input w-20 text-right"
+        className="field-input w-20 text-right tabular-nums"
         type="number"
         min={min}
         max={max}

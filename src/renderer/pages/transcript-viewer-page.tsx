@@ -117,7 +117,7 @@ export function TranscriptViewerPage({ historyId }: { historyId: string }) {
   return (
     <main className="h-full overflow-y-auto px-5 pb-12 pt-6 sm:px-8">
       <div className="mx-auto max-w-5xl">
-        <header className="flex flex-wrap items-start justify-between gap-4">
+        <header className="prism-page-enter flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <button
               type="button"
@@ -179,13 +179,22 @@ export function TranscriptViewerPage({ historyId }: { historyId: string }) {
               disabled={!dirty || saving}
               className="button-primary min-h-10 disabled:cursor-not-allowed disabled:opacity-45 active:not-disabled:scale-[0.96]"
             >
-              {dirty ? <Save size={14} /> : <Check size={14} />}
+              <span className="relative h-3.5 w-3.5">
+                <Save
+                  size={14}
+                  className={`transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${dirty || saving ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]"}`}
+                />
+                <Check
+                  size={14}
+                  className={`absolute inset-0 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${dirty || saving ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0"}`}
+                />
+              </span>
               {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
             </button>
           </div>
         </header>
 
-        <div className="relative mt-6">
+        <div className="prism-page-enter prism-page-enter-delay relative mt-6">
           <Search
             size={15}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
@@ -194,24 +203,25 @@ export function TranscriptViewerPage({ historyId }: { historyId: string }) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search transcript"
-            className="h-11 w-full rounded-xl border border-border bg-bg-subtle pl-10 pr-4 text-sm text-text-primary outline-none transition-[border-color,box-shadow] focus:border-accent focus:shadow-sm"
+            className="h-11 w-full rounded-lg border border-border bg-bg-subtle pl-10 pr-4 text-sm text-text-primary outline-none transition-[border-color,box-shadow] focus:border-accent focus:shadow-sm"
           />
         </div>
 
-        {(message || error) && (
-          <p
-            className={`mt-3 text-xs ${error ? "text-error" : "text-success"}`}
-            role="status"
-          >
-            {error || message}
-          </p>
-        )}
+        <p
+          className={`mt-3 min-h-4 text-xs transition-[color,opacity,transform] duration-200 ${error ? "text-error" : "text-success"} ${message || error ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-1 opacity-0"}`}
+          role="status"
+        >
+          {error || message}
+        </p>
 
-        <section className="mt-5 space-y-2" aria-label="Transcript segments">
+        <section
+          className="prism-page-enter prism-page-enter-delay mt-5 space-y-2"
+          aria-label="Transcript segments"
+        >
           {visibleSegments.map(({ segment, index }) => (
             <article
               key={`${segment.id}-${index}`}
-              className="grid gap-2 rounded-2xl bg-bg-subtle p-3 shadow-sm sm:grid-cols-[112px_1fr]"
+              className="grid gap-2 rounded-xl bg-bg-subtle p-3 shadow-sm sm:grid-cols-[112px_1fr]"
             >
               <div className="flex gap-1 font-mono text-[10px] tabular-nums text-text-tertiary sm:flex-col sm:pt-2">
                 {segment.start ? (
@@ -231,13 +241,13 @@ export function TranscriptViewerPage({ historyId }: { historyId: string }) {
                   2,
                   Math.min(7, segment.text.split("\n").length + 1),
                 )}
-                className="min-h-16 resize-y rounded-xl border border-transparent bg-bg px-3 py-2 text-sm leading-relaxed text-text-primary outline-none transition-[border-color,box-shadow] focus:border-accent focus:shadow-sm"
+                className="min-h-16 resize-y rounded-lg border border-transparent bg-bg px-3 py-2 text-sm leading-relaxed text-text-primary outline-none transition-[border-color,box-shadow] focus:border-accent focus:shadow-sm"
                 aria-label={`Transcript segment ${index + 1}`}
               />
             </article>
           ))}
           {!visibleSegments.length && (
-            <div className="rounded-2xl bg-bg-subtle px-6 py-14 text-center text-sm text-text-tertiary shadow-sm">
+            <div className="rounded-xl bg-bg-subtle px-6 py-14 text-center text-sm text-text-tertiary shadow-sm">
               <FileText size={24} className="mx-auto mb-3 opacity-60" />
               No transcript text matches “{query}”.
             </div>

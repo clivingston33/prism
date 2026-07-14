@@ -18,61 +18,77 @@ export function UpdateCard({
   isDownloaded,
 }: UpdateCardProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-[380px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+    <div
+      className="prism-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      data-state="open"
+    >
+      <div
+        className="prism-dialog relative w-[380px] rounded-2xl bg-bg-elevated p-6 shadow-2xl"
+        data-state="open"
+      >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-subtle transition-colors"
+          className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-lg text-text-tertiary transition-[background-color,color,transform] hover:bg-bg-subtle hover:text-text-primary active:scale-[0.96]"
+          aria-label="Close update dialog"
         >
           <X size={14} strokeWidth={1.5} />
         </button>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
+        <div className="mb-4 flex items-center gap-3 pr-8">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10 text-accent">
             <RefreshCw size={20} strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-text-primary">
+            <h3 className="text-sm font-semibold text-text-primary [text-wrap:balance]">
               Update available
             </h3>
-            <p className="text-xs text-text-secondary mt-0.5">
+            <p className="mt-0.5 text-xs text-text-secondary [text-wrap:pretty]">
               Prism v{version} is ready to install
             </p>
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 mt-6">
+        <div className="mt-6 flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-text-primary bg-bg border border-border hover:bg-bg-subtle rounded transition-colors"
+            className="min-h-10 rounded-lg border border-border bg-bg px-4 text-xs font-medium text-text-primary transition-[background-color,border-color,color,transform] hover:bg-bg-subtle active:scale-[0.96]"
           >
             Later
           </button>
           {isDownloaded ? (
             <button
+              type="button"
               onClick={onInstall}
-              className="px-4 py-2 text-xs font-medium bg-accent text-accent-fg hover:bg-accent/90 rounded transition-colors flex items-center gap-2"
+              className="flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-accent-fg transition-[background-color,transform] hover:bg-accent/90 active:scale-[0.96]"
             >
               <Download size={12} />
               Install & Restart
             </button>
           ) : (
             <button
+              type="button"
               onClick={onDownload}
               disabled={isDownloading}
-              className="px-4 py-2 text-xs font-medium bg-accent text-accent-fg hover:bg-accent/90 disabled:opacity-50 rounded transition-colors flex items-center gap-2"
+              className="flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-accent-fg transition-[background-color,opacity,transform] hover:bg-accent/90 active:scale-[0.96] disabled:opacity-50"
             >
-              {isDownloading ? (
-                <>
-                  <RefreshCw size={12} className="animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
+              <span className="relative h-3 w-3" aria-hidden="true">
+                <span
+                  className={`absolute inset-0 transition-[filter,opacity,transform] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${isDownloading ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0"}`}
+                >
                   <Download size={12} />
-                  Download & Install
-                </>
-              )}
+                </span>
+                <span
+                  className={`absolute inset-0 transition-[filter,opacity,transform] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${isDownloading ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]"}`}
+                >
+                  <RefreshCw
+                    size={12}
+                    className={isDownloading ? "animate-spin" : undefined}
+                  />
+                </span>
+              </span>
+              {isDownloading ? "Downloading..." : "Download & Install"}
             </button>
           )}
         </div>
@@ -87,33 +103,42 @@ interface UpdateStatusCardProps {
 
 export function UpToDateCard({ onClose }: UpdateStatusCardProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-[340px] rounded-xl border border-border bg-bg-elevated p-6 shadow-2xl animate-in zoom-in-95 duration-150">
+    <div
+      className="prism-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      data-state="open"
+    >
+      <div
+        className="prism-dialog relative w-[340px] rounded-2xl bg-bg-elevated p-6 shadow-2xl"
+        data-state="open"
+      >
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 flex h-6 w-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary hover:bg-bg-subtle transition-colors"
+          className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-lg text-text-tertiary transition-[background-color,color,transform] hover:bg-bg-subtle hover:text-text-primary active:scale-[0.96]"
+          aria-label="Close update status dialog"
         >
           <X size={14} strokeWidth={1.5} />
         </button>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
+        <div className="mb-4 flex items-center gap-3 pr-8">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
             <RefreshCw size={20} strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-text-primary">
+            <h3 className="text-sm font-semibold text-text-primary [text-wrap:balance]">
               You are up to date
             </h3>
-            <p className="text-xs text-text-secondary mt-0.5">
+            <p className="mt-0.5 text-xs text-text-secondary [text-wrap:pretty]">
               No updates available
             </p>
           </div>
         </div>
 
-        <div className="flex justify-end mt-6">
+        <div className="mt-6 flex justify-end">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-text-primary bg-bg border border-border hover:bg-bg-subtle rounded transition-colors"
+            className="min-h-10 rounded-lg border border-border bg-bg px-4 text-xs font-medium text-text-primary transition-[background-color,border-color,color,transform] hover:bg-bg-subtle active:scale-[0.96]"
           >
             Close
           </button>

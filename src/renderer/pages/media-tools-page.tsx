@@ -10,7 +10,6 @@ import {
   Loader2,
   Minus,
   Play,
-  Plus,
   Trash2,
   UploadCloud,
   X,
@@ -19,6 +18,7 @@ import { useAppStore } from "../stores/app-store";
 import type { ConversionFormat } from "../../shared/contracts.ts";
 import type { MediaProbe, RemuxContainer } from "../../shared/media-tools.ts";
 import { Waveform, secondsToTimestamp } from "../components/waveform";
+import { useExitPresence } from "../hooks/use-exit-presence";
 
 type Mode = "remux" | "convert";
 type ItemStatus =
@@ -284,6 +284,7 @@ export function MediaToolsPage() {
   const [crf, setCrf] = useState("20");
   const [audioBitrate, setAudioBitrate] = useState("192k");
   const [trimEnabled, setTrimEnabled] = useState(false);
+  const trimPresence = useExitPresence(trimEnabled, 150);
   const [trimRange, setTrimRange] = useState({ start: 0, end: 0, duration: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -676,13 +677,10 @@ export function MediaToolsPage() {
     items.some((item) => item.status === "ready") && !isProcessing;
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
-        <header className="flex flex-wrap items-end justify-between gap-4">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
+        <header className="prism-page-enter flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-tertiary">
-              Workspace
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary [text-wrap:balance]">
+            <h1 className="text-2xl font-semibold tracking-tight text-text-primary [text-wrap:balance]">
               Media Tools
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-text-secondary [text-wrap:pretty]">
@@ -691,7 +689,7 @@ export function MediaToolsPage() {
             </p>
           </div>
           <div
-            className="flex rounded-xl bg-bg-subtle p-1 shadow-sm"
+            className="flex rounded-lg bg-bg-subtle p-1 shadow-sm"
             role="tablist"
             aria-label="Media operation"
           >
@@ -710,10 +708,10 @@ export function MediaToolsPage() {
           </div>
         </header>
 
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <main className="min-w-0 space-y-5">
+        <div className="prism-page-enter prism-page-enter-delay grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <main className="min-w-0 divide-y divide-border-subtle">
             <section
-              className={`rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5 ${isDragging ? "ring-2 ring-accent" : ""}`}
+              className={`py-5 first:pt-0 ${isDragging ? "rounded-xl ring-2 ring-accent ring-offset-4 ring-offset-bg" : ""}`}
               onDragOver={(event) => {
                 event.preventDefault();
                 setIsDragging(true);
@@ -723,21 +721,9 @@ export function MediaToolsPage() {
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-                    1 · Files
-                  </p>
-                  <h2 className="mt-1 text-base font-semibold">
-                    Build a batch
-                  </h2>
+                  <h2 className="text-base font-semibold">Build a batch</h2>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="field-button"
-                    onClick={() => void addFiles()}
-                  >
-                    <Plus size={14} /> Add files
-                  </button>
                   {items.length > 0 && (
                     <button
                       type="button"
@@ -765,13 +751,13 @@ export function MediaToolsPage() {
                       void addFiles();
                   }}
                 >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-sm">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent text-accent-fg shadow-sm">
                     <UploadCloud size={22} />
                   </div>
                   <h3 className="mt-4 text-sm font-semibold">
                     Drop media files here
                   </h3>
-                  <p className="mt-1 text-xs text-text-tertiary">
+                  <p className="mt-1 text-pretty text-xs text-text-tertiary">
                     Add one or several files · FFprobe will inspect them in the
                     background
                   </p>
@@ -800,7 +786,7 @@ export function MediaToolsPage() {
                 </div>
               )}
               {items.length > 0 && (
-                <p className="mt-3 text-[11px] text-text-tertiary">
+                <p className="mt-3 text-[11px] tabular-nums text-text-tertiary">
                   {items.length} file{items.length === 1 ? "" : "s"} ·{" "}
                   {items.filter((item) => item.status === "completed").length}{" "}
                   complete
@@ -809,7 +795,7 @@ export function MediaToolsPage() {
             </section>
 
             {selected && (
-              <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+              <section className="py-5">
                 <div className="flex items-start justify-between gap-3">
                   <SectionHeading
                     eyebrow="2 · Inspector"
@@ -832,7 +818,7 @@ export function MediaToolsPage() {
                       <img
                         src={`local://${encodeURIComponent(selected.probe.thumbnailPath)}`}
                         alt="Media preview"
-                        className="h-full max-h-[190px] w-full object-contain outline outline-1 outline-black/10 dark:outline-white/10"
+                        className="h-full max-h-[190px] w-full -outline-offset-1 object-contain outline outline-1 outline-black/10 dark:outline-white/10"
                       />
                     ) : selected.status === "inspecting" ? (
                       <Loader2 className="animate-spin" size={24} />
@@ -854,9 +840,9 @@ export function MediaToolsPage() {
                       {selected.path}
                     </p>
                     {selected.error ? (
-                      <div className="mt-4 rounded-xl bg-error/10 p-3 text-xs text-error">
-                        <CircleAlert size={14} className="mr-1 inline" />
-                        {selected.error}
+                      <div className="mt-4 flex items-start gap-1.5 rounded-xl bg-error/10 p-3 text-xs text-error">
+                        <CircleAlert size={14} className="mt-px shrink-0" />
+                        <span>{selected.error}</span>
                       </div>
                     ) : selected.probe ? (
                       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
@@ -908,7 +894,7 @@ export function MediaToolsPage() {
             )}
 
             {selected && mode === "convert" && (
-              <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+              <section className="py-5">
                 <div className="flex items-center justify-between gap-3">
                   <SectionHeading eyebrow="3 · Trim" title="Choose a range" />
                   <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-elevated">
@@ -921,29 +907,33 @@ export function MediaToolsPage() {
                     Trim output
                   </label>
                 </div>
-                <p className="mt-1 text-xs text-text-secondary">
+                <p className="mt-1 text-pretty text-xs text-text-secondary">
                   Preview the audio and drag either handle to keep only part of
                   the file.
                 </p>
-                {trimEnabled && (
-                  <div className="mt-4">
-                    <Waveform
-                      filePath={selected.path}
-                      onChange={setTrimRange}
-                    />
+                {trimPresence.present && (
+                  <div
+                    className={`transition-[opacity,transform] duration-150 ${trimPresence.active ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"}`}
+                  >
+                    <div className="mt-4">
+                      <Waveform
+                        filePath={selected.path}
+                        onChange={setTrimRange}
+                      />
+                    </div>
                   </div>
                 )}
               </section>
             )}
 
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+            <section className="py-5">
               <SectionHeading
                 eyebrow="3 · Output"
                 title={
                   mode === "remux" ? "Lossless remux" : "Conversion preset"
                 }
               />
-              <p className="mt-1 text-xs text-text-secondary">
+              <p className="mt-1 text-pretty text-xs text-text-secondary">
                 {mode === "remux"
                   ? "Fast and lossless. Video and audio are copied without re-encoding."
                   : "Re-encodes media and may take significantly longer."}
@@ -956,7 +946,7 @@ export function MediaToolsPage() {
                         type="button"
                         key={option.value}
                         onClick={() => setContainer(option.value)}
-                        className={`rounded-xl px-3 py-3 text-left transition-[background-color,border-color,transform] active:scale-[0.96] ${container === option.value ? "bg-accent text-accent-fg shadow-sm" : "bg-bg text-text-secondary hover:bg-bg-elevated"}`}
+                        className={`rounded-lg px-3 py-3 text-left transition-[background-color,border-color,transform] active:scale-[0.96] ${container === option.value ? "bg-accent text-accent-fg shadow-sm" : "bg-bg text-text-secondary hover:bg-bg-elevated"}`}
                       >
                         <div className="text-xs font-semibold">
                           {option.label}
@@ -981,21 +971,21 @@ export function MediaToolsPage() {
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button
                             type="button"
-                            className="field-button min-h-8 bg-bg px-2 text-[11px]"
+                            className="field-button min-h-10 bg-bg px-2 text-[11px]"
                             onClick={() => setRemuxAction("recommended")}
                           >
                             Use recommended MKV
                           </button>
                           <button
                             type="button"
-                            className="field-button min-h-8 bg-bg px-2 text-[11px]"
+                            className="field-button min-h-10 bg-bg px-2 text-[11px]"
                             onClick={() => setRemuxAction("exclude")}
                           >
                             Exclude incompatible tracks
                           </button>
                           <button
                             type="button"
-                            className="field-button min-h-8 bg-bg px-2 text-[11px]"
+                            className="field-button min-h-10 bg-bg px-2 text-[11px]"
                             onClick={() => setMode("convert")}
                           >
                             Switch to Convert
@@ -1020,7 +1010,7 @@ export function MediaToolsPage() {
                           if (preset.audioBitrate)
                             setAudioBitrate(preset.audioBitrate);
                         }}
-                        className={`rounded-xl px-3 py-3 text-left transition-[background-color,border-color,transform] active:scale-[0.96] ${presetId === preset.id ? "bg-accent text-accent-fg shadow-sm" : "bg-bg text-text-secondary hover:bg-bg-elevated"}`}
+                        className={`rounded-lg px-3 py-3 text-left transition-[background-color,border-color,transform] active:scale-[0.96] ${presetId === preset.id ? "bg-accent text-accent-fg shadow-sm" : "bg-bg text-text-secondary hover:bg-bg-elevated"}`}
                       >
                         <div className="text-xs font-semibold">
                           {preset.label}
@@ -1041,235 +1031,237 @@ export function MediaToolsPage() {
               )}
             </section>
 
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+            <section className="py-5">
               <button
                 type="button"
-                className="flex w-full items-center justify-between text-left"
+                className="flex w-full items-center justify-between pr-1 text-left"
                 onClick={() => setAdvancedOpen((value) => !value)}
               >
                 <span>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-                    4 · Advanced
-                  </span>
-                  <span className="mt-1 block text-sm font-semibold">
+                  <span className="block text-sm font-semibold">
                     Fine-tune the output
                   </span>
                 </span>
-                {advancedOpen ? (
-                  <ChevronUp size={17} />
-                ) : (
-                  <ChevronDown size={17} />
-                )}
+                <ChevronDown
+                  size={17}
+                  className={`mr-1 shrink-0 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+                />
               </button>
-              {advancedOpen && (
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  {mode === "remux" ? (
-                    <>
-                      <TrackPicker
-                        label="Video tracks"
-                        streams={
-                          selectedProbe?.streams.filter(
-                            (stream) => stream.type === "video",
-                          ) || []
-                        }
-                        selected={selectedVideo}
-                        setSelected={setSelectedVideo}
-                      />
-                      <TrackPicker
-                        label="Audio tracks"
-                        streams={
-                          selectedProbe?.streams.filter(
-                            (stream) => stream.type === "audio",
-                          ) || []
-                        }
-                        selected={selectedAudio}
-                        setSelected={setSelectedAudio}
-                      />
-                      <TrackPicker
-                        label="Subtitle tracks"
-                        streams={
-                          selectedProbe?.streams.filter(
-                            (stream) => stream.type === "subtitle",
-                          ) || []
-                        }
-                        selected={selectedSubtitle}
-                        setSelected={setSelectedSubtitle}
-                      />
-                      <Field label="Default audio track">
-                        <select
-                          className="field-input"
-                          value={defaultAudio ?? ""}
-                          onChange={(event) =>
-                            setDefaultAudio(
-                              event.target.value
-                                ? Number(event.target.value)
-                                : undefined,
-                            )
+              <div
+                className={`grid transition-[grid-template-rows,opacity] duration-200 ${advancedOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+                aria-hidden={!advancedOpen}
+                inert={!advancedOpen}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {mode === "remux" ? (
+                      <>
+                        <TrackPicker
+                          label="Video tracks"
+                          streams={
+                            selectedProbe?.streams.filter(
+                              (stream) => stream.type === "video",
+                            ) || []
                           }
-                        >
-                          <option value="">Automatic</option>
-                          {(
+                          selected={selectedVideo}
+                          setSelected={setSelectedVideo}
+                        />
+                        <TrackPicker
+                          label="Audio tracks"
+                          streams={
                             selectedProbe?.streams.filter(
                               (stream) => stream.type === "audio",
                             ) || []
-                          ).map((stream) => (
-                            <option key={stream.index} value={stream.index}>
-                              Track {stream.index}
-                              {stream.language ? ` · ${stream.language}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Default subtitle track">
-                        <select
-                          className="field-input"
-                          value={defaultSubtitle ?? ""}
-                          onChange={(event) =>
-                            setDefaultSubtitle(
-                              event.target.value
-                                ? Number(event.target.value)
-                                : undefined,
-                            )
                           }
-                        >
-                          <option value="">Automatic</option>
-                          {(
+                          selected={selectedAudio}
+                          setSelected={setSelectedAudio}
+                        />
+                        <TrackPicker
+                          label="Subtitle tracks"
+                          streams={
                             selectedProbe?.streams.filter(
                               (stream) => stream.type === "subtitle",
                             ) || []
-                          ).map((stream) => (
-                            <option key={stream.index} value={stream.index}>
-                              Track {stream.index}
-                              {stream.language ? ` · ${stream.language}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Toggle
-                        label="Preserve chapters"
-                        checked={preserveChapters}
-                        onChange={setPreserveChapters}
-                      />
-                      <Toggle
-                        label="Preserve metadata"
-                        checked={preserveMetadata}
-                        onChange={setPreserveMetadata}
-                      />
-                      <Toggle
-                        label="Preserve attachments"
-                        checked={preserveAttachments}
-                        onChange={setPreserveAttachments}
-                      />
-                      <Toggle
-                        label="Keep original"
-                        checked={keepOriginal}
-                        onChange={setKeepOriginal}
-                      />
-                      <Toggle
-                        label="Overwrite existing output"
-                        checked={overwrite}
-                        onChange={setOverwrite}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      {!convertIsAudio && (
-                        <>
-                          <Field label="Video codec">
-                            <select
-                              className="field-input"
-                              value={videoCodec}
-                              onChange={(event) =>
-                                setVideoCodec(event.target.value)
-                              }
-                            >
-                              <option value="h264">H.264</option>
-                              <option value="h265">H.265</option>
-                              <option value="vp9">VP9</option>
-                              <option value="av1">AV1</option>
-                              <option value="prores">ProRes</option>
-                            </select>
-                          </Field>
-                        </>
-                      )}
-                      <Field label="Audio codec">
-                        <select
-                          className="field-input"
-                          value={audioCodec}
-                          onChange={(event) =>
-                            setAudioCodec(event.target.value)
                           }
-                        >
-                          <option value="aac">AAC</option>
-                          <option value="mp3">MP3</option>
-                          <option value="opus">Opus</option>
-                          <option value="pcm_s16le">PCM</option>
-                          <option value="flac">FLAC</option>
-                        </select>
-                      </Field>
-                      <Field label="Resolution">
-                        <select
-                          className="field-input"
-                          value={resolution}
-                          onChange={(event) =>
-                            setResolution(event.target.value)
-                          }
-                        >
-                          <option value="source">Source</option>
-                          <option value="2160">4K</option>
-                          <option value="1440">1440p</option>
-                          <option value="1080">1080p</option>
-                          <option value="720">720p</option>
-                          <option value="480">480p</option>
-                        </select>
-                      </Field>
-                      <Field label="Frame rate">
-                        <select
-                          className="field-input"
-                          value={fps}
-                          onChange={(event) => setFps(event.target.value)}
-                        >
-                          <option value="source">Source</option>
-                          <option value="24">24 fps</option>
-                          <option value="30">30 fps</option>
-                          <option value="60">60 fps</option>
-                        </select>
-                      </Field>
-                      <Field label="Quality · CRF">
-                        <input
-                          className="field-input"
-                          type="number"
-                          min="8"
-                          max="40"
-                          value={crf}
-                          onChange={(event) => setCrf(event.target.value)}
+                          selected={selectedSubtitle}
+                          setSelected={setSelectedSubtitle}
                         />
-                      </Field>
-                      <Field label="Audio bitrate">
-                        <select
-                          className="field-input"
-                          value={audioBitrate}
-                          onChange={(event) =>
-                            setAudioBitrate(event.target.value)
-                          }
-                        >
-                          <option>96k</option>
-                          <option>128k</option>
-                          <option>160k</option>
-                          <option>192k</option>
-                          <option>256k</option>
-                          <option>320k</option>
-                        </select>
-                      </Field>
-                    </>
-                  )}
+                        <Field label="Default audio track">
+                          <select
+                            className="field-input"
+                            value={defaultAudio ?? ""}
+                            onChange={(event) =>
+                              setDefaultAudio(
+                                event.target.value
+                                  ? Number(event.target.value)
+                                  : undefined,
+                              )
+                            }
+                          >
+                            <option value="">Automatic</option>
+                            {(
+                              selectedProbe?.streams.filter(
+                                (stream) => stream.type === "audio",
+                              ) || []
+                            ).map((stream) => (
+                              <option key={stream.index} value={stream.index}>
+                                Track {stream.index}
+                                {stream.language ? ` · ${stream.language}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label="Default subtitle track">
+                          <select
+                            className="field-input"
+                            value={defaultSubtitle ?? ""}
+                            onChange={(event) =>
+                              setDefaultSubtitle(
+                                event.target.value
+                                  ? Number(event.target.value)
+                                  : undefined,
+                              )
+                            }
+                          >
+                            <option value="">Automatic</option>
+                            {(
+                              selectedProbe?.streams.filter(
+                                (stream) => stream.type === "subtitle",
+                              ) || []
+                            ).map((stream) => (
+                              <option key={stream.index} value={stream.index}>
+                                Track {stream.index}
+                                {stream.language ? ` · ${stream.language}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Toggle
+                          label="Preserve chapters"
+                          checked={preserveChapters}
+                          onChange={setPreserveChapters}
+                        />
+                        <Toggle
+                          label="Preserve metadata"
+                          checked={preserveMetadata}
+                          onChange={setPreserveMetadata}
+                        />
+                        <Toggle
+                          label="Preserve attachments"
+                          checked={preserveAttachments}
+                          onChange={setPreserveAttachments}
+                        />
+                        <Toggle
+                          label="Keep original"
+                          checked={keepOriginal}
+                          onChange={setKeepOriginal}
+                        />
+                        <Toggle
+                          label="Overwrite existing output"
+                          checked={overwrite}
+                          onChange={setOverwrite}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        {!convertIsAudio && (
+                          <>
+                            <Field label="Video codec">
+                              <select
+                                className="field-input"
+                                value={videoCodec}
+                                onChange={(event) =>
+                                  setVideoCodec(event.target.value)
+                                }
+                              >
+                                <option value="h264">H.264</option>
+                                <option value="h265">H.265</option>
+                                <option value="vp9">VP9</option>
+                                <option value="av1">AV1</option>
+                                <option value="prores">ProRes</option>
+                              </select>
+                            </Field>
+                          </>
+                        )}
+                        <Field label="Audio codec">
+                          <select
+                            className="field-input"
+                            value={audioCodec}
+                            onChange={(event) =>
+                              setAudioCodec(event.target.value)
+                            }
+                          >
+                            <option value="aac">AAC</option>
+                            <option value="mp3">MP3</option>
+                            <option value="opus">Opus</option>
+                            <option value="pcm_s16le">PCM</option>
+                            <option value="flac">FLAC</option>
+                          </select>
+                        </Field>
+                        <Field label="Resolution">
+                          <select
+                            className="field-input"
+                            value={resolution}
+                            onChange={(event) =>
+                              setResolution(event.target.value)
+                            }
+                          >
+                            <option value="source">Source</option>
+                            <option value="2160">4K</option>
+                            <option value="1440">1440p</option>
+                            <option value="1080">1080p</option>
+                            <option value="720">720p</option>
+                            <option value="480">480p</option>
+                          </select>
+                        </Field>
+                        <Field label="Frame rate">
+                          <select
+                            className="field-input"
+                            value={fps}
+                            onChange={(event) => setFps(event.target.value)}
+                          >
+                            <option value="source">Source</option>
+                            <option value="24">24 fps</option>
+                            <option value="30">30 fps</option>
+                            <option value="60">60 fps</option>
+                          </select>
+                        </Field>
+                        <Field label="Quality · CRF">
+                          <input
+                            className="field-input"
+                            type="number"
+                            min="8"
+                            max="40"
+                            value={crf}
+                            onChange={(event) => setCrf(event.target.value)}
+                          />
+                        </Field>
+                        <Field label="Audio bitrate">
+                          <select
+                            className="field-input"
+                            value={audioBitrate}
+                            onChange={(event) =>
+                              setAudioBitrate(event.target.value)
+                            }
+                          >
+                            <option>96k</option>
+                            <option>128k</option>
+                            <option>160k</option>
+                            <option>192k</option>
+                            <option>256k</option>
+                            <option>320k</option>
+                          </select>
+                        </Field>
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </section>
           </main>
 
-          <aside className="min-w-0 space-y-5 xl:sticky xl:top-0 xl:self-start">
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
+          <aside className="min-w-0 divide-y divide-border-subtle xl:sticky xl:top-0 xl:self-start xl:border-l xl:border-border-subtle xl:pl-6">
+            <section className="pb-5">
               <SectionHeading
                 eyebrow="5 · Destination"
                 title="Output settings"
@@ -1311,21 +1303,14 @@ export function MediaToolsPage() {
                 </p>
               </div>
             </section>
-            <section className="rounded-2xl bg-bg-subtle p-4 shadow-sm sm:p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-                    Queue action
-                  </p>
-                  <h2 className="mt-1 text-base font-semibold">
-                    {isProcessing ? "Processing batch" : "Ready when you are"}
-                  </h2>
-                </div>
-                {isProcessing && (
+            <section className="pt-5">
+              {isProcessing && (
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold">Processing batch</h2>
                   <Loader2 size={17} className="animate-spin text-accent" />
-                )}
-              </div>
-              <div className="mt-4 flex gap-2">
+                </div>
+              )}
+              <div className={`flex gap-2 ${isProcessing ? "mt-4" : ""}`}>
                 {isProcessing ? (
                   <>
                     <button
@@ -1356,7 +1341,7 @@ export function MediaToolsPage() {
                 )}
               </div>
               {isProcessing && progressSnapshot && (
-                <div className="mt-4 rounded-xl bg-bg p-3 text-xs text-text-secondary">
+                <div className="mt-4 rounded-xl bg-bg p-3 text-xs tabular-nums text-text-secondary">
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-medium text-text-primary">
                       {progressSnapshot.stageLabel}
@@ -1420,7 +1405,7 @@ export function MediaToolsPage() {
                   </div>
                 </div>
               )}
-              <p className="mt-3 text-[11px] leading-relaxed text-text-tertiary">
+              <p className="mt-3 text-pretty text-[11px] leading-relaxed text-text-tertiary">
                 {mode === "remux"
                   ? "Remux is lossless and normally finishes faster than real time."
                   : "Conversion uses CPU/GPU resources and changes the media streams."}
@@ -1469,10 +1454,8 @@ function SectionHeading({
 }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-        {eyebrow}
-      </p>
-      <h2 className="mt-1 text-base font-semibold text-text-primary">
+      <span className="sr-only">{eyebrow}</span>
+      <h2 className="text-base font-semibold text-text-primary [text-wrap:balance]">
         {title}
       </h2>
     </div>
@@ -1517,7 +1500,7 @@ function Toggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-9 cursor-pointer items-center gap-2 rounded-lg bg-bg px-3 text-xs text-text-secondary">
+    <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg bg-bg px-3 text-xs text-text-secondary">
       <input
         type="checkbox"
         checked={checked}
@@ -1541,7 +1524,7 @@ function TrackPicker({
 }) {
   return (
     <Field label={`${label} · preserve all by default`}>
-      <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg bg-bg p-2">
+      <div className="max-h-28 space-y-1 overflow-y-auto rounded-xl bg-bg p-2">
         {streams.length ? (
           streams.map((stream) => (
             <label

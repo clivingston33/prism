@@ -205,6 +205,13 @@ interface DownloadItem {
   resolution?: string;
   transcript?: boolean;
   transcriptFormat?: "txt" | "srt" | "vtt" | "json";
+  includeSubtitles?: boolean;
+  saveSubtitleSidecar?: boolean;
+  subtitleLanguages?: string;
+  subtitleDisposition?: "default" | "forced" | "none";
+  subtitleEmbedded?: boolean;
+  subtitleTrackCount?: number;
+  subtitleVerification?: string;
   trimStart?: string;
   trimEnd?: string;
   transcriptPath?: string;
@@ -244,6 +251,9 @@ interface DownloadOptions {
   quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
   transcript?: boolean;
   transcriptFormat?: "txt" | "srt" | "vtt" | "json";
+  includeSubtitles?: boolean;
+  saveSubtitleSidecar?: boolean;
+  subtitleDisposition?: "default" | "forced" | "none";
   subtitleLanguages?: string;
   trimStart?: string;
   trimEnd?: string;
@@ -272,6 +282,8 @@ interface VideoMetadata {
   estimatedSizeBytes?: number;
   audioTracks?: { id: string; label: string; language?: string }[];
   subtitleTracks?: { language: string; label: string; automatic?: boolean }[];
+  /** True when yt-dlp identified the URL itself as a media file. */
+  directMedia?: boolean;
 }
 
 interface DownloadProgress {

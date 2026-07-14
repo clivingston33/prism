@@ -13,6 +13,10 @@ function sendUpdateEvent(channel: string, payload: unknown) {
 
 export function setupUpdater() {
   autoUpdater.autoDownload = false;
+  // Prism's public releases are intentionally unsigned prereleases. Keep
+  // alpha-to-alpha updates visible instead of filtering them out as prerelease
+  // versions.
+  autoUpdater.allowPrerelease = true;
 
   // Use dev config file if it exists (for development/testing)
   const devConfigPath = app.isPackaged

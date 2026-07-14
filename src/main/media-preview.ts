@@ -3,7 +3,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { spawn } from "child_process";
-import { getBinPaths, isUsableExecutable, describeExecutableProblem } from "./download/utils";
+import {
+  getBinPaths,
+  isUsableExecutable,
+  describeExecutableProblem,
+} from "./download/utils";
 import { moveFileFast } from "./download/temp-dirs";
 
 const previews = new Map<string, { filePath: string; expiresAt: number }>();
@@ -27,13 +31,37 @@ async function createCompatibleAudioPreview(source: string) {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
         ffmpeg,
-        ["-v", "error", "-y", "-i", source, "-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", temporary],
+        [
+          "-v",
+          "error",
+          "-y",
+          "-i",
+          source,
+          "-vn",
+          "-map",
+          "0:a:0",
+          "-c:a",
+          "libmp3lame",
+          "-b:a",
+          "128k",
+          "-f",
+          "mp3",
+          temporary,
+        ],
         { windowsHide: true },
       );
       let stderr = "";
-      child.stderr.on("data", (chunk) => { if (stderr.length < 4000) stderr += chunk.toString(); });
+      child.stderr.on("data", (chunk) => {
+        if (stderr.length < 4000) stderr += chunk.toString();
+      });
       child.on("error", reject);
-      child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr.trim() || "Audio preview generation failed.")));
+      child.on("close", (code) =>
+        code === 0
+          ? resolve()
+          : reject(
+              new Error(stderr.trim() || "Audio preview generation failed."),
+            ),
+      );
     });
     const generated = await fs.promises.stat(temporary);
     if (!generated.isFile() || generated.size === 0)
@@ -53,7 +81,10 @@ export async function createMediaPreviewUrl(filePath: string) {
     throw new Error("The selected media file no longer exists.");
   const compatible = await createCompatibleAudioPreview(resolved);
   const token = crypto.randomBytes(24).toString("hex");
-  previews.set(token, { filePath: compatible, expiresAt: Date.now() + 60 * 60 * 1000 });
+  previews.set(token, {
+    filePath: compatible,
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  });
   return `prism-media://${token}`;
 }
 

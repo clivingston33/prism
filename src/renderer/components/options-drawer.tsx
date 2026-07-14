@@ -35,6 +35,8 @@ interface QueueOptions {
   trimStart: string;
   trimEnd: string;
   subtitlesEnabled: boolean;
+  saveSubtitleSidecar: boolean;
+  subtitleDisposition: "default" | "forced" | "none";
   subtitleFormat: "srt" | "vtt" | "txt";
   subtitleLanguages: string;
   playlistId?: string;
@@ -111,6 +113,8 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
     trimStart: "00:00:00",
     trimEnd: "00:00:00",
     subtitlesEnabled: false,
+    saveSubtitleSidecar: false,
+    subtitleDisposition: "default",
     subtitleFormat: "srt",
     subtitleLanguages: "en.*",
   };
@@ -123,14 +127,17 @@ function containerLabel(format: VideoFormat | AudioFormat) {
 }
 
 function formatSummary(item: QueueOptions) {
+  const subtitleSummary = item.subtitlesEnabled
+    ? ` · ${item.subtitleLanguages.replace(".*", "").toUpperCase()} subtitles embedded${item.saveSubtitleSidecar ? " + sidecar" : ""}`
+    : "";
   if (item.mode === "audio_only")
     return `${containerLabel(item.audioFormat)} audio`;
   if (item.mode === "video_only")
-    return `${containerLabel(item.format)} video only`;
+    return `${containerLabel(item.format)} video only${subtitleSummary}`;
   if (item.mode === "split") {
-    return `${containerLabel(item.format)} + ${containerLabel(item.audioFormat)}`;
+    return `${containerLabel(item.format)} + ${containerLabel(item.audioFormat)}${subtitleSummary}`;
   }
-  return `${containerLabel(item.format)} ${item.quality === "best" ? "best" : item.quality}`;
+  return `${containerLabel(item.format)} ${item.quality === "best" ? "best" : item.quality}${subtitleSummary}`;
 }
 
 export function OptionsDrawer({
@@ -185,6 +192,11 @@ export function OptionsDrawer({
   const currentUrl = current?.url;
   const metadataState = currentUrl ? metadataCache[currentUrl] : undefined;
   const metadata = metadataState?.data;
+  const subtitleTracks = metadata?.subtitleTracks || [];
+  const subtitleLookupComplete = Boolean(
+    metadataState && !metadataState.loading && metadata,
+  );
+  const hasSeparateSubtitles = subtitleTracks.length > 0;
 
   useEffect(() => {
     if (!isOpen || !currentUrl || metadataCache[currentUrl]) return;
@@ -250,6 +262,8 @@ export function OptionsDrawer({
 
     try {
       for (const item of queueOptions) {
+        const includeSubtitles =
+          item.mode !== "audio_only" && item.subtitlesEnabled;
         await window.prism.download.addToQueue({
           url: item.url,
           mode: item.mode,
@@ -265,11 +279,17 @@ export function OptionsDrawer({
               : (item.quality as DownloadOptions["quality"]),
           trimStart: item.trimEnabled ? item.trimStart : undefined,
           trimEnd: item.trimEnabled ? item.trimEnd : undefined,
-          transcript: item.subtitlesEnabled || undefined,
-          transcriptFormat: item.subtitlesEnabled
-            ? item.subtitleFormat
+          includeSubtitles: includeSubtitles || undefined,
+          saveSubtitleSidecar:
+            includeSubtitles && item.saveSubtitleSidecar ? true : undefined,
+          subtitleDisposition: includeSubtitles
+            ? item.subtitleDisposition
             : undefined,
-          subtitleLanguages: item.subtitlesEnabled
+          transcriptFormat:
+            includeSubtitles && item.saveSubtitleSidecar
+              ? item.subtitleFormat
+              : undefined,
+          subtitleLanguages: includeSubtitles
             ? item.subtitleLanguages
             : undefined,
           playlistId: item.playlistId,
@@ -496,61 +516,111 @@ export function OptionsDrawer({
             </div>
           )}
 
-          <div className="flex flex-col gap-3">
-            <label className="flex items-center justify-between text-xs font-medium text-text-secondary cursor-pointer">
-              <span>Save subtitles</span>
-              <input
-                type="checkbox"
-                checked={current.subtitlesEnabled}
-                onChange={(e) =>
-                  updateCurrent({ subtitlesEnabled: e.target.checked })
-                }
-                className="accent-accent rounded-lg border-border"
-              />
-            </label>
-            {current.subtitlesEnabled && (
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={current.subtitleLanguages}
+          {current.mode !== "audio_only" && metadata?.directMedia && (
+            <div className="rounded-xl bg-bg-subtle px-3 py-3 text-xs text-text-secondary">
+              <span className="font-medium text-text-primary">
+                Direct media file
+              </span>
+              <p className="mt-1 text-[11px] leading-relaxed text-text-tertiary">
+                Audio and subtitle tracks already inside the file are preserved
+                automatically. This host does not provide separate caption
+                files.
+              </p>
+            </div>
+          )}
+
+          {current.mode !== "audio_only" && !metadata?.directMedia && (
+            <div className="flex flex-col gap-3">
+              <label className="flex items-center justify-between text-xs font-medium text-text-secondary cursor-pointer">
+                <span>Include subtitles</span>
+                <input
+                  type="checkbox"
+                  checked={current.subtitlesEnabled}
+                  disabled={subtitleLookupComplete && !hasSeparateSubtitles}
                   onChange={(e) =>
-                    updateCurrent({ subtitleLanguages: e.target.value })
+                    updateCurrent({ subtitlesEnabled: e.target.checked })
                   }
-                  aria-label="Subtitle language"
-                  className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
-                >
-                  {metadata?.subtitleTracks?.length ? (
-                    <option value="en.*">English (recommended)</option>
-                  ) : null}
-                  {(metadata?.subtitleTracks?.length
-                    ? metadata.subtitleTracks.map((track) => ({
-                        value: track.language,
-                        label: track.label,
-                      }))
-                    : SUBTITLE_LANGUAGES
-                  ).map((lang) => (
-                    <option key={lang.value} value={lang.value}>
-                      {lang.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={current.subtitleFormat}
-                  onChange={(e) =>
-                    updateCurrent({
-                      subtitleFormat: e.target
-                        .value as QueueOptions["subtitleFormat"],
-                    })
-                  }
-                  aria-label="Subtitle format"
-                  className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
-                >
-                  <option value="srt">SRT — subtitles</option>
-                  <option value="vtt">VTT — web subtitles</option>
-                  <option value="txt">TXT — plain text</option>
-                </select>
-              </div>
-            )}
-          </div>
+                  className="accent-accent rounded-lg border-border"
+                />
+              </label>
+              {subtitleLookupComplete && !hasSeparateSubtitles && (
+                <p className="text-[11px] text-text-tertiary">
+                  No separate subtitles were found on this source.
+                </p>
+              )}
+              {current.subtitlesEnabled && (
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={current.subtitleLanguages}
+                    onChange={(e) =>
+                      updateCurrent({ subtitleLanguages: e.target.value })
+                    }
+                    aria-label="Subtitle language"
+                    className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                  >
+                    {hasSeparateSubtitles ? (
+                      <option value="en.*">English (recommended)</option>
+                    ) : null}
+                    {(hasSeparateSubtitles
+                      ? subtitleTracks.map((track) => ({
+                          value: track.language,
+                          label: track.label,
+                        }))
+                      : SUBTITLE_LANGUAGES
+                    ).map((lang) => (
+                      <option key={lang.value} value={lang.value}>
+                        {lang.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={current.subtitleDisposition}
+                    onChange={(e) =>
+                      updateCurrent({
+                        subtitleDisposition: e.target
+                          .value as QueueOptions["subtitleDisposition"],
+                      })
+                    }
+                    aria-label="Subtitle behavior"
+                    className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                  >
+                    <option value="default">Default track</option>
+                    <option value="none">Selectable</option>
+                    <option value="forced">Forced track</option>
+                  </select>
+                  <label className="col-span-2 flex min-h-10 cursor-pointer items-center justify-between rounded-lg bg-bg-subtle px-3 text-xs text-text-secondary">
+                    <span>Also save external copy</span>
+                    <input
+                      type="checkbox"
+                      checked={current.saveSubtitleSidecar}
+                      onChange={(event) =>
+                        updateCurrent({
+                          saveSubtitleSidecar: event.target.checked,
+                        })
+                      }
+                    />
+                  </label>
+                  {current.saveSubtitleSidecar && (
+                    <select
+                      value={current.subtitleFormat}
+                      onChange={(event) =>
+                        updateCurrent({
+                          subtitleFormat: event.target
+                            .value as QueueOptions["subtitleFormat"],
+                        })
+                      }
+                      aria-label="External subtitle format"
+                      className="col-span-2 h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                    >
+                      <option value="srt">SRT — widest compatibility</option>
+                      <option value="vtt">VTT — web subtitles</option>
+                      <option value="txt">TXT — plain text</option>
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2">
             <label className="text-xs font-medium text-text-secondary">

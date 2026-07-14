@@ -234,6 +234,19 @@ export function parseDownloadRequest(value: unknown): DownloadRequest {
   );
   const quality = optionalEnum(raw.quality, QUALITIES, "quality");
   const transcript = optionalBoolean(raw.transcript, "transcript");
+  const includeSubtitles = optionalBoolean(
+    raw.includeSubtitles,
+    "includeSubtitles",
+  );
+  const saveSubtitleSidecar = optionalBoolean(
+    raw.saveSubtitleSidecar,
+    "saveSubtitleSidecar",
+  );
+  const subtitleDisposition = optionalEnum(
+    raw.subtitleDisposition,
+    ["default", "forced", "none"] as const,
+    "subtitleDisposition",
+  );
   const transcriptFormat = optionalEnum(
     raw.transcriptFormat,
     TRANSCRIPT_FORMATS,
@@ -251,6 +264,12 @@ export function parseDownloadRequest(value: unknown): DownloadRequest {
   if (conflictAction !== undefined) request.conflictAction = conflictAction;
   if (quality !== undefined) request.quality = quality;
   if (transcript !== undefined) request.transcript = transcript;
+  if (includeSubtitles !== undefined)
+    request.includeSubtitles = includeSubtitles;
+  if (saveSubtitleSidecar !== undefined)
+    request.saveSubtitleSidecar = saveSubtitleSidecar;
+  if (subtitleDisposition !== undefined)
+    request.subtitleDisposition = subtitleDisposition;
   if (transcriptFormat !== undefined) {
     request.transcriptFormat = transcriptFormat;
   }

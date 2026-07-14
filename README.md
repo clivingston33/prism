@@ -17,6 +17,9 @@ Prism combines yt-dlp, FFmpeg, FFprobe, and whisper.cpp in a focused Electron ap
 > [!IMPORTANT]
 > The initial release target is **Windows 10/11 x64**. macOS and Linux are not currently supported. Published installers may be unsigned and can trigger Windows SmartScreen; verify release checksums before running them.
 
+Prism releases are intentionally unsigned. Read the
+[known limitations](docs/KNOWN_LIMITATIONS.md) before installing the alpha.
+
 ## What Prism does
 
 - **Flexible downloads** — video, audio, source formats, quality limits, trimming, subtitles, thumbnails, and supported image posts through yt-dlp.

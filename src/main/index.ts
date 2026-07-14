@@ -28,7 +28,13 @@ function serveAudioPreview(filePath: string, request: Request) {
     if (match[2]) end = Number(match[2]);
     if (!match[1] && match[2]) start = Math.max(0, size - Number(match[2]));
     end = Math.min(end, size - 1);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= size) {
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      start > end ||
+      start >= size
+    ) {
       return new Response(null, {
         status: 416,
         headers: { "Content-Range": `bytes */${size}` },
@@ -42,7 +48,8 @@ function serveAudioPreview(filePath: string, request: Request) {
     "Content-Length": String(end - start + 1),
     "Cache-Control": "private, max-age=3600",
   };
-  if (status === 206) headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+  if (status === 206)
+    headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
   if (request.method === "HEAD") return new Response(null, { status, headers });
   const stream = Readable.toWeb(fs.createReadStream(filePath, { start, end }));
   return new Response(stream as BodyInit, { status, headers });

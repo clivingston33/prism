@@ -115,10 +115,16 @@ test("parseDownloadRequest accepts source track and conflict selections", () => 
     format: "auto",
     audioTrackId: "251-en",
     subtitleLanguages: "en,es",
+    includeSubtitles: true,
+    saveSubtitleSidecar: true,
+    subtitleDisposition: "forced",
     conflictAction: "overwrite",
   });
   assert.equal(request.audioTrackId, "251-en");
   assert.equal(request.subtitleLanguages, "en,es");
+  assert.equal(request.includeSubtitles, true);
+  assert.equal(request.saveSubtitleSidecar, true);
+  assert.equal(request.subtitleDisposition, "forced");
   assert.equal(request.conflictAction, "overwrite");
   assert.throws(
     () =>
@@ -128,6 +134,15 @@ test("parseDownloadRequest accepts source track and conflict selections", () => 
         audioTrackId: "bad id;--flag",
       }),
     /audio track id/i,
+  );
+  assert.throws(
+    () =>
+      parseDownloadRequest({
+        url: "https://example.com/video",
+        format: "mkv",
+        subtitleDisposition: "sometimes",
+      }),
+    /subtitleDisposition/i,
   );
 });
 

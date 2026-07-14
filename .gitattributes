@@ -1,3 +1,5 @@
+* text=auto eol=lf
+
 resources/bin/win/*.exe filter=lfs diff=lfs merge=lfs -text
 resources/bin/win/*.dll filter=lfs diff=lfs merge=lfs -text
 resources/licenses/* text eol=lf

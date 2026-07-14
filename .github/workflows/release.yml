@@ -118,7 +118,7 @@ jobs:
           path: dist
 
       - name: Create draft GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.2
         with:
           files: dist/*
           draft: true

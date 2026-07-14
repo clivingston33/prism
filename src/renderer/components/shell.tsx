@@ -90,7 +90,7 @@ export function Shell() {
       }}
     >
       <aside
-        className={`flex h-full flex-col border-r border-sidebar-border bg-sidebar-bg transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.32,1)] z-40 [app-region:drag] shrink-0 ${sidebarExpanded ? "w-[140px]" : "w-[44px]"}`}
+        className={`flex h-full flex-col border-r border-sidebar-border bg-sidebar-bg transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.32,1)] z-40 [app-region:drag] shrink-0 ${sidebarExpanded ? "w-[clamp(156px,13vw,208px)]" : "w-[clamp(52px,4vw,68px)]"}`}
       >
         <div className="h-10 shrink-0" />
 

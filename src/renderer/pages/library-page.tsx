@@ -285,8 +285,8 @@ export function LibraryPage() {
   };
 
   return (
-    <main className="h-full overflow-y-auto px-6 pb-12 pt-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <main className="h-full overflow-y-auto px-4 pb-12 pt-6 sm:px-7 sm:pt-8 xl:px-10">
+      <div className="mx-auto max-w-[1600px] space-y-6">
         <header className="prism-page-enter flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-balance text-xl font-semibold text-text-primary">

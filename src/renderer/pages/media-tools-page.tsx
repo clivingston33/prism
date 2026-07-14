@@ -677,7 +677,7 @@ export function MediaToolsPage() {
     items.some((item) => item.status === "ready") && !isProcessing;
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
         <header className="prism-page-enter flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary [text-wrap:balance]">
@@ -708,7 +708,7 @@ export function MediaToolsPage() {
           </div>
         </header>
 
-        <div className="prism-page-enter prism-page-enter-delay grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="prism-page-enter prism-page-enter-delay flex min-w-0 flex-col gap-8">
           <main className="min-w-0 divide-y divide-border-subtle">
             <section
               className={`py-5 first:pt-0 ${isDragging ? "rounded-xl ring-2 ring-accent ring-offset-4 ring-offset-bg" : ""}`}
@@ -1260,8 +1260,8 @@ export function MediaToolsPage() {
             </section>
           </main>
 
-          <aside className="min-w-0 divide-y divide-border-subtle xl:sticky xl:top-0 xl:self-start xl:border-l xl:border-border-subtle xl:pl-6">
-            <section className="pb-5">
+          <aside className="min-w-0 border-t border-border-subtle pt-6">
+            <section className="mx-auto w-full max-w-2xl divide-y divide-border-subtle pb-5">
               <SectionHeading
                 eyebrow="5 · Destination"
                 title="Output settings"
@@ -1303,14 +1303,16 @@ export function MediaToolsPage() {
                 </p>
               </div>
             </section>
-            <section className="pt-5">
+            <section className="mx-auto max-w-2xl pt-5 text-center">
               {isProcessing && (
                 <div className="flex items-center justify-between">
                   <h2 className="text-base font-semibold">Processing batch</h2>
                   <Loader2 size={17} className="animate-spin text-accent" />
                 </div>
               )}
-              <div className={`flex gap-2 ${isProcessing ? "mt-4" : ""}`}>
+              <div
+                className={`mx-auto flex max-w-sm justify-center gap-2 ${isProcessing ? "mt-4" : ""}`}
+              >
                 {isProcessing ? (
                   <>
                     <button

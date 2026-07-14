@@ -28,7 +28,7 @@
     "build:win": "npm run verify:resources && npm run build && electron-builder --win --publish never"
   },
   "dependencies": {
-    "@electron-toolkit/utils": "^3.0.0",
+    "@electron-toolkit/utils": "^4.0.0",
     "@fontsource/geist-mono": "^5.0.0",
     "@fontsource/geist-sans": "^5.0.0",
     "@tanstack/react-router": "^1.81.0",

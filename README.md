@@ -4,7 +4,7 @@
   <p><strong>A private Windows workspace for downloading, shaping, organizing, and transcribing media.</strong></p>
   <p>
     <a href="https://github.com/clivingston33/prism/actions/workflows/ci.yml"><img alt="CI checks" src="https://img.shields.io/github/actions/workflow/status/clivingston33/prism/ci.yml?branch=main&style=flat-square&label=checks" /></a>
-    <a href="https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.1"><img alt="Latest release" src="https://img.shields.io/github/v/release/clivingston33/prism?include_prereleases=true&style=flat-square&label=release" /></a>
+    <a href="https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.1"><img alt="Current release" src="https://img.shields.io/github/v/tag/clivingston33/prism?sort=semver&style=flat-square&label=release" /></a>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat-square&logo=windows11&logoColor=white" />
     <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" /></a>
   </p>

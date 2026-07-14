@@ -62,7 +62,7 @@ export function HistoryPage() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-12 py-10 flex flex-col h-full">
+      <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
         <h1 className="prism-page-enter mb-6 text-balance text-[12px] font-medium uppercase tracking-wider text-text-secondary">
           Activity
         </h1>

@@ -220,7 +220,7 @@ export function TranscriptsPage() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
         <header className="prism-page-enter flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-text-primary [text-wrap:balance]">
@@ -236,7 +236,7 @@ export function TranscriptsPage() {
             onClick={() => setModelsOpen(true)}
             title="Manage Whisper models"
             aria-label="Manage Whisper models"
-            className="relative flex h-10 w-10 shrink-0 items-center justify-center text-white transition-[color,transform] hover:text-white/80 active:scale-[0.96]"
+            className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-white transition-[color,transform] hover:text-white/80 active:scale-[0.96]"
           >
             <Cpu size={17} strokeWidth={1.7} />
             {!modelsLoading && needsModel && (
@@ -248,7 +248,7 @@ export function TranscriptsPage() {
           </button>
         </header>
 
-        <div className="prism-page-enter prism-page-enter-delay grid min-w-0 gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="prism-page-enter prism-page-enter-delay flex min-w-0 flex-col gap-8">
           <main className="min-w-0 divide-y divide-border-subtle">
             {needsModel && (
               <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning/10 p-4 shadow-sm sm:p-5">
@@ -456,19 +456,21 @@ export function TranscriptsPage() {
             </section>
           </main>
 
-          <aside className="min-w-0 xl:sticky xl:top-0 xl:self-start xl:border-l xl:border-border-subtle xl:pl-6">
-            <section className="py-1">
+          <aside className="min-w-0 border-t border-border-subtle pt-6">
+            <section className="mx-auto w-full max-w-sm py-1 text-center">
               {runningId && (
                 <div className="flex items-center justify-between">
                   <h2 className="text-base font-semibold">Transcribing</h2>
                   <Loader2 size={17} className="animate-spin text-accent" />
                 </div>
               )}
-              <div className={`flex gap-2 ${runningId ? "mt-4" : ""}`}>
+              <div
+                className={`flex justify-center gap-2 ${runningId ? "mt-4" : ""}`}
+              >
                 {runningId ? (
                   <button
                     type="button"
-                    className="field-button flex-1 text-error"
+                    className="field-button min-w-36 flex-1 text-error"
                     onClick={() => void window.prism.download.cancel(runningId)}
                   >
                     <X size={14} /> Cancel

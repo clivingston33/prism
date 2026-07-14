@@ -35,12 +35,12 @@ The release includes the Windows installer, updater metadata, a blockmap, and:
 
 ## The workspace
 
-| Download | Shape media |
-| --- | --- |
+| Download                                                                                                                             | Shape media                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | Paste a supported site URL or direct media link. Choose quality, container, audio tracks, subtitles, and trim ranges before queuing. | Remux streams without re-encoding, or explicitly convert when another device or workflow needs it. |
 
-| Organize | Transcribe |
-| --- | --- |
+| Organize                                                                                                       | Transcribe                                                                           |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Keep completed files in a searchable row-based Library with filters, recovery tools, and download diagnostics. | Run Whisper locally with waveform range selection and TXT, SRT, VTT, or JSON export. |
 
 ## Screenshots
@@ -110,15 +110,15 @@ pnpm dev
 
 Useful commands:
 
-| Command | Purpose |
-| --- | --- |
-| `pnpm dev` | Start the Electron development app |
-| `pnpm format:check` | Check formatting |
-| `pnpm lint` | Run ESLint |
-| `pnpm typecheck` | Type-check the app |
-| `pnpm test` | Run deterministic tests |
-| `pnpm test:e2e:native` | Exercise native download and media pipelines |
-| `pnpm build:win` | Build the unsigned Windows installer |
+| Command                   | Purpose                                                |
+| ------------------------- | ------------------------------------------------------ |
+| `pnpm dev`                | Start the Electron development app                     |
+| `pnpm format:check`       | Check formatting                                       |
+| `pnpm lint`               | Run ESLint                                             |
+| `pnpm typecheck`          | Type-check the app                                     |
+| `pnpm test`               | Run deterministic tests                                |
+| `pnpm test:e2e:native`    | Exercise native download and media pipelines           |
+| `pnpm build:win`          | Build the unsigned Windows installer                   |
 | `pnpm screenshots:readme` | Recapture the README screenshots from the unpacked app |
 
 ## Project notes

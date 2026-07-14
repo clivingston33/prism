@@ -21,10 +21,10 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Check out Prism
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check out pinned whisper.cpp source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ggml-org/whisper.cpp
           ref: ${{ inputs.whisper_version }}
@@ -79,7 +79,7 @@ jobs:
           "manifest_path=$manifestPath" >> $env:GITHUB_OUTPUT
 
       - name: Upload build evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whisper-vulkan-runtime
           path: |

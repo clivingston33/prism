@@ -57,6 +57,15 @@ jobs:
         with:
           node-version: 22
 
+      - name: Verify LF checkout on Windows
+        shell: pwsh
+        run: |
+          $crlfFiles = git ls-files --eol | Select-String "w/crlf"
+          if ($crlfFiles) {
+            $crlfFiles | ForEach-Object { Write-Error $_ }
+            throw "Tracked text files were checked out with CRLF line endings."
+          }
+
       - name: Reject unhydrated or invalid native resources
         run: node scripts/verify-resources.mjs
 

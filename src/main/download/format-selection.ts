@@ -90,11 +90,13 @@ function videoAudioSelector(
   if (container === "mp4" || container === "mov") {
     // Prefer H.264 + AAC sources so an MP4/MOV remux needs no encoding.
     return [
-      ...(audioTrackId ? [`bestvideo[vcodec^=avc1]${h}+${audio}`, `bestvideo${h}+${audio}`] : [
-        `bestvideo[vcodec^=avc1]${h}+bestaudio[acodec^=mp4a]`,
-        `bestvideo[vcodec^=avc1]${h}+bestaudio[ext=m4a]`,
-        `bestvideo[ext=mp4]${h}+bestaudio[ext=m4a]`,
-      ]),
+      ...(audioTrackId
+        ? [`bestvideo[vcodec^=avc1]${h}+${audio}`, `bestvideo${h}+${audio}`]
+        : [
+            `bestvideo[vcodec^=avc1]${h}+bestaudio[acodec^=mp4a]`,
+            `bestvideo[vcodec^=avc1]${h}+bestaudio[ext=m4a]`,
+            `bestvideo[ext=mp4]${h}+bestaudio[ext=m4a]`,
+          ]),
       `best[ext=mp4]${h}`,
       `bestvideo${h}+bestaudio`,
       `best${h}`,
@@ -105,7 +107,9 @@ function videoAudioSelector(
 
   if (container === "webm") {
     return [
-      audioTrackId ? `bestvideo[ext=webm]${h}+${audio}` : `bestvideo[ext=webm]${h}+bestaudio[ext=webm]`,
+      audioTrackId
+        ? `bestvideo[ext=webm]${h}+${audio}`
+        : `bestvideo[ext=webm]${h}+bestaudio[ext=webm]`,
       `best[ext=webm]${h}`,
       `bestvideo${h}+bestaudio`,
       `best${h}`,

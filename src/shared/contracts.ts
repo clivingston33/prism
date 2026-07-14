@@ -29,6 +29,7 @@ export type Quality =
   | "360p";
 export type TranscriptFormat = "txt" | "srt" | "vtt" | "json";
 export type DownloadConflictAction = "rename" | "overwrite" | "skip";
+export type SubtitleDisposition = "default" | "forced" | "none";
 
 export interface DownloadRequest {
   url: string;
@@ -40,6 +41,11 @@ export interface DownloadRequest {
   quality?: Quality;
   transcript?: boolean;
   transcriptFormat?: TranscriptFormat;
+  /** Download selected website captions and embed them in the video output. */
+  includeSubtitles?: boolean;
+  /** Also save the selected captions beside the video. */
+  saveSubtitleSidecar?: boolean;
+  subtitleDisposition?: SubtitleDisposition;
   /** yt-dlp --sub-langs expression, e.g. "en.*" or "en,es". */
   subtitleLanguages?: string;
   conflictAction?: DownloadConflictAction;
@@ -137,6 +143,13 @@ export interface HistoryRecord {
   resolution?: string;
   transcript?: boolean;
   transcriptFormat?: TranscriptFormat;
+  includeSubtitles?: boolean;
+  saveSubtitleSidecar?: boolean;
+  subtitleLanguages?: string;
+  subtitleDisposition?: SubtitleDisposition;
+  subtitleEmbedded?: boolean;
+  subtitleTrackCount?: number;
+  subtitleVerification?: string;
   trimStart?: string;
   trimEnd?: string;
   transcriptPath?: string;

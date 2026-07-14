@@ -62,5 +62,8 @@ jobs:
       - name: Reject unhydrated or invalid native resources
         run: node scripts/verify-resources.mjs
 
+      - name: Exercise native download and media pipelines
+        run: node scripts/e2e/native-media.mjs
+
       - name: Confirm LFS checkout
         run: git lfs ls-files

@@ -3,7 +3,8 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { store } from "../store";
-import { convertMedia, moveFileUnique } from "./converter";
+import { convertMedia, moveFileUnique, runFfmpeg } from "./converter";
+import { probeMediaFile } from "./media-probe";
 import { StreamLineBuffer } from "./progress";
 import { JobCancelledError, processRegistry } from "./process-registry";
 import { isJobCancelled, publishJobProgress } from "./job-state";
@@ -81,6 +82,19 @@ function normalizeTranscriptFormat(format?: string): "txt" | "srt" | "vtt" {
   return format === "srt" || format === "vtt" ? format : "txt";
 }
 
+function wantsSubtitles(item: any) {
+  return Boolean(item.includeSubtitles ?? item.transcript);
+}
+
+function looksLikeDirectMediaUrl(value: unknown) {
+  if (typeof value !== "string") return false;
+  try {
+    return /\.(mkv|mp4|mov|webm|avi|m4v)$/i.test(new URL(value).pathname);
+  } catch {
+    return false;
+  }
+}
+
 function updateHistoryItem(
   id: string,
   partial: Record<string, any>,
@@ -104,14 +118,21 @@ function updateDiagnostics(
   partial: Record<string, unknown>,
   mainWindow?: Electron.BrowserWindow,
 ) {
-  const current = (store.get("history", []) as any[]).find((item) => item.id === id);
-  updateHistoryItem(id, { diagnostics: { ...(current?.diagnostics || {}), ...partial } }, mainWindow);
+  const current = (store.get("history", []) as any[]).find(
+    (item) => item.id === id,
+  );
+  updateHistoryItem(
+    id,
+    { diagnostics: { ...(current?.diagnostics || {}), ...partial } },
+    mainWindow,
+  );
 }
 
 function diagnosticCommand(executable: string, args: string[]) {
-  const quote = (value: string) => /^[A-Za-z0-9_./:=+-]+$/.test(value)
-    ? value
-    : `"${value.replace(/"/g, '\\"')}"`;
+  const quote = (value: string) =>
+    /^[A-Za-z0-9_./:=+-]+$/.test(value)
+      ? value
+      : `"${value.replace(/"/g, '\\"')}"`;
   return [executable, ...args].map(quote).join(" ");
 }
 
@@ -242,6 +263,7 @@ function fallbackMetadata(url: string) {
     imageCount: 0,
     audioTracks: [],
     subtitleTracks: [],
+    directMedia: false,
     fromFallback: true,
   };
 }
@@ -265,12 +287,12 @@ async function fetchMetadata(url: string): Promise<any> {
     args.push(url);
 
     let child: ReturnType<typeof spawn>;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const lifecycle: { timeout?: ReturnType<typeof setTimeout> } = {};
     let settled = false;
     const finish = (value: any) => {
       if (settled) return;
       settled = true;
-      if (timeout) clearTimeout(timeout);
+      if (lifecycle.timeout) clearTimeout(lifecycle.timeout);
       resolve(value);
     };
     try {
@@ -285,7 +307,7 @@ async function fetchMetadata(url: string): Promise<any> {
     }
     let output = "";
     // A hung extractor must not block the queue forever.
-    timeout = setTimeout(() => {
+    lifecycle.timeout = setTimeout(() => {
       try {
         child.kill();
       } catch {}
@@ -319,21 +341,68 @@ async function fetchMetadata(url: string): Promise<any> {
           imageUrls.length > 0 &&
           (!hasVideo || imageUrls.length > 1);
         const audioTracks = parsedFormats
-          .filter((format: any) => format?.format_id && format?.acodec && format.acodec !== "none" && (!format.vcodec || format.vcodec === "none"))
+          .filter(
+            (format: any) =>
+              format?.format_id &&
+              format?.acodec &&
+              format.acodec !== "none" &&
+              (!format.vcodec || format.vcodec === "none"),
+          )
           .map((format: any) => ({
             id: String(format.format_id),
             language: format.language ? String(format.language) : undefined,
-            label: [format.language, format.format_note, format.acodec, format.abr ? `${Math.round(format.abr)} kbps` : null]
-              .filter(Boolean).join(" · ") || `Audio ${format.format_id}`,
+            label:
+              [
+                format.language,
+                format.format_note,
+                format.acodec,
+                format.abr ? `${Math.round(format.abr)} kbps` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || `Audio ${format.format_id}`,
           }))
-          .filter((track: any, index: number, all: any[]) => all.findIndex((entry) => entry.id === track.id) === index)
+          .filter(
+            (track: any, index: number, all: any[]) =>
+              all.findIndex((entry) => entry.id === track.id) === index,
+          )
           .slice(0, 40);
         const subtitleTracks = [
-          ...Object.keys(parsed.subtitles || {}).map((language) => ({ language, label: `${language} · subtitles`, automatic: false })),
-          ...Object.keys(parsed.automatic_captions || {}).map((language) => ({ language, label: `${language} · auto captions`, automatic: true })),
-        ].filter((track, index, all) => all.findIndex((entry) => entry.language === track.language && entry.automatic === track.automatic) === index).slice(0, 80);
-        const videoBytes = Math.max(0, ...parsedFormats.filter((format: any) => format?.vcodec && format.vcodec !== "none").map((format: any) => Number(format.filesize || format.filesize_approx || 0)));
-        const audioBytes = Math.max(0, ...parsedFormats.filter((format: any) => format?.acodec && format.acodec !== "none").map((format: any) => Number(format.filesize || format.filesize_approx || 0)));
+          ...Object.keys(parsed.subtitles || {}).map((language) => ({
+            language,
+            label: `${language} · subtitles`,
+            automatic: false,
+          })),
+          ...Object.keys(parsed.automatic_captions || {}).map((language) => ({
+            language,
+            label: `${language} · auto captions`,
+            automatic: true,
+          })),
+        ]
+          .filter(
+            (track, index, all) =>
+              all.findIndex(
+                (entry) =>
+                  entry.language === track.language &&
+                  entry.automatic === track.automatic,
+              ) === index,
+          )
+          .slice(0, 80);
+        const videoBytes = Math.max(
+          0,
+          ...parsedFormats
+            .filter((format: any) => format?.vcodec && format.vcodec !== "none")
+            .map((format: any) =>
+              Number(format.filesize || format.filesize_approx || 0),
+            ),
+        );
+        const audioBytes = Math.max(
+          0,
+          ...parsedFormats
+            .filter((format: any) => format?.acodec && format.acodec !== "none")
+            .map((format: any) =>
+              Number(format.filesize || format.filesize_approx || 0),
+            ),
+        );
 
         finish({
           title: parsed.title || fallback.title,
@@ -360,9 +429,13 @@ async function fetchMetadata(url: string): Promise<any> {
           mediaType: isTikTokImages ? "image" : "video",
           imageUrls,
           imageCount: imageUrls.length,
-          estimatedSizeBytes: Number(parsed.filesize || parsed.filesize_approx || 0) || videoBytes + audioBytes || undefined,
+          estimatedSizeBytes:
+            Number(parsed.filesize || parsed.filesize_approx || 0) ||
+            videoBytes + audioBytes ||
+            undefined,
           audioTracks,
           subtitleTracks,
+          directMedia: Boolean(parsed.direct),
         });
       } catch {
         finish(fallback);
@@ -677,7 +750,6 @@ export function getConcurrentFragments(): number {
 
 function baseYtDlpArgs(tempDir: string, item: any) {
   const { ffmpeg } = getBinPaths();
-  const requestedTranscript = normalizeTranscriptFormat(item.transcriptFormat);
   const args = buildBaseYtDlpFlags({
     tempDir,
     concurrentFragments: getConcurrentFragments(),
@@ -690,11 +762,12 @@ function baseYtDlpArgs(tempDir: string, item: any) {
     ),
     trimStart: item.trimStart,
     trimEnd: item.trimEnd,
-    subtitles: item.transcript
+    subtitles: wantsSubtitles(item)
       ? {
           languages: String(item.subtitleLanguages || "en.*"),
-          // txt is produced by stripping a vtt after download.
-          format: requestedTranscript === "srt" ? "srt" : "vtt",
+          // Always acquire an embeddable text track. Optional TXT/VTT sidecars
+          // are derived after the media has been muxed and verified.
+          format: "srt",
         }
       : undefined,
   });
@@ -810,6 +883,176 @@ async function deliverSubtitles(
   return delivered;
 }
 
+const SUBTITLE_LANGUAGE_CODES: Record<string, string> = {
+  en: "eng",
+  es: "spa",
+  fr: "fra",
+  de: "deu",
+  ja: "jpn",
+  pt: "por",
+  it: "ita",
+  ko: "kor",
+  zh: "zho",
+};
+
+function subtitleLanguageFromPath(filePath: string) {
+  const base = path.basename(filePath, path.extname(filePath));
+  const value = base.match(/\.([A-Za-z]{2,3})(?:-[A-Za-z0-9]+)?$/)?.[1];
+  if (!value) return "und";
+  const normalized = value.toLowerCase();
+  return SUBTITLE_LANGUAGE_CODES[normalized] || normalized;
+}
+
+/**
+ * Adds downloaded text captions without touching the encoded video or audio.
+ * Unsupported output containers are promoted to MKV so the requested tracks
+ * are never silently discarded.
+ */
+async function embedSubtitleFiles(
+  item: any,
+  mediaPath: string,
+  subtitleFiles: string[],
+  tempDir: string,
+  mainWindow: Electron.BrowserWindow,
+) {
+  if (!subtitleFiles.length) return mediaPath;
+  const { ffmpeg } = getBinPaths();
+  const sourceExtension = path.extname(mediaPath).slice(1).toLowerCase();
+  const extension = ["mkv", "mp4", "mov", "webm"].includes(sourceExtension)
+    ? sourceExtension
+    : "mkv";
+  const outputPath = path.join(
+    tempDir,
+    `.prism-subtitled-${item.id}.${extension}`,
+  );
+  const subtitleCodec =
+    extension === "mp4" || extension === "mov"
+      ? "mov_text"
+      : extension === "webm"
+        ? "webvtt"
+        : "subrip";
+  const args = ["-y", "-i", mediaPath];
+  for (const subtitlePath of subtitleFiles) args.push("-i", subtitlePath);
+  args.push("-map", "0:v?", "-map", "0:a?");
+  subtitleFiles.forEach((_, index) => args.push("-map", `${index + 1}:0`));
+  args.push(
+    "-map_metadata",
+    "0",
+    "-map_chapters",
+    "0",
+    "-c:v",
+    "copy",
+    "-c:a",
+    "copy",
+    "-c:s",
+    subtitleCodec,
+  );
+  subtitleFiles.forEach((subtitlePath, index) => {
+    const requestedDisposition = String(item.subtitleDisposition || "default");
+    args.push(
+      `-metadata:s:s:${index}`,
+      `language=${subtitleLanguageFromPath(subtitlePath)}`,
+    );
+    args.push(
+      `-disposition:s:${index}`,
+      index === 0
+        ? requestedDisposition === "none"
+          ? "0"
+          : requestedDisposition
+        : "0",
+    );
+  });
+  if (extension === "mp4" || extension === "mov")
+    args.push("-movflags", "+faststart");
+  args.push(outputPath);
+  updateDiagnostics(
+    item.id,
+    { command: diagnosticCommand(ffmpeg, args) },
+    mainWindow,
+  );
+  await runFfmpeg(ffmpeg, args, outputPath, undefined, { jobId: item.id });
+  return outputPath;
+}
+
+async function verifyAndDeliverSubtitles(
+  item: any,
+  tempDir: string,
+  outputPath: string,
+  subtitleFiles: string[],
+  mainWindow: Electron.BrowserWindow,
+  embedError?: unknown,
+) {
+  const overrides: Record<string, any> = {};
+  if (!subtitleFiles.length) {
+    overrides.transcriptError =
+      "No subtitles were available for the requested languages.";
+    overrides.subtitleVerification = "No matching source subtitles found";
+    return overrides;
+  }
+
+  if (item.saveSubtitleSidecar) {
+    const requested = normalizeTranscriptFormat(item.transcriptFormat);
+    const subtitlePaths = await deliverSubtitles(
+      tempDir,
+      outputPath,
+      requested,
+    );
+    if (subtitlePaths.length) {
+      overrides.transcriptPath = subtitlePaths[0];
+      overrides.subtitlePaths = subtitlePaths;
+      try {
+        const raw = await fs.promises.readFile(subtitlePaths[0], "utf8");
+        overrides.transcriptText =
+          requested === "txt" ? raw : stripSubtitleToText(raw);
+      } catch {}
+    }
+  }
+
+  if (embedError) {
+    const message =
+      embedError instanceof Error ? embedError.message : String(embedError);
+    overrides.transcriptError =
+      "Subtitles were downloaded but could not be embedded.";
+    overrides.subtitleEmbedded = false;
+    overrides.subtitleVerification = "Embedding failed";
+    updateDiagnostics(
+      item.id,
+      { logTail: `Subtitle embedding failed: ${message}` },
+      mainWindow,
+    );
+    return overrides;
+  }
+
+  try {
+    const { ffprobe } = getBinPaths();
+    const probe = await probeMediaFile(ffprobe, outputPath);
+    overrides.subtitleTrackCount = probe.subtitleTrackCount;
+    overrides.subtitleEmbedded = probe.subtitleTrackCount > 0;
+    overrides.subtitleVerification =
+      probe.subtitleTrackCount > 0
+        ? `${probe.subtitleTrackCount} embedded subtitle track${probe.subtitleTrackCount === 1 ? "" : "s"} verified`
+        : "Expected embedded subtitles were not found";
+    if (!probe.subtitleTrackCount) {
+      overrides.transcriptError =
+        "Subtitle embedding finished, but no subtitle track was found in the output.";
+      updateDiagnostics(
+        item.id,
+        { logTail: overrides.subtitleVerification },
+        mainWindow,
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    overrides.subtitleVerification = "Output subtitle verification failed";
+    updateDiagnostics(
+      item.id,
+      { logTail: `Subtitle verification failed: ${message}` },
+      mainWindow,
+    );
+  }
+  return overrides;
+}
+
 interface RunYtDlpOptions {
   /** How many separate streams the format selector may download. */
   expectedStreams: number;
@@ -836,7 +1079,11 @@ async function runYtDlp(
   console.log(
     `[yt-dlp] id=${item.id} mode=${item.mode} format=${item.format} quality=${item.quality || "best"}`,
   );
-  updateDiagnostics(item.id, { command: diagnosticCommand(ytdlp, args) }, mainWindow);
+  updateDiagnostics(
+    item.id,
+    { command: diagnosticCommand(ytdlp, args) },
+    mainWindow,
+  );
 
   return new Promise<{ outputFiles: string[] }>((resolve, reject) => {
     let child: ReturnType<typeof spawn>;
@@ -1150,7 +1397,10 @@ async function deliverDownloadedFile(
   conflictAction: "rename" | "overwrite" | "skip" = "rename",
 ) {
   const extension = path.extname(sourcePath).replace(/^\./, "") || "mkv";
-  const requestedPath = path.join(dest, `${sanitizeFileName(baseName, "download")}.${extension}`);
+  const requestedPath = path.join(
+    dest,
+    `${sanitizeFileName(baseName, "download")}.${extension}`,
+  );
   if (fs.existsSync(requestedPath)) {
     if (conflictAction === "skip") {
       await fs.promises.rm(sourcePath, { force: true });
@@ -1159,9 +1409,10 @@ async function deliverDownloadedFile(
     if (conflictAction === "overwrite")
       await fs.promises.rm(requestedPath, { force: true });
   }
-  const outputPath = conflictAction === "rename"
-    ? ensureUniquePath(dest, baseName, extension)
-    : requestedPath;
+  const outputPath =
+    conflictAction === "rename"
+      ? ensureUniquePath(dest, baseName, extension)
+      : requestedPath;
   await moveFileFast(sourcePath, outputPath);
   return outputPath;
 }
@@ -1204,6 +1455,23 @@ async function downloadSingleMedia(
       throw new Error("yt-dlp completed but no media file was produced.");
     }
 
+    const subtitleFiles = wantsSubtitles(item) ? subtitleFilesIn(tempDir) : [];
+    let preparedSourcePath = sourcePath;
+    let subtitleEmbedError: unknown;
+    if (subtitleFiles.length && plan.postProcess !== "prores") {
+      try {
+        preparedSourcePath = await embedSubtitleFiles(
+          item,
+          sourcePath,
+          subtitleFiles,
+          tempDir,
+          mainWindow,
+        );
+      } catch (error) {
+        subtitleEmbedError = error;
+      }
+    }
+
     const selectedHeight = qualityToHeight(item.quality);
     let outputPath: string;
     let containerNote: string | null = null;
@@ -1215,6 +1483,21 @@ async function downloadSingleMedia(
         mainWindow,
         mode === "video_only" ? "video_only" : "video_audio",
       );
+      if (subtitleFiles.length) {
+        try {
+          const embeddedPath = await embedSubtitleFiles(
+            item,
+            outputPath,
+            subtitleFiles,
+            tempDir,
+            mainWindow,
+          );
+          await fs.promises.rm(outputPath, { force: true });
+          await moveFileFast(embeddedPath, outputPath);
+        } catch (error) {
+          subtitleEmbedError = error;
+        }
+      }
     } else {
       publishJobProgress(mainWindow, {
         jobId: item.id,
@@ -1225,7 +1508,7 @@ async function downloadSingleMedia(
         patch: { overallProgress: 97 },
       });
       outputPath = await deliverDownloadedFile(
-        sourcePath,
+        preparedSourcePath,
         dest,
         item.title || "download",
         item.conflictAction || "rename",
@@ -1238,31 +1521,36 @@ async function downloadSingleMedia(
     }
 
     let subtitleOverrides: Record<string, any> = {};
-    if (item.transcript) {
-      const requested = normalizeTranscriptFormat(item.transcriptFormat);
-      const subtitlePaths = await deliverSubtitles(
+    if (wantsSubtitles(item)) {
+      subtitleOverrides = await verifyAndDeliverSubtitles(
+        item,
         tempDir,
         outputPath,
-        requested,
+        subtitleFiles,
+        mainWindow,
+        subtitleEmbedError,
       );
-      if (subtitlePaths.length) {
-        let transcriptText: string | undefined;
-        try {
-          const raw = await fs.promises.readFile(subtitlePaths[0], "utf8");
-          transcriptText = requested === "txt" ? raw : stripSubtitleToText(raw);
-        } catch {
-          // The file itself still exists; text preview is best-effort.
-        }
+    } else if (mode === "video_audio" && looksLikeDirectMediaUrl(item.url)) {
+      // Direct media files may already contain subtitle streams that yt-dlp's
+      // webpage metadata does not enumerate. Verify the delivered container so
+      // the job reports what was actually preserved.
+      try {
+        const { ffprobe } = getBinPaths();
+        const probe = await probeMediaFile(ffprobe, outputPath);
         subtitleOverrides = {
-          transcriptPath: subtitlePaths[0],
-          subtitlePaths,
-          ...(transcriptText ? { transcriptText } : {}),
+          subtitleTrackCount: probe.subtitleTrackCount,
+          subtitleEmbedded: probe.subtitleTrackCount > 0,
+          subtitleVerification: probe.subtitleTrackCount
+            ? `${probe.subtitleTrackCount} source subtitle track${probe.subtitleTrackCount === 1 ? "" : "s"} preserved`
+            : "No subtitle tracks exist in the source file",
         };
-      } else {
-        subtitleOverrides = {
-          transcriptError:
-            "No subtitles were available for the requested languages.",
-        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateDiagnostics(
+          item.id,
+          { logTail: `Source subtitle verification failed: ${message}` },
+          mainWindow,
+        );
       }
     }
 
@@ -1310,6 +1598,25 @@ async function downloadSplitMedia(
     const videoSource = mediaFilesIn(videoTemp, "video")[0];
     if (!videoSource) throw new Error("No video-only stream was produced.");
 
+    const subtitleFiles = wantsSubtitles(item)
+      ? subtitleFilesIn(videoTemp)
+      : [];
+    let preparedVideoSource = videoSource;
+    let subtitleEmbedError: unknown;
+    if (subtitleFiles.length && videoPlan.postProcess !== "prores") {
+      try {
+        preparedVideoSource = await embedSubtitleFiles(
+          item,
+          videoSource,
+          subtitleFiles,
+          videoTemp,
+          mainWindow,
+        );
+      } catch (error) {
+        subtitleEmbedError = error;
+      }
+    }
+
     let videoPath: string;
     if (videoPlan.postProcess === "prores") {
       videoPath = await convertToProRes(
@@ -1319,9 +1626,24 @@ async function downloadSplitMedia(
         mainWindow,
         "video_only",
       );
+      if (subtitleFiles.length) {
+        try {
+          const embeddedPath = await embedSubtitleFiles(
+            item,
+            videoPath,
+            subtitleFiles,
+            videoTemp,
+            mainWindow,
+          );
+          await fs.promises.rm(videoPath, { force: true });
+          await moveFileFast(embeddedPath, videoPath);
+        } catch (error) {
+          subtitleEmbedError = error;
+        }
+      }
     } else {
       videoPath = await deliverDownloadedFile(
-        videoSource,
+        preparedVideoSource,
         dest,
         `${item.title || "download"} video`,
         item.conflictAction || "rename",
@@ -1333,7 +1655,11 @@ async function downloadSplitMedia(
       audioFormat: item.audioFormat || "mp3",
       audioTrackId: item.audioTrackId,
     });
-    const audioArgs = baseYtDlpArgs(audioTemp, item);
+    const audioArgs = baseYtDlpArgs(audioTemp, {
+      ...item,
+      includeSubtitles: false,
+      transcript: false,
+    });
     audioArgs.push(...audioPlan.extraArgs, item.url);
     await runYtDlp(audioArgs, item, mainWindow, {
       expectedStreams: 1,
@@ -1352,6 +1678,17 @@ async function downloadSplitMedia(
       item.conflictAction || "rename",
     );
 
+    const subtitleOverrides = wantsSubtitles(item)
+      ? await verifyAndDeliverSubtitles(
+          item,
+          videoTemp,
+          videoPath,
+          subtitleFiles,
+          mainWindow,
+          subtitleEmbedError,
+        )
+      : {};
+
     await completeDownload(
       item,
       videoPath,
@@ -1359,6 +1696,7 @@ async function downloadSplitMedia(
       mainWindow,
       {
         resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
+        ...subtitleOverrides,
       },
     );
   } finally {
@@ -1396,17 +1734,26 @@ export async function startDownload(
   try {
     const stats = fs.statfsSync(dest);
     freeSpaceBytes = Number(stats.bavail) * Number(stats.bsize);
-    const required = estimatedSizeBytes > 0
-      ? Math.ceil(estimatedSizeBytes * 1.25 + 256 * 1024 * 1024)
-      : 512 * 1024 * 1024;
-    updateDiagnostics(item.id, { estimatedSizeBytes, freeSpaceBytes, destination: dest }, mainWindow);
+    const required =
+      estimatedSizeBytes > 0
+        ? Math.ceil(estimatedSizeBytes * 1.25 + 256 * 1024 * 1024)
+        : 512 * 1024 * 1024;
+    updateDiagnostics(
+      item.id,
+      { estimatedSizeBytes, freeSpaceBytes, destination: dest },
+      mainWindow,
+    );
     if (freeSpaceBytes < required) {
       throw new Error(
         `Not enough free space in ${dest}. Prism requires approximately ${Math.ceil(required / 1024 / 1024)} MB but only ${Math.floor(freeSpaceBytes / 1024 / 1024)} MB is available.`,
       );
     }
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Not enough free space")) throw error;
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Not enough free space")
+    )
+      throw error;
     console.warn("[download] disk-space preflight unavailable", error);
   }
   const mode = normalizeMode(item);

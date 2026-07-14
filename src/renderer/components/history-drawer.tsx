@@ -78,6 +78,10 @@ export function HistoryDrawer({
       quality: item.quality as DownloadOptions["quality"],
       transcript: item.transcript,
       transcriptFormat: item.transcriptFormat,
+      includeSubtitles: item.includeSubtitles,
+      saveSubtitleSidecar: item.saveSubtitleSidecar,
+      subtitleLanguages: item.subtitleLanguages,
+      subtitleDisposition: item.subtitleDisposition,
       trimStart: item.trimStart,
       trimEnd: item.trimEnd,
     });
@@ -257,15 +261,26 @@ export function HistoryDrawer({
                   value={`${item.filePaths.length} saved files`}
                 />
               )}
+              {(item.includeSubtitles ||
+                item.subtitleTrackCount !== undefined) && (
+                <InfoCell
+                  label="Subtitles"
+                  value={
+                    item.subtitleVerification ||
+                    `${item.subtitleLanguages || "Selected"} · embedding requested`
+                  }
+                />
+              )}
             </div>
           </section>
 
           {(item.transcriptText ||
             item.transcriptPath ||
-            item.transcriptError) && (
+            item.transcriptError ||
+            item.subtitleVerification) && (
             <section className="rounded-xl bg-bg-subtle p-4 shadow-sm">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-text-tertiary">
-                Transcript
+                Subtitles
               </p>
               {item.transcriptText ? (
                 <div className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs leading-relaxed text-text-secondary">
@@ -277,7 +292,8 @@ export function HistoryDrawer({
                 </p>
               ) : (
                 <p className="mt-3 text-xs text-text-tertiary">
-                  Transcript saved with the downloaded file.
+                  {item.subtitleVerification ||
+                    "Subtitles saved with the downloaded file."}
                 </p>
               )}
               <div className="mt-3 flex gap-2">

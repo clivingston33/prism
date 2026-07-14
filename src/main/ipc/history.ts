@@ -182,7 +182,6 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
 
   ipcMain.handle("history:regenerateThumbnail", () => null);
 
-
   ipcMain.handle("history:clear", () => {
     const history = store.get("history", []) as HistoryRecord[];
     const active = history.filter(

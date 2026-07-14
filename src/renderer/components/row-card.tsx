@@ -114,6 +114,10 @@ export function RowCard({
           quality: item.quality as DownloadOptions["quality"],
           transcript: item.transcript,
           transcriptFormat: item.transcriptFormat,
+          includeSubtitles: item.includeSubtitles,
+          saveSubtitleSidecar: item.saveSubtitleSidecar,
+          subtitleLanguages: item.subtitleLanguages,
+          subtitleDisposition: item.subtitleDisposition,
           trimStart: item.trimStart,
           trimEnd: item.trimEnd,
         },
@@ -257,10 +261,17 @@ export function RowCard({
           <span className="font-semibold text-text-secondary">
             {item.mode === "split" ? "SPLIT" : item.format.toUpperCase()}
           </span>
-          {item.transcriptPath && (
+          {item.includeSubtitles && (
             <>
               <span className="text-text-tertiary/50">•</span>
-              <span className="font-medium text-text-tertiary">Transcript</span>
+              <span
+                className="font-medium text-text-tertiary"
+                title={item.subtitleVerification}
+              >
+                {item.subtitleLanguages
+                  ? `${item.subtitleLanguages.replace(".*", "").toUpperCase()} subtitles`
+                  : "Subtitles"}
+              </span>
             </>
           )}
           {(item.resolution || (item.quality && item.quality !== "best")) && (

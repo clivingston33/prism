@@ -4,6 +4,14 @@ All notable changes to Prism will be documented here.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-07-15
+
+- Improved expanded-window layouts across Activity, Library, Media Tools, and
+  Transcription, with wider responsive content areas and more balanced action
+  placement.
+- Refreshed the README and packaged-app screenshots.
+- Updated the GitHub release workflow and corrected the README release badge.
+
 ## [0.1.0-alpha.1] - 2026-07-13
 
 - Final release-readiness audit and targeted reliability, security, and packaging fixes.

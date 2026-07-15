@@ -1,22 +1,20 @@
-# Prism 0.1.0-alpha.1
+# Prism 0.1.0-alpha.2
 
-The first public alpha of Prism: a private Windows media workspace for
-downloading, remuxing, converting, organizing, trimming, and transcribing media.
+This alpha refreshes Prism's layout for larger windows and includes the latest
+project documentation and release automation updates.
 
-## Highlights
+## What's changed
 
-- Source-preserving downloads powered by yt-dlp with honest format/container
-  reporting, queue controls, conflict handling, disk-space preflight, and
-  per-job diagnostics.
-- Audio and subtitle track selection, optional caption embedding and sidecars,
-  and FFprobe verification of delivered subtitle tracks.
-- Lossless remuxing, explicit conversion, batch processing, stream inspection,
-  and hardware-accelerated encoding where supported.
-- Private offline transcription with verified whisper.cpp models, waveform
-  range selection, audio preview, editable transcripts, and TXT/SRT/VTT/JSON
-  export.
-- A local row-based Library with search, filtering, missing-file recovery, and
-  shortcuts into Media Tools and transcription.
+- Activity and Library now make better use of wide windows while retaining
+  responsive spacing at smaller sizes.
+- Media Tools and Transcription use clearer vertically stacked workflows, with
+  centered output and action controls.
+- The sidebar scales more comfortably across window sizes.
+- README content and genuine packaged-app screenshots have been refreshed.
+- GitHub release automation has been updated.
+
+Prism's download, media-processing, library, and offline-transcription feature
+set is otherwise unchanged from 0.1.0-alpha.1.
 
 ## Important: unsigned Windows alpha
 

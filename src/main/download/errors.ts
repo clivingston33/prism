@@ -11,13 +11,7 @@ interface ErrorRule {
   retryable: boolean;
 }
 
-const RULES: ErrorRule[] = [
-  {
-    code: "UNSUPPORTED_URL",
-    userMessage: "This link is not a supported media URL.",
-    pattern: /unsupported url|is not a valid url|no video formats found/i,
-    retryable: false,
-  },
+const PRIORITY_RULES: ErrorRule[] = [
   {
     code: "AUTH_REQUIRED",
     userMessage:
@@ -53,6 +47,64 @@ const RULES: ErrorRule[] = [
       /getaddrinfo|etimedout|econnreset|econnrefused|network is unreachable|timed out|temporary failure in name resolution|http error 5\d\d|unable to connect|connection (?:aborted|refused|reset)|ssl|certificate/i,
     retryable: true,
   },
+];
+
+const FALLBACK_RULES: ErrorRule[] = [
+  {
+    code: "GENERIC_FALLBACK_ACCESS_RESTRICTED",
+    userMessage:
+      "This page is unavailable from the current region or requires access verification.",
+    pattern:
+      /generic fallback:\s*fallback page access is restricted in this region/i,
+    retryable: false,
+  },
+  {
+    code: "GENERIC_FALLBACK_NO_MEDIA",
+    userMessage:
+      "yt-dlp could not read this site, and Prism's fallback found no direct video or audio file on the page.",
+    pattern:
+      /generic fallback:\s*no direct video or audio file was found on the page/i,
+    retryable: false,
+  },
+  {
+    code: "GENERIC_FALLBACK_ACCESS_DENIED",
+    userMessage:
+      "yt-dlp could not read this site, and the site refused Prism's direct-media fallback request.",
+    pattern:
+      /generic fallback:\s*fallback request failed with http (?:401|403)/i,
+    retryable: false,
+  },
+  {
+    code: "GENERIC_FALLBACK_UNSUPPORTED_CONTENT",
+    userMessage:
+      "yt-dlp could not read this site, and the page did not expose recognizable video or audio content.",
+    pattern: /generic fallback:\s*fallback received unsupported content type/i,
+    retryable: false,
+  },
+  {
+    code: "GENERIC_FALLBACK_MODE_UNSUPPORTED",
+    userMessage:
+      "yt-dlp could not read this site. Prism's direct-media fallback is only available for Video + audio downloads.",
+    pattern:
+      /generic fallback:\s*direct media fallback is unavailable for .* downloads/i,
+    retryable: false,
+  },
+  {
+    code: "GENERIC_FALLBACK_FAILED",
+    userMessage:
+      "yt-dlp could not read this site, and Prism's direct-media fallback also failed.",
+    pattern: /generic fallback:/i,
+    retryable: true,
+  },
+];
+
+const RULES: ErrorRule[] = [
+  {
+    code: "UNSUPPORTED_URL",
+    userMessage: "This link is not a supported media URL.",
+    pattern: /unsupported url|is not a valid url|no video formats found/i,
+    retryable: false,
+  },
   {
     code: "CONTAINER_INCOMPATIBLE",
     userMessage:
@@ -71,7 +123,7 @@ const RULES: ErrorRule[] = [
   {
     code: "EXTRACTOR_ERROR",
     userMessage:
-      "The site could not be read. It may have changed — updating yt-dlp usually fixes this.",
+      "The site could not be read. Open its Activity details to review the site's response.",
     pattern:
       /unable to extract|extractor|this video is unavailable|video unavailable|has been removed|does not exist|http error 4\d\d/i,
     retryable: true,
@@ -95,7 +147,7 @@ export function classifyDownloadError(
     };
   }
 
-  for (const rule of RULES) {
+  for (const rule of [...PRIORITY_RULES, ...FALLBACK_RULES, ...RULES]) {
     if (rule.pattern.test(raw)) {
       return {
         code: rule.code,

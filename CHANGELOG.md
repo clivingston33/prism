@@ -4,6 +4,22 @@ All notable changes to Prism will be documented here.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-07-21
+
+- Added a direct-media fallback for pages that yt-dlp cannot extract, with safe diagnostics for restricted, unsupported, and inaccessible pages.
+- Added generic direct-file discovery, cancellation, progress reporting, and regression coverage.
+- Migrated dependency management and release automation from pnpm to npm.
+- Standardized cards, controls, dropdowns, hover states, and Activity/Library visual hierarchy.
+- Fixed clean Electron installation under npm and removed hard-coded application version metadata.
+- Packaged native license texts and third-party notices with Windows builds.
+- Disabled unpublished GPU runtime installation paths while preserving installed runtime support.
+
+## [0.1.0-alpha.2] - 2026-07-18
+
+- Improved Activity, Library, Media Tools, Transcription, and sidebar layouts for larger windows.
+- Refreshed README content and packaged-app screenshots.
+- Updated GitHub release automation.
+
 ## [0.1.0-alpha.1] - 2026-07-13
 
 - Final release-readiness audit and targeted reliability, security, and packaging fixes.

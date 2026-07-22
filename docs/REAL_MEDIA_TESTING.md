@@ -4,7 +4,7 @@ The normal test suite remains offline and fixture-driven. Release candidates add
 
 ## Deterministic native suite
 
-On Windows x64, run `pnpm run test:e2e:native`. The script generates small synthetic H.264/AAC, VP9/Opus, multi-audio, subtitle, metadata, and chapter fixtures. It serves media from localhost with content length, throttling, and HTTP ranges, then verifies real yt-dlp progress, cancellation, resume, source-byte and codec preservation, FFprobe inspection, and FFmpeg stream-copy remux behavior.
+On Windows x64, run `npm run test:e2e:native`. The script generates small synthetic H.264/AAC, VP9/Opus, multi-audio, subtitle, metadata, and chapter fixtures. It serves media from localhost with content length, throttling, and HTTP ranges, then verifies real yt-dlp progress, cancellation, resume, source-byte and codec preservation, FFprobe inspection, and FFmpeg stream-copy remux behavior.
 
 To exercise packaged binaries, run:
 

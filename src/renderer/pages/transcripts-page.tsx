@@ -236,7 +236,7 @@ export function TranscriptsPage() {
             onClick={() => setModelsOpen(true)}
             title="Manage Whisper models"
             aria-label="Manage Whisper models"
-            className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center text-white transition-[color,transform] hover:text-white/80 active:scale-[0.96]"
+            className="relative ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-[background-color,color,transform] hover:bg-bg-elevated/70 hover:text-text-primary active:scale-[0.96]"
           >
             <Cpu size={17} strokeWidth={1.7} />
             {!modelsLoading && needsModel && (
@@ -283,8 +283,7 @@ export function TranscriptsPage() {
                 setIsDragging(false);
                 const path = (
                   event.dataTransfer.files[0] as
-                    | (File & { path?: string })
-                    | undefined
+                    (File & { path?: string }) | undefined
                 )?.path;
                 if (path) setFilePath(path);
               }}
@@ -554,7 +553,7 @@ export function TranscriptsPage() {
                   {" · makes every model much faster"}
                 </div>
                 {gpuRuntime.status === "failed" && gpuRuntime.error && (
-                  <div className="mt-2 rounded-xl bg-error/10 px-2 py-1.5 text-[11px] text-error">
+                  <div className="mt-2 rounded-lg bg-error/10 px-2 py-1.5 text-[11px] text-error">
                     {gpuRuntime.error}
                   </div>
                 )}
@@ -679,7 +678,7 @@ export function TranscriptsPage() {
                     </div>
                     {COMPUTE_INTENSIVE_MODEL_IDS.includes(model.id) &&
                       gpuRuntime?.status !== "installed" && (
-                        <div className="mt-2 flex items-start gap-1.5 rounded-xl bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
+                        <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-warning/10 px-2 py-1.5 text-[11px] leading-snug text-warning">
                           <AlertTriangle size={13} className="mt-px shrink-0" />
                           <span>
                             Very compute-intensive on the CPU and often slower

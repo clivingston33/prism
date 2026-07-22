@@ -81,7 +81,6 @@ export function SettingsPage() {
   const setSettings = useAppStore((state) => state.setSettings);
   const [section, setSection] = useState<Section>("Downloads");
   const [models, setModels] = useState<WhisperModelState[]>([]);
-  const [thumbCache, setThumbCache] = useState({ sizeBytes: 0, fileCount: 0 });
   const [modelsLoading, setModelsLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
   const [ytdlpUpdate, setYtdlpUpdate] = useState<YtDlpUpdateState | null>(null);
@@ -110,8 +109,6 @@ export function SettingsPage() {
         .then(setModels)
         .finally(() => setModelsLoading(false));
     }
-    if (section === "Library")
-      void window.prism.settings.thumbnailCacheInfo().then(setThumbCache);
     if (section === "Advanced")
       void window.prism.settings.ytdlpUpdateState().then(setYtdlpUpdate);
   }, [section]);
@@ -291,30 +288,6 @@ export function SettingsPage() {
             onChange={(v) => void update("missingFileBehavior", v)}
             help="Permission errors and unavailable drives are never removed automatically."
           />
-          {false && (
-            <div className="flex items-center justify-between border-b border-border py-3 last:border-0">
-              <span>
-                <span className="block text-sm text-text-primary">
-                  Thumbnail cache
-                </span>
-                <span className="mt-1 block text-xs text-text-tertiary">
-                  {thumbCache
-                    ? `${(thumbCache.sizeBytes / 1024 / 1024).toFixed(1)} MB · ${thumbCache.fileCount} files. Orphans are pruned automatically at startup.`
-                    : "Calculating…"}
-                </span>
-              </span>
-              <button
-                className="button-secondary"
-                onClick={() =>
-                  void window.prism.settings
-                    .clearThumbnails()
-                    .then(setThumbCache)
-                }
-              >
-                Clear
-              </button>
-            </div>
-          )}
           <button
             className="button-secondary mt-4"
             onClick={() => void window.prism.history.removeMissing()}

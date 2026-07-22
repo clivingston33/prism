@@ -5,21 +5,21 @@ Thank you for helping improve Prism. Please read the [Code of Conduct](CODE_OF_C
 ## Development setup
 
 1. Clone the repository and confirm the remote points to `clivingston33/prism`.
-2. Install Node.js 22+ and pnpm 9.
-3. Run `pnpm install --frozen-lockfile`.
-4. Run `pnpm run prepare:resources:win` to hydrate pinned Windows x64 yt-dlp, FFmpeg/ffprobe, and whisper.cpp resources. The deterministic unit suite does not require live internet or native binaries.
-5. Run `pnpm dev`.
+2. Install Node.js 22.12+ and npm 11.
+3. Run `npm ci`.
+4. Run `npm run prepare:resources:win` to hydrate pinned Windows x64 yt-dlp, FFmpeg/ffprobe, and whisper.cpp resources. The deterministic unit suite does not require live internet or native binaries.
+5. Run `npm run dev`.
 
 ## Before opening a pull request
 
 Run:
 
 ```sh
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
 Keep changes targeted. Preserve existing settings, history, downloaded files, transcripts, models, and upgrade behavior. Validate all renderer-controlled values at the IPC boundary and use argument arrays for child processes. Do not add telemetry or cloud media processing without a separate privacy review.

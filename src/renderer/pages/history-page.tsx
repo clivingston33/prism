@@ -61,22 +61,27 @@ export function HistoryPage() {
   };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-y-auto">
-      <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col px-4 py-6 sm:px-7 sm:py-8 xl:px-10">
-        <h1 className="prism-page-enter mb-6 text-balance text-[12px] font-medium uppercase tracking-wider text-text-secondary">
-          Activity
-        </h1>
+    <main className="h-full overflow-y-auto px-4 pb-12 pt-6 sm:px-7 sm:pt-8 xl:px-10">
+      <div className="mx-auto flex min-h-full max-w-[1600px] flex-col gap-6">
+        <header className="prism-page-enter">
+          <h1 className="text-balance text-xl font-semibold text-text-primary">
+            Activity
+          </h1>
+          <p className="mt-1 text-pretty text-sm text-text-tertiary">
+            Current jobs and recent download history.
+          </p>
+        </header>
 
-        <div className="prism-page-enter mb-6 flex items-center justify-between">
-          <div className="flex gap-2">
+        <div className="prism-page-enter flex items-center justify-between">
+          <div className="flex gap-1">
             {(["all", "completed", "failed"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`min-h-10 rounded-lg border px-3 text-[11px] font-semibold capitalize transition-[background-color,border-color,color,box-shadow,transform] active:scale-[0.96] ${
+                className={`min-h-10 rounded-lg px-3 text-[11px] font-medium capitalize transition-[background-color,color,transform] active:scale-[0.96] ${
                   filter === f
-                    ? "bg-accent border-accent text-accent-fg shadow-sm"
-                    : "bg-bg-subtle border-border text-text-secondary hover:text-text-primary hover:border-border-subtle"
+                    ? "bg-accent text-accent-fg"
+                    : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
                 }`}
               >
                 {f}
@@ -95,29 +100,25 @@ export function HistoryPage() {
         </div>
 
         {historyItems.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center text-center opacity-50">
-            <Clock
-              size={32}
-              className="mb-4 text-text-tertiary"
-              strokeWidth={1.5}
-            />
-            <p className="text-pretty text-sm text-text-secondary">
+          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 py-16 text-center">
+            <Clock size={24} className="text-text-tertiary" strokeWidth={1.5} />
+            <p className="mt-3 text-pretty text-sm text-text-secondary">
               No download history
             </p>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center text-center opacity-50">
+          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border px-6 py-16 text-center">
             <FilterX
-              size={32}
-              className="mb-4 text-text-tertiary"
+              size={24}
+              className="text-text-tertiary"
               strokeWidth={1.5}
             />
-            <p className="text-pretty text-sm text-text-secondary">
+            <p className="mt-3 text-pretty text-sm text-text-secondary">
               No downloads match this filter
             </p>
           </div>
         ) : (
-          <div className="prism-page-enter prism-page-enter-delay flex flex-col gap-2 w-full pb-20">
+          <div className="prism-page-enter prism-page-enter-delay flex w-full flex-col gap-2">
             {filteredItems.map((item) => {
               const playlistId = item.playlistId;
               const firstInPlaylist =
@@ -145,7 +146,7 @@ export function HistoryPage() {
                           return next;
                         })
                       }
-                      className="mb-1 flex min-h-10 w-full items-center gap-3 rounded-lg bg-bg-subtle px-3 text-left shadow-sm transition-[background-color,transform] hover:bg-bg-elevated active:scale-[0.96]"
+                      className="surface-card flex min-h-10 w-full items-center gap-3 rounded-xl bg-bg-subtle px-3 text-left transition-[box-shadow,transform] active:scale-[0.96]"
                       aria-expanded={!collapsed}
                     >
                       <ListVideo size={15} className="shrink-0 text-accent" />
@@ -169,9 +170,7 @@ export function HistoryPage() {
                     <div className="min-h-0 overflow-hidden">
                       <div
                         onClick={() => setSelectedItem(item)}
-                        className={
-                          playlistId ? "cursor-pointer pl-3" : "cursor-pointer"
-                        }
+                        className="cursor-pointer"
                       >
                         <RowCard
                           item={item}
@@ -206,6 +205,6 @@ export function HistoryPage() {
         item={selectedLiveItem}
         onClose={() => setSelectedItem(null)}
       />
-    </div>
+    </main>
   );
 }

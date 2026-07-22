@@ -19,7 +19,6 @@ import { getHardwareProfile } from "../hardware";
 import {
   cancelVulkanRuntimeInstall,
   getVulkanRuntimeState,
-  installVulkanRuntime,
   removeVulkanRuntime,
 } from "../transcription/vulkan-runtime";
 import {
@@ -92,15 +91,20 @@ export function setupTranscriptionIPC(mainWindow: Electron.BrowserWindow) {
       ...runtimeState,
       runtimeId,
       runtimeLabel: runtimeId === "cuda" ? "CUDA" : "Vulkan",
-      supported: process.platform === "win32" && Boolean(nvidia || vulkanGpu),
+      supported:
+        process.platform === "win32" &&
+        Boolean(nvidia || runtimeState.status === "installed"),
       gpuName: nvidia?.name || vulkanGpu?.name,
     };
   });
   ipcMain.handle("transcription:installGpuRuntime", async () => {
     const profile = await getHardwareProfile();
-    return profile.hasNvidiaGpu
-      ? installGpuRuntime(mainWindow)
-      : installVulkanRuntime(mainWindow);
+    if (!profile.hasNvidiaGpu) {
+      throw new Error(
+        "GPU runtime installation is not available for this device in this release.",
+      );
+    }
+    return installGpuRuntime(mainWindow);
   });
   ipcMain.handle("transcription:cancelGpuRuntimeInstall", async () => {
     cancelGpuRuntimeInstall();

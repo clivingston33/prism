@@ -283,11 +283,11 @@ export function HistoryDrawer({
                 Subtitles
               </p>
               {item.transcriptText ? (
-                <div className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl bg-bg p-3 text-xs leading-relaxed text-text-secondary">
+                <div className="mt-3 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg bg-bg p-3 text-xs leading-relaxed text-text-secondary">
                   {item.transcriptText}
                 </div>
               ) : item.transcriptError ? (
-                <p className="mt-3 rounded-xl bg-error/10 p-3 text-xs text-error">
+                <p className="mt-3 rounded-lg bg-error/10 p-3 text-xs text-error">
                   {item.transcriptError}
                 </p>
               ) : (
@@ -341,13 +341,13 @@ export function HistoryDrawer({
                 </button>
               </div>
               {item.diagnostics?.command && (
-                <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">
+                <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">
                   {item.diagnostics.command}
                 </pre>
               )}
               {(item.jobError?.technicalDetails ||
                 item.diagnostics?.logTail) && (
-                <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">
+                <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-bg p-3 font-mono text-[10px] leading-relaxed text-text-tertiary">
                   {item.jobError?.technicalDetails || item.diagnostics?.logTail}
                 </pre>
               )}

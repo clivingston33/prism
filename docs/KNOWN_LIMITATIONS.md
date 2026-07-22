@@ -1,6 +1,6 @@
 # Known limitations
 
-Prism `0.1.0-alpha.1` is an unsigned Windows x64 public alpha. It is intended
+Prism `0.1.0-alpha.3` is an unsigned Windows x64 public alpha. It is intended
 for testing with media you are authorized to download and process.
 
 - Windows SmartScreen may warn about or block the unsigned installer. Verify
@@ -14,8 +14,8 @@ for testing with media you are authorized to download and process.
   subtitle availability, language labels, and formatting depend on the source.
 - Local transcription requires a separate Whisper model download. Large models
   require substantial disk space, memory, and processing time.
-- GPU acceleration depends on compatible hardware and drivers. CPU processing
-  remains the fallback.
+- Optional GPU acceleration depends on a compatible NVIDIA GPU and drivers in
+  this release. CPU processing remains the fallback.
 - macOS, Linux, ARM Windows, and Microsoft Store installation are not supported
   in this alpha.
 - Settings and history formats may change before beta. Keep irreplaceable media

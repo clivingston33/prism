@@ -1,10 +1,7 @@
 import type { ConversionFormat, ConversionRequest } from "./contracts.ts";
 
 export type ConversionOperation =
-  | "remux"
-  | "stream_copy"
-  | "transcode"
-  | "extract_audio";
+  "remux" | "stream_copy" | "transcode" | "extract_audio";
 
 const AUDIO_FORMATS = new Set<ConversionFormat>([
   "mp3",

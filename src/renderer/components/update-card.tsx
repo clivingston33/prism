@@ -29,7 +29,7 @@ export function UpdateCard({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-lg text-text-tertiary transition-[background-color,color,transform] hover:bg-bg-subtle hover:text-text-primary active:scale-[0.96]"
+          className="icon-button absolute right-3 top-3 text-text-tertiary hover:before:bg-bg-subtle"
           aria-label="Close update dialog"
         >
           <X size={14} strokeWidth={1.5} />
@@ -114,7 +114,7 @@ export function UpToDateCard({ onClose }: UpdateStatusCardProps) {
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-lg text-text-tertiary transition-[background-color,color,transform] hover:bg-bg-subtle hover:text-text-primary active:scale-[0.96]"
+          className="icon-button absolute right-3 top-3 text-text-tertiary hover:before:bg-bg-subtle"
           aria-label="Close update status dialog"
         >
           <X size={14} strokeWidth={1.5} />

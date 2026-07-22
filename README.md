@@ -4,7 +4,7 @@
   <p><strong>A private Windows workspace for downloading, shaping, organizing, and transcribing media.</strong></p>
   <p>
     <a href="https://github.com/clivingston33/prism/actions/workflows/ci.yml"><img alt="CI checks" src="https://img.shields.io/github/actions/workflow/status/clivingston33/prism/ci.yml?branch=main&style=flat-square&label=checks" /></a>
-    <a href="https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.1"><img alt="Current release" src="https://img.shields.io/github/v/tag/clivingston33/prism?sort=semver&style=flat-square&label=release" /></a>
+    <a href="https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.3"><img alt="Current release" src="https://img.shields.io/github/v/tag/clivingston33/prism?sort=semver&style=flat-square&label=release" /></a>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat-square&logo=windows11&logoColor=white" />
     <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" /></a>
   </p>
@@ -26,7 +26,7 @@ transcripts, settings, and history on your computer.
 
 ## Get Prism
 
-Download **[Prism v0.1.0-alpha.1](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.1)**.
+Download **[Prism v0.1.0-alpha.3](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.3)**.
 
 The release includes the Windows installer, updater metadata, a blockmap, and:
 
@@ -81,7 +81,7 @@ Prism does not bypass DRM or guarantee every yt-dlp-supported site.
 
 ## Installation
 
-1. Open the [alpha release](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.1).
+1. Open the [alpha release](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.3).
 2. Download the installer and `SHA256SUMS-windows.txt`.
 3. Verify the installer's SHA-256 value.
 4. Run the installer and allow Windows SmartScreen only if the checksum matches.
@@ -97,29 +97,29 @@ and [security policy](SECURITY.md) before using the alpha.
 
 Prerequisites:
 
-- Node.js 22 or newer
-- pnpm 9
+- Node.js 22.12 or newer
+- npm 11
 - Windows x64 native resources for FFmpeg, FFprobe, yt-dlp, and whisper.cpp
 
 ```sh
 git clone https://github.com/clivingston33/prism.git
 cd prism
-pnpm install --frozen-lockfile
-pnpm dev
+npm ci
+npm run dev
 ```
 
 Useful commands:
 
-| Command                   | Purpose                                                |
-| ------------------------- | ------------------------------------------------------ |
-| `pnpm dev`                | Start the Electron development app                     |
-| `pnpm format:check`       | Check formatting                                       |
-| `pnpm lint`               | Run ESLint                                             |
-| `pnpm typecheck`          | Type-check the app                                     |
-| `pnpm test`               | Run deterministic tests                                |
-| `pnpm test:e2e:native`    | Exercise native download and media pipelines           |
-| `pnpm build:win`          | Build the unsigned Windows installer                   |
-| `pnpm screenshots:readme` | Recapture the README screenshots from the unpacked app |
+| Command                      | Purpose                                                |
+| ---------------------------- | ------------------------------------------------------ |
+| `npm run dev`                | Start the Electron development app                     |
+| `npm run format:check`       | Check formatting                                       |
+| `npm run lint`               | Run ESLint                                             |
+| `npm run typecheck`          | Type-check the app                                     |
+| `npm test`                   | Run deterministic tests                                |
+| `npm run test:e2e:native`    | Exercise native download and media pipelines           |
+| `npm run build:win`          | Build the unsigned Windows installer                   |
+| `npm run screenshots:readme` | Recapture the README screenshots from the unpacked app |
 
 ## Project notes
 

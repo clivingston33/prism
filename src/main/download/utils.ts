@@ -4,10 +4,7 @@ import path from "path";
 import { updatedYtDlpPath } from "./ytdlp-updater";
 
 export type DownloadMode =
-  | "video_audio"
-  | "video_only"
-  | "audio_only"
-  | "split";
+  "video_audio" | "video_only" | "audio_only" | "split";
 
 export type OutputFormat =
   | "mp4"

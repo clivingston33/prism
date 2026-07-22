@@ -55,3 +55,67 @@ test("user message stays concise while details are preserved", () => {
   assert.ok(error.userMessage.length < 200);
   assert.ok((error.technicalDetails?.length ?? 0) <= 1500);
 });
+
+test("reports when the generic fallback found no direct media", () => {
+  const raw =
+    "ERROR: Unable to extract video data\nGeneric fallback: No direct video or audio file was found on the page.";
+  const error = classifyDownloadError(new Error(raw), "download");
+  assert.equal(error.code, "GENERIC_FALLBACK_NO_MEDIA");
+  assert.equal(error.retryable, false);
+  assert.equal(
+    error.userMessage,
+    "yt-dlp could not read this site, and Prism's fallback found no direct video or audio file on the page.",
+  );
+  assert.equal(error.technicalDetails, raw);
+});
+
+test("reports when the generic fallback was denied access", () => {
+  const error = classifyDownloadError(
+    new Error(
+      "ERROR: Unsupported URL\nGeneric fallback: Fallback request failed with HTTP 403.",
+    ),
+  );
+  assert.equal(error.code, "GENERIC_FALLBACK_ACCESS_DENIED");
+  assert.equal(error.retryable, false);
+});
+
+test("priority failures override generic fallback classification", () => {
+  const error = classifyDownloadError(
+    new Error(
+      "ERROR: Unable to extract video data\nGeneric fallback: No direct video or audio file was found on the page.\nConnection timed out",
+    ),
+  );
+  assert.equal(error.code, "NETWORK_ERROR");
+});
+
+test("unknown fallback details are not exposed in the user message", () => {
+  const secret = "https://example.com/media?token=secret";
+  const error = classifyDownloadError(
+    new Error(`ERROR: Unable to extract\nGeneric fallback: ${secret}`),
+  );
+  assert.equal(error.code, "GENERIC_FALLBACK_FAILED");
+  assert.doesNotMatch(error.userMessage, /token|secret|https:/i);
+  assert.match(error.technicalDetails || "", /token=secret/);
+});
+
+test("explains when the selected mode cannot use the generic fallback", () => {
+  const error = classifyDownloadError(
+    new Error(
+      "ERROR: HTTP Error 403: Forbidden\nGeneric fallback: Direct media fallback is unavailable for audio_only downloads.",
+    ),
+  );
+  assert.equal(error.code, "GENERIC_FALLBACK_MODE_UNSUPPORTED");
+  assert.equal(error.retryable, false);
+  assert.match(error.userMessage, /only available for Video \+ audio/);
+});
+
+test("reports regional or verification restrictions without extractor advice", () => {
+  const error = classifyDownloadError(
+    new Error(
+      "ERROR: Unable to extract title\nGeneric fallback: Fallback page access is restricted in this region.",
+    ),
+  );
+  assert.equal(error.code, "GENERIC_FALLBACK_ACCESS_RESTRICTED");
+  assert.equal(error.retryable, false);
+  assert.match(error.userMessage, /current region|access verification/);
+});

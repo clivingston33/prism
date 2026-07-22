@@ -243,10 +243,12 @@ export function DownloadPage() {
                 }}
               />
               <button
+                type="button"
                 onClick={handleIconClick}
                 aria-label={url ? "Clear URL" : "Paste from clipboard"}
-                className="absolute right-2 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-text-tertiary transition-[color,transform] hover:text-text-primary active:scale-[0.96]"
+                className="absolute right-0 top-0 z-10 flex h-12 w-14 items-center justify-center rounded-tr-xl bg-bg-subtle text-text-tertiary transition-colors hover:text-text-primary"
               >
+                <span className="pointer-events-none absolute right-full top-0 h-full w-10 bg-gradient-to-r from-transparent to-bg-subtle" />
                 <X
                   size={18}
                   strokeWidth={1.5}
@@ -384,7 +386,7 @@ export function DownloadPage() {
 
           {/* Smart Paste Toast */}
           {clipboardUrl && !url && (
-            <div className="absolute -bottom-14 left-1/2 z-10 flex h-10 -translate-x-1/2 items-center overflow-hidden rounded-2xl bg-text-primary shadow-lg">
+            <div className="absolute -bottom-14 left-1/2 z-10 flex h-10 -translate-x-1/2 items-center overflow-hidden rounded-full bg-text-primary shadow-lg">
               <button
                 onClick={handleSmartPaste}
                 className="flex min-h-10 items-center gap-2 pl-4 pr-2 text-xs font-medium text-bg transition-[opacity,transform] hover:opacity-85 active:scale-[0.96]"

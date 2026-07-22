@@ -246,7 +246,7 @@ export function Waveform({
   };
   if (error)
     return (
-      <p className="rounded-xl bg-error/10 p-3 text-xs text-error">{error}</p>
+      <p className="rounded-lg bg-error/10 p-3 text-xs text-error">{error}</p>
     );
   if (!data)
     return (
@@ -383,7 +383,7 @@ export function Waveform({
         </button>
       </div>
       {playbackError && (
-        <p className="mt-2 rounded-xl bg-error/10 px-3 py-2 text-[11px] text-error">
+        <p className="mt-2 rounded-lg bg-error/10 px-3 py-2 text-[11px] text-error">
           Audio preview failed: {playbackError}
         </p>
       )}

@@ -22,12 +22,7 @@ import { useExitPresence } from "../hooks/use-exit-presence";
 
 type Mode = "remux" | "convert";
 type ItemStatus =
-  | "inspecting"
-  | "ready"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
+  "inspecting" | "ready" | "running" | "completed" | "failed" | "cancelled";
 
 interface QueueItem {
   id: string;
@@ -840,7 +835,7 @@ export function MediaToolsPage() {
                       {selected.path}
                     </p>
                     {selected.error ? (
-                      <div className="mt-4 flex items-start gap-1.5 rounded-xl bg-error/10 p-3 text-xs text-error">
+                      <div className="mt-4 flex items-start gap-1.5 rounded-lg bg-error/10 p-3 text-xs text-error">
                         <CircleAlert size={14} className="mt-px shrink-0" />
                         <span>{selected.error}</span>
                       </div>
@@ -959,7 +954,7 @@ export function MediaToolsPage() {
                   </div>
                   {compatibility && (
                     <div
-                      className={`mt-4 rounded-xl p-3 text-xs ${compatibility.tone === "warning" ? "bg-warning/10 text-warning" : "bg-success/10 text-success"}`}
+                      className={`mt-4 rounded-lg p-3 text-xs ${compatibility.tone === "warning" ? "bg-warning/10 text-warning" : "bg-success/10 text-success"}`}
                     >
                       <span className="font-semibold">
                         {compatibility.level}
@@ -1021,7 +1016,7 @@ export function MediaToolsPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="mt-4 rounded-xl bg-warning/10 p-3 text-xs text-warning">
+                  <div className="mt-4 rounded-lg bg-warning/10 p-3 text-xs text-warning">
                     <span className="font-semibold">
                       {convertPreset.label}:
                     </span>{" "}
@@ -1526,7 +1521,7 @@ function TrackPicker({
 }) {
   return (
     <Field label={`${label} · preserve all by default`}>
-      <div className="max-h-28 space-y-1 overflow-y-auto rounded-xl bg-bg p-2">
+      <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg bg-bg p-2">
         {streams.length ? (
           streams.map((stream) => (
             <label

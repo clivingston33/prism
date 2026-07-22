@@ -1,20 +1,23 @@
 {
   "name": "prism",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.3",
   "description": "Prism - Private media download, conversion, and transcription suite",
   "main": "./out/main/index.js",
   "author": "clivingston33",
   "license": "MIT",
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=11.0.0"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
     "format:check": "prettier --check .",
     "verify:resources": "node scripts/verify-resources.mjs",
-    "verify:signatures": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/verify-windows-signatures.ps1",
     "prepare:resources:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/native/prepare-windows.ps1",
-    "test": "node --no-warnings --experimental-strip-types --test test/progress.test.ts test/jobs.test.ts test/conversion.test.ts test/media-tools.test.ts test/transcription.test.ts test/transcript-document.test.ts test/runtime-manifest.test.ts test/process-registry.test.ts test/format-selection.test.ts test/metadata-cache.test.ts test/progress-tracker.test.ts test/errors.test.ts test/temp-dirs.test.ts test/ipc-schemas.test.ts test/queue-state.test.ts test/ytdlp-args.test.ts",
-    "test:watch": "node --no-warnings --experimental-strip-types --test --watch test/progress.test.ts test/jobs.test.ts test/conversion.test.ts test/media-tools.test.ts test/transcription.test.ts test/transcript-document.test.ts test/runtime-manifest.test.ts test/process-registry.test.ts test/format-selection.test.ts test/metadata-cache.test.ts test/progress-tracker.test.ts test/errors.test.ts test/temp-dirs.test.ts test/ipc-schemas.test.ts test/queue-state.test.ts test/ytdlp-args.test.ts",
+    "test": "node --no-warnings --experimental-strip-types --test test/progress.test.ts test/jobs.test.ts test/conversion.test.ts test/media-tools.test.ts test/transcription.test.ts test/transcript-document.test.ts test/runtime-manifest.test.ts test/process-registry.test.ts test/format-selection.test.ts test/metadata-cache.test.ts test/progress-tracker.test.ts test/errors.test.ts test/temp-dirs.test.ts test/ipc-schemas.test.ts test/queue-state.test.ts test/ytdlp-args.test.ts test/generic-download.test.ts",
+    "test:watch": "node --no-warnings --experimental-strip-types --test --watch test/progress.test.ts test/jobs.test.ts test/conversion.test.ts test/media-tools.test.ts test/transcription.test.ts test/transcript-document.test.ts test/runtime-manifest.test.ts test/process-registry.test.ts test/format-selection.test.ts test/metadata-cache.test.ts test/progress-tracker.test.ts test/errors.test.ts test/temp-dirs.test.ts test/ipc-schemas.test.ts test/queue-state.test.ts test/ytdlp-args.test.ts test/generic-download.test.ts",
     "test:e2e:native": "node scripts/e2e/native-media.mjs",
     "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
@@ -23,7 +26,7 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "node -e \"if (!process.env.ELECTRON_SKIP_BINARY_DOWNLOAD) require('electron')\" && electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir --publish never",
     "build:win": "npm run verify:resources && npm run build && electron-builder --win --publish never"
   },
@@ -50,7 +53,6 @@
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
-    "electron-builder-squirrel-windows": "26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^8.57.0",
     "prettier": "^3.3.2",
@@ -58,16 +60,14 @@
     "typescript": "^5.5.2",
     "vite": "^6.4.3"
   },
-  "pnpm": {
-    "overrides": {
-      "@babel/core": "7.29.6",
-      "@xmldom/xmldom": "0.8.13",
-      "brace-expansion": "5.0.6",
-      "fast-uri": "3.1.2",
-      "form-data": "4.0.6",
-      "js-yaml": "4.2.0",
-      "postcss": "8.5.10",
-      "tmp": "0.2.7"
-    }
+  "overrides": {
+    "@babel/core": "7.29.6",
+    "@xmldom/xmldom": "0.8.13",
+    "brace-expansion": "5.0.7",
+    "fast-uri": "3.1.4",
+    "form-data": "4.0.6",
+    "js-yaml": "4.3.0",
+    "postcss": "8.5.10",
+    "tmp": "0.2.7"
   }
 }

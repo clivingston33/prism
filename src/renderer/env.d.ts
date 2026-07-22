@@ -87,11 +87,7 @@ interface Settings {
 
 interface GpuRuntimeState {
   status:
-    | "not-installed"
-    | "downloading"
-    | "installing"
-    | "installed"
-    | "failed";
+    "not-installed" | "downloading" | "installing" | "installed" | "failed";
   version: string;
   downloadBytes: number;
   path?: string;
@@ -112,12 +108,7 @@ interface HardwareProfile {
 
 interface YtDlpUpdateState {
   status:
-    | "idle"
-    | "checking"
-    | "available"
-    | "downloading"
-    | "installed"
-    | "failed";
+    "idle" | "checking" | "available" | "downloading" | "installed" | "failed";
   currentVersion?: string;
   latestVersion?: string;
   error?: string;
@@ -356,8 +347,6 @@ interface PrismAPI {
       applied: Record<string, unknown>;
       settings: Settings;
     }>;
-    thumbnailCacheInfo(): Promise<{ sizeBytes: number; fileCount: number }>;
-    clearThumbnails(): Promise<{ sizeBytes: number; fileCount: number }>;
     ytdlpUpdateState(checkLatest?: boolean): Promise<YtDlpUpdateState>;
     updateYtdlp(): Promise<YtDlpUpdateState>;
   };

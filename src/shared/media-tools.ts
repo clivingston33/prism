@@ -1,10 +1,5 @@
 export type MediaStreamType =
-  | "video"
-  | "audio"
-  | "subtitle"
-  | "attachment"
-  | "data"
-  | "unknown";
+  "video" | "audio" | "subtitle" | "attachment" | "data" | "unknown";
 
 export interface MediaStreamInfo {
   index: number;
@@ -46,15 +41,9 @@ export interface MediaProbe {
 
 export type RemuxContainer = "auto" | "mkv" | "mp4" | "mov" | "webm" | "m4a";
 export type CompatibilityLevel =
-  | "fully_compatible"
-  | "limitations"
-  | "conversion_required"
-  | "unsupported";
+  "fully_compatible" | "limitations" | "conversion_required" | "unsupported";
 export type CompatibilityAction =
-  | "recommended"
-  | "exclude"
-  | "convert"
-  | "cancel";
+  "recommended" | "exclude" | "convert" | "cancel";
 
 export interface CompatibilityIssue {
   streamIndex?: number;

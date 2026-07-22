@@ -150,7 +150,7 @@ export function RowCard({
 
   return (
     <div
-      className={`surface-card group relative flex flex-col justify-center overflow-hidden rounded-xl bg-bg-subtle px-4 hover:bg-bg-elevated focus-within:ring-2 focus-within:ring-accent/20 ${compact ? "h-[64px]" : "h-[84px]"}`}
+      className={`surface-card group relative flex flex-col justify-center overflow-hidden rounded-xl bg-bg-subtle px-4 focus-within:ring-2 focus-within:ring-accent/20 ${compact ? "h-[64px]" : "h-[84px]"}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 overflow-hidden flex-1">

@@ -14,6 +14,14 @@ extraResources:
   - from: resources/prism-light.png
   - from: resources/prism-dark.png
   - from: resources/icon.ico
+  - from: resources/licenses
+    to: licenses
+    filter:
+      - "**/*"
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+  - from: LICENSE
+    to: LICENSE
 asar: true
 publish:
   provider: github

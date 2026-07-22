@@ -15,18 +15,28 @@ jobs:
       - name: Check out repository and LFS objects
         uses: actions/checkout@v7.0.0
         with:
+          fetch-depth: 0
           lfs: true
+
+      - name: Verify tag is on main
+        shell: pwsh
+        run: |
+          git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tags must point to a commit on main."
+          }
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
+          cache: npm
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6.0.9
+      - name: Install npm
+        run: npm install --global npm@11.11.0
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Verify release version
         shell: pwsh
@@ -39,28 +49,44 @@ jobs:
       # Keep each gate in its own step. PowerShell can otherwise continue after
       # a native command fails and accidentally report only the final exit code.
       - name: Check formatting
-        run: pnpm run format:check
+        run: npm run format:check
 
       - name: Lint
-        run: pnpm run lint
+        run: npm run lint
 
       - name: Type-check
-        run: pnpm run typecheck
+        run: npm run typecheck
 
       - name: Run unit tests
-        run: pnpm test
+        run: npm test
 
       - name: Audit dependencies
-        run: pnpm audit --audit-level high
+        run: npm audit --audit-level=high
 
       - name: Verify native resources
-        run: pnpm run verify:resources
+        run: npm run verify:resources
 
       - name: Exercise source native download and media pipelines
-        run: pnpm run test:e2e:native
+        run: npm run test:e2e:native
 
       - name: Build Windows installer
-        run: pnpm run build:win
+        run: npm run build:win
+
+      - name: Verify packaged notices
+        shell: pwsh
+        run: |
+          $requiredNotices = @(
+            "dist/win-unpacked/resources/LICENSE",
+            "dist/win-unpacked/resources/THIRD_PARTY_NOTICES.md",
+            "dist/win-unpacked/resources/licenses/FFmpeg-GPL-3.0.txt",
+            "dist/win-unpacked/resources/licenses/FFmpeg-Gyan-README.txt",
+            "dist/win-unpacked/resources/licenses/whisper.cpp-MIT.txt"
+          )
+          foreach ($notice in $requiredNotices) {
+            if (-not (Test-Path -LiteralPath $notice -PathType Leaf)) {
+              throw "Required packaged notice is missing: $notice"
+            }
+          }
 
       - name: Exercise packaged native download and media pipelines
         run: node scripts/e2e/native-media.mjs --resources=dist/win-unpacked/resources

@@ -1,10 +1,7 @@
 import type { JobError, JobStage, JobStatus, JobType } from "./jobs.ts";
 
 export type DownloadMode =
-  | "video_audio"
-  | "video_only"
-  | "audio_only"
-  | "split";
+  "video_audio" | "video_only" | "audio_only" | "split";
 
 export type DownloadFormat =
   | "auto"
@@ -20,13 +17,7 @@ export type DownloadFormat =
 
 export type AudioFormat = "source" | "mp3" | "wav" | "aac" | "flac";
 export type Quality =
-  | "best"
-  | "2160p"
-  | "1440p"
-  | "1080p"
-  | "720p"
-  | "480p"
-  | "360p";
+  "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
 export type TranscriptFormat = "txt" | "srt" | "vtt" | "json";
 export type DownloadConflictAction = "rename" | "overwrite" | "skip";
 export type SubtitleDisposition = "default" | "forced" | "none";

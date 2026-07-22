@@ -4,10 +4,10 @@ Describe the user-visible change and why it is needed.
 
 ## Verification
 
-- [ ] `pnpm format:check`
-- [ ] `pnpm lint`
-- [ ] `pnpm typecheck`
-- [ ] `pnpm test`
+- [ ] `npm run format:check`
+- [ ] `npm run lint`
+- [ ] `npm run typecheck`
+- [ ] `npm test`
 - [ ] Relevant manual workflow tested
 
 ## Safety checklist

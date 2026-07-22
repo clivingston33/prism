@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import packageJson from "../../package.json";
 import type { JobProgress } from "../shared/jobs.ts";
 import type {
   ConversionRequest,
@@ -18,7 +19,7 @@ interface ConversionResult {
 
 // Custom APIs for renderer
 const prismAPI = {
-  version: "0.1.0-alpha.1",
+  version: packageJson.version,
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     update: (settings: Record<string, unknown>) =>
@@ -30,8 +31,6 @@ const prismAPI = {
     quitAndInstall: () => ipcRenderer.invoke("settings:quitAndInstall"),
     hardwareProfile: () => ipcRenderer.invoke("settings:hardwareProfile"),
     optimizeForDevice: () => ipcRenderer.invoke("settings:optimizeForDevice"),
-    thumbnailCacheInfo: () => ipcRenderer.invoke("settings:thumbnailCacheInfo"),
-    clearThumbnails: () => ipcRenderer.invoke("settings:clearThumbnails"),
     ytdlpUpdateState: (checkLatest = false) =>
       ipcRenderer.invoke("settings:ytdlpUpdateState", checkLatest),
     updateYtdlp: () => ipcRenderer.invoke("settings:updateYtdlp"),

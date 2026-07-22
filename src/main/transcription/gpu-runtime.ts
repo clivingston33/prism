@@ -57,11 +57,7 @@ const RUNTIME_FILES = [
 ];
 
 export type GpuRuntimeStatus =
-  | "not-installed"
-  | "downloading"
-  | "installing"
-  | "installed"
-  | "failed";
+  "not-installed" | "downloading" | "installing" | "installed" | "failed";
 
 export interface GpuRuntimeState {
   status: GpuRuntimeStatus;

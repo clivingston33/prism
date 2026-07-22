@@ -12,11 +12,7 @@ const MANIFEST_URL =
   "https://github.com/clivingston33/prism/releases/latest/download/whisper-vulkan-runtime.json";
 
 type VulkanStatus =
-  | "not-installed"
-  | "downloading"
-  | "installing"
-  | "installed"
-  | "failed";
+  "not-installed" | "downloading" | "installing" | "installed" | "failed";
 
 interface InstalledMarker {
   version: string;

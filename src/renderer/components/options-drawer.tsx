@@ -505,7 +505,7 @@ export function OptionsDrawer({
               <select
                 value={current.quality}
                 onChange={(e) => updateCurrent({ quality: e.target.value })}
-                className="h-10 w-full rounded-lg border border-border bg-bg px-3 text-sm text-text-primary outline-none focus:border-text-primary"
+                className="field-input text-sm"
               >
                 {qualityOptions.map((quality) => (
                   <option key={quality} value={quality}>
@@ -540,7 +540,7 @@ export function OptionsDrawer({
                   onChange={(e) =>
                     updateCurrent({ subtitlesEnabled: e.target.checked })
                   }
-                  className="accent-accent rounded-lg border-border"
+                  className="accent-accent border-border"
                 />
               </label>
               {subtitleLookupComplete && !hasSeparateSubtitles && (
@@ -556,7 +556,7 @@ export function OptionsDrawer({
                       updateCurrent({ subtitleLanguages: e.target.value })
                     }
                     aria-label="Subtitle language"
-                    className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                    className="field-input px-2 text-xs"
                   >
                     {hasSeparateSubtitles ? (
                       <option value="en.*">English (recommended)</option>
@@ -582,7 +582,7 @@ export function OptionsDrawer({
                       })
                     }
                     aria-label="Subtitle behavior"
-                    className="h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                    className="field-input px-2 text-xs"
                   >
                     <option value="default">Default track</option>
                     <option value="none">Selectable</option>
@@ -610,7 +610,7 @@ export function OptionsDrawer({
                         })
                       }
                       aria-label="External subtitle format"
-                      className="col-span-2 h-10 rounded-lg border border-border bg-bg px-2 text-xs text-text-primary outline-none focus:border-text-primary"
+                      className="field-input col-span-2 px-2 text-xs"
                     >
                       <option value="srt">SRT — widest compatibility</option>
                       <option value="vtt">VTT — web subtitles</option>
@@ -651,7 +651,7 @@ export function OptionsDrawer({
                 onChange={(e) =>
                   updateCurrent({ trimEnabled: e.target.checked })
                 }
-                className="accent-accent rounded-lg border-border"
+                className="accent-accent border-border"
               />
             </label>
             {current.trimEnabled && (

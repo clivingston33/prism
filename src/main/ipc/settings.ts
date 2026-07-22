@@ -71,16 +71,6 @@ export function setupSettingsIPC() {
     return { profile, applied: tuned, settings: settingsForRenderer(updated) };
   });
 
-  // Kept as a harmless compatibility response for older renderer builds.
-  ipcMain.handle("settings:thumbnailCacheInfo", () => ({
-    sizeBytes: 0,
-    fileCount: 0,
-  }));
-  ipcMain.handle("settings:clearThumbnails", () => ({
-    sizeBytes: 0,
-    fileCount: 0,
-  }));
-
   ipcMain.handle("settings:ytdlpUpdateState", (_, checkLatest) =>
     getYtDlpUpdateState(Boolean(checkLatest)),
   );

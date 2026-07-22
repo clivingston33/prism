@@ -23,12 +23,7 @@ interface ReleaseResponse {
 
 export interface YtDlpUpdateState {
   status:
-    | "idle"
-    | "checking"
-    | "available"
-    | "downloading"
-    | "installed"
-    | "failed";
+    "idle" | "checking" | "available" | "downloading" | "installed" | "failed";
   currentVersion?: string;
   latestVersion?: string;
   error?: string;

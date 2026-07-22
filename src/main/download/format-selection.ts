@@ -9,22 +9,11 @@ import type { DownloadMode } from "./utils";
 
 /** Container the user picked for a video download. */
 export type ContainerChoice =
-  | "auto"
-  | "mp4"
-  | "mov"
-  | "webm"
-  | "mkv"
-  | "prores";
+  "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
 
 /** Audio output the user picked for audio-only / split downloads. */
 export type AudioChoice =
-  | "source"
-  | "mp3"
-  | "m4a"
-  | "wav"
-  | "aac"
-  | "flac"
-  | "ogg";
+  "source" | "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg";
 
 export interface DownloadPlan {
   /** Value passed to yt-dlp -f */

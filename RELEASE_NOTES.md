@@ -1,22 +1,21 @@
-# Prism 0.1.0-alpha.1
+# Prism 0.1.0-alpha.3
 
-The first public alpha of Prism: a private Windows media workspace for
-downloading, remuxing, converting, organizing, trimming, and transcribing media.
+This alpha improves unsupported-page handling, standardizes the interface, and
+moves development and release installs to npm.
 
 ## Highlights
 
-- Source-preserving downloads powered by yt-dlp with honest format/container
-  reporting, queue controls, conflict handling, disk-space preflight, and
-  per-job diagnostics.
-- Audio and subtitle track selection, optional caption embedding and sidecars,
-  and FFprobe verification of delivered subtitle tracks.
-- Lossless remuxing, explicit conversion, batch processing, stream inspection,
-  and hardware-accelerated encoding where supported.
-- Private offline transcription with verified whisper.cpp models, waveform
-  range selection, audio preview, editable transcripts, and TXT/SRT/VTT/JSON
-  export.
-- A local row-based Library with search, filtering, missing-file recovery, and
-  shortcuts into Media Tools and transcription.
+- Pages unsupported by yt-dlp can fall back to direct video or audio exposed in
+  static page metadata, with cancellation, progress, and safer failure reasons.
+- Restricted, authenticated, unsupported, and unavailable pages now produce
+  clearer Activity diagnostics without exposing private URL details in toasts.
+- Activity now follows the Library's card, spacing, filter, and empty-state
+  language; controls, dropdowns, dialogs, and hover states use consistent radii.
+- Clean npm installs now fetch Electron reliably, and CI/release workflows use
+  the committed npm lockfile.
+- Windows packages now include native license texts and third-party notices.
+- Local transcription, Media Tools, source-preserving downloads, and Library
+  workflows remain available from previous alphas.
 
 ## Important: unsigned Windows alpha
 

@@ -20,6 +20,10 @@ import {
 import { DownloadAggregator, parsePrismProgressLine } from "./progress-tracker";
 import { buildBaseYtDlpFlags } from "./ytdlp-args";
 import {
+  downloadGenericMedia,
+  shouldTryGenericFallback,
+} from "./generic-download";
+import {
   createJobTempDir,
   moveFileFast,
   removeTempRootIfEmpty,
@@ -783,8 +787,25 @@ function mediaFilesIn(
   directory: string,
   kind: "video" | "audio" | "any" = "any",
 ) {
-  const videoExts = new Set([".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"]);
-  const audioExts = new Set([".mp3", ".wav", ".aac", ".flac", ".m4a", ".opus"]);
+  const videoExts = new Set([
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".mkv",
+    ".avi",
+    ".m4v",
+    ".mpeg",
+    ".mpg",
+  ]);
+  const audioExts = new Set([
+    ".mp3",
+    ".wav",
+    ".aac",
+    ".flac",
+    ".m4a",
+    ".opus",
+    ".ogg",
+  ]);
   const files: string[] = [];
 
   const visit = (dir: string) => {
@@ -1439,12 +1460,75 @@ async function downloadSingleMedia(
   try {
     const args = baseYtDlpArgs(tempDir, item);
     args.push(...plan.extraArgs, item.url);
-    await runYtDlp(args, item, mainWindow, {
-      expectedStreams: planExpectsTwoStreams(plan) ? 2 : 1,
-      kind: plan.kind,
-      progressStart: 0,
-      progressEnd: 96,
-    });
+    try {
+      await runYtDlp(args, item, mainWindow, {
+        expectedStreams: planExpectsTwoStreams(plan) ? 2 : 1,
+        kind: plan.kind,
+        progressStart: 0,
+        progressEnd: 96,
+      });
+    } catch (error) {
+      if (
+        !shouldTryGenericFallback(error) ||
+        processRegistry.isCancelled(item.id)
+      ) {
+        throw error;
+      }
+
+      if (mode !== "video_audio") {
+        const originalMessage =
+          error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `${originalMessage}\nGeneric fallback: Direct media fallback is unavailable for ${mode} downloads.`,
+        );
+      }
+
+      console.info(`[download] ${item.id} trying generic link fallback`);
+      updateDiagnostics(
+        item.id,
+        {
+          logTail: `yt-dlp could not extract this link. Trying the generic media fallback.\n${error instanceof Error ? error.message : String(error)}`,
+        },
+        mainWindow,
+      );
+      try {
+        await downloadGenericMedia({
+          url: item.url,
+          outputDirectory: tempDir,
+          isCancelled: () => processRegistry.isCancelled(item.id),
+          onProgress: (downloadedBytes, totalBytes) => {
+            const percent = totalBytes
+              ? Math.min(96, (downloadedBytes / totalBytes) * 96)
+              : undefined;
+            publishJobProgress(mainWindow, {
+              jobId: item.id,
+              attemptId: item.attemptId || item.id,
+              jobType: item.jobType || "download",
+              status: "running",
+              stage: "download",
+              patch: {
+                overallProgress: percent,
+                stageProgress: percent,
+                downloadedBytes,
+                totalBytes,
+                estimatedTotalBytes: totalBytes,
+              },
+            });
+          },
+        });
+      } catch (fallbackError) {
+        if (fallbackError instanceof JobCancelledError) throw fallbackError;
+        const fallbackMessage =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : String(fallbackError);
+        const originalMessage =
+          error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `${originalMessage}\nGeneric fallback: ${fallbackMessage}`,
+        );
+      }
+    }
 
     const sourceFiles = mediaFilesIn(
       tempDir,
@@ -1796,7 +1880,21 @@ export async function startDownload(
   }
 
   if (mode === "split") {
-    await downloadSplitMedia(effectiveItem, dest, mainWindow);
+    try {
+      await downloadSplitMedia(effectiveItem, dest, mainWindow);
+    } catch (error) {
+      if (
+        !shouldTryGenericFallback(error) ||
+        processRegistry.isCancelled(item.id)
+      ) {
+        throw error;
+      }
+      const originalMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${originalMessage}\nGeneric fallback: Direct media fallback is unavailable for split downloads.`,
+      );
+    }
   } else {
     await downloadSingleMedia(effectiveItem, dest, mainWindow);
   }

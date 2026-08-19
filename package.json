@@ -13,7 +13,6 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
-    "lint:anti-slop": "oxlint .",
     "format:check": "prettier --check .",
     "verify:resources": "node scripts/verify-resources.mjs",
     "prepare:resources:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/native/prepare-windows.ps1",
@@ -48,7 +47,6 @@
     "@electron-toolkit/eslint-config-prettier": "^2.0.0",
     "@electron-toolkit/eslint-config-ts": "^2.0.0",
     "@electron-toolkit/tsconfig": "^1.0.1",
-    "@oxlint/plugins": "^1.79.0",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^20.14.8",
     "@types/react": "^19.0.0",
@@ -58,7 +56,6 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^8.57.0",
-    "oxlint": "^1.79.0",
     "prettier": "^3.3.2",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.5.2",

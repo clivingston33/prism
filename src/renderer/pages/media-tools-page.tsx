@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
@@ -309,11 +311,10 @@ export function MediaToolsPage() {
       handoffMode.current = true;
       let paths = handoff ? [handoff] : [];
       try {
-        const parsed = JSON.parse(handoffFiles || "[]");
-        if (Array.isArray(parsed))
-          paths = parsed.filter(
-            (value): value is string => typeof value === "string",
-          );
+        const parsed = z
+          .array(z.string())
+          .safeParse(JSON.parse(handoffFiles || "[]"));
+        if (parsed.success) paths = parsed.data;
       } catch {}
       addPaths(paths);
       setMode(requestedMode === "remux" ? "remux" : "convert");
@@ -326,9 +327,7 @@ export function MediaToolsPage() {
       setMode(
         settings.defaultMediaToolsMode === "convert" ? "convert" : "remux",
       );
-    const configuredContainer = String(
-      settings.defaultRemuxContainer || "auto",
-    ) as RemuxContainer;
+    const configuredContainer = settings.defaultRemuxContainer;
     if (
       ["auto", "mkv", "mp4", "mov", "webm", "m4a"].includes(configuredContainer)
     )
@@ -487,6 +486,7 @@ export function MediaToolsPage() {
   const dropFiles = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragging(false);
+    // SAFETY: Electron augments dropped File objects with their absolute path.
     const paths = Array.from(event.dataTransfer.files || [])
       .map((file) => (file as File & { path?: string }).path)
       .filter((value): value is string => Boolean(value));

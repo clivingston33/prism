@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -67,8 +69,7 @@ test("downloads media discovered in Open Graph metadata", async (t) => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
 
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
+  const address = z.object({ port: z.number() }).parse(server.address());
   const outputDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "prism-generic-test-"),
   );
@@ -98,8 +99,7 @@ test("reports a restricted page instead of treating it as missing media", async 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
 
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
+  const address = z.object({ port: z.number() }).parse(server.address());
   const outputDirectory = fs.mkdtempSync(
     path.join(os.tmpdir(), "prism-generic-test-"),
   );

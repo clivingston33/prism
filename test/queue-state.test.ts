@@ -8,6 +8,7 @@ import {
   selectCancelTargets,
   selectNextQueued,
 } from "../src/main/download/queue-state.ts";
+import type { HistoryRecord } from "../src/shared/contracts.ts";
 
 test("queued jobs start in user order, then FIFO for legacy items", () => {
   const history = [
@@ -55,14 +56,29 @@ test("reordering only touches still-queued records", () => {
 
 const NOW = "2026-07-11T00:00:00.000Z";
 
-function record(overrides: Record<string, unknown> = {}) {
-  return {
+function record(
+  overrides: Omit<Partial<HistoryRecord>, "status"> & { status?: string } = {},
+): HistoryRecord {
+  const persisted = {
     id: "job-1",
+    url: "https://example.com/video",
+    platform: "Test",
+    title: "Test job",
+    format: "auto",
     status: "completed",
+    progress: 100,
+    createdAt: NOW,
     stage: "finalize",
+    stageLabel: "Finalizing",
     revision: 3,
+    attemptId: "attempt-1",
+    jobType: "download",
+    retryCount: 0,
     ...overrides,
   };
+  // SAFETY: this fixture intentionally admits legacy status strings so startup
+  // reconciliation can prove they are migrated before normal use.
+  return persisted as HistoryRecord;
 }
 
 test("startup reconciliation marks every nonterminal status interrupted", () => {
@@ -85,8 +101,8 @@ test("startup reconciliation marks every nonterminal status interrupted", () => 
     assert.equal(item.status, "interrupted");
     assert.equal(item.stageLabel, "Interrupted after app restart");
     assert.equal(item.updatedAt, NOW);
-    assert.equal((item.jobError as { code: string }).code, "APP_RESTARTED");
-    assert.equal((item.jobError as { retryable: boolean }).retryable, true);
+    assert.equal(item.jobError?.code, "APP_RESTARTED");
+    assert.equal(item.jobError?.retryable, true);
   }
   // Revisions must advance so stale progress events cannot resurrect the job.
   assert.equal(recovered[2].revision, 4);
@@ -126,7 +142,7 @@ test("cancel-all targets queued, active, and live-process jobs", () => {
     { id: "failed", status: "failed" },
     // Persisted status lies but a process is still registered for it.
     { id: "ghost", status: "completed" },
-  ] as never[];
+  ] satisfies Pick<HistoryRecord, "id" | "status">[];
   const targets = selectCancelTargets(history, new Set(["ghost"]));
   assert.deepEqual(targets, ["queued", "running", "processing", "ghost"]);
 });
@@ -135,7 +151,7 @@ test("cancel-all with nothing active selects nothing and is repeatable", () => {
   const history = [
     { id: "a", status: "completed" },
     { id: "b", status: "cancelled" },
-  ] as never[];
+  ] satisfies Pick<HistoryRecord, "id" | "status">[];
   assert.deepEqual(selectCancelTargets(history, new Set()), []);
   assert.deepEqual(selectCancelTargets(history, new Set()), []);
 });

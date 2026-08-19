@@ -29,7 +29,7 @@ interface Candidate {
 
 // Ordered by typical desktop prevalence and quality. The first candidate that
 // passes a live test encode wins.
-const CANDIDATES: Record<CodecFamily, Candidate[]> = {
+const CANDIDATES = {
   h264: [
     {
       name: "h264_nvenc",
@@ -90,7 +90,7 @@ const CANDIDATES: Record<CodecFamily, Candidate[]> = {
       ], // prettier-ignore
     },
   ],
-};
+} satisfies Record<CodecFamily, Candidate[]>;
 
 // VideoToolbox constant quality is a 1-100 scale (higher = better), the inverse
 // of x264's 0-51 CRF (lower = better). Map roughly so a lower CRF asks for

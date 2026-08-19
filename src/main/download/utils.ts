@@ -208,7 +208,7 @@ export function sanitizeFileName(
   fallback = "download",
 ) {
   const base = (name || fallback)
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, " ")
+    .replace(/[<>:"/\\|?*\p{Cc}]/gu, " ")
     .replace(/[.\s]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();

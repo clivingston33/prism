@@ -49,7 +49,7 @@ export async function convertHistoryFile(
     throw new Error("Folders cannot be converted. Select a media file first.");
   }
 
-  const history = store.get("history", []) as HistoryRecord[];
+  const history = store.get("history", []);
   const sourceItem = options.sourceItemId
     ? history.find((item) => item.id === options.sourceItemId)
     : undefined;
@@ -129,10 +129,7 @@ export async function convertHistoryFile(
       patch: { stageProgress: 0, overallProgress: 0 },
     });
     const hardwareAcceleration =
-      (store.get("settings") as Record<string, unknown> | undefined)
-        ?.hardwareAcceleration === "off"
-        ? "off"
-        : "auto";
+      store.get("settings").hardwareAcceleration === "off" ? "off" : "auto";
     await convertMedia(ffmpeg, sourcePath, outputPath, options.format, {
       mode: record.mode === "split" ? "video_audio" : record.mode,
       videoCodec: options.videoCodec,
@@ -184,18 +181,17 @@ export async function convertHistoryFile(
       stage: "finalize",
       patch: { overallProgress: 100, stageProgress: 100, outputPath },
     });
-    const completed = (store.get("history", []) as HistoryRecord[]).map(
-      (item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: "completed",
-              progress: 100,
-              filePath: outputPath,
-              size,
-              completedAt: new Date().toISOString(),
-            }
-          : item,
+    const completed = store.get("history", []).map<HistoryRecord>((item) =>
+      item.id === id
+        ? {
+            ...item,
+            status: "completed",
+            progress: 100,
+            filePath: outputPath,
+            size,
+            completedAt: new Date().toISOString(),
+          }
+        : item,
     );
     store.set("history", completed);
     sendHistory(mainWindow);
@@ -233,7 +229,7 @@ export async function convertHistoryFile(
       stage: "transcode",
       patch: { error: jobError },
     });
-    const failed = (store.get("history", []) as HistoryRecord[]).map((item) =>
+    const failed = store.get("history", []).map<HistoryRecord>((item) =>
       item.id === id
         ? {
             ...item,

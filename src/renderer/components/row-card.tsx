@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
+import { parseDownloadRequest } from "../../shared/ipc-schemas.ts";
 
 function formatBytes(bytes: number) {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
@@ -105,13 +106,14 @@ export function RowCard({
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await window.prism.download.addToQueue(
-        item.request || {
+      const request =
+        item.request ??
+        parseDownloadRequest({
           url: item.url,
-          format: item.format as DownloadOptions["format"],
+          format: item.format,
           mode: item.mode,
-          audioFormat: item.audioFormat as DownloadOptions["audioFormat"],
-          quality: item.quality as DownloadOptions["quality"],
+          audioFormat: item.audioFormat,
+          quality: item.quality,
           transcript: item.transcript,
           transcriptFormat: item.transcriptFormat,
           includeSubtitles: item.includeSubtitles,
@@ -120,8 +122,8 @@ export function RowCard({
           subtitleDisposition: item.subtitleDisposition,
           trimStart: item.trimStart,
           trimEnd: item.trimEnd,
-        },
-      );
+        });
+      await window.prism.download.addToQueue(request);
     } catch (err) {
       console.error("Retry failed", err);
     }

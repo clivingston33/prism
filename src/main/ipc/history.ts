@@ -1,13 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import fs from "fs";
 import path from "path";
+import { z } from "zod";
 import { store } from "../store";
 import type { HistoryRecord } from "../../shared/contracts.ts";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
 import { requireString } from "../../shared/ipc-schemas.ts";
 
 async function reconcileHistory() {
-  const history = store.get("history", []) as HistoryRecord[];
+  const history = store.get("history", []);
   let changed = false;
   const next = await Promise.all(
     history.map(async (item) => {
@@ -26,11 +27,9 @@ async function reconcileHistory() {
           try {
             await fs.promises.stat(filePath);
             return "present" as const;
-          } catch (error) {
-            const code =
-              error && typeof error === "object" && "code" in error
-                ? String((error as { code?: unknown }).code)
-                : "UNKNOWN";
+          } catch (cause) {
+            const parsed = z.object({ code: z.string() }).safeParse(cause);
+            const code = parsed.success ? parsed.data.code : "UNKNOWN";
             return code === "ENOENT" || code === "ENOTDIR"
               ? ("missing" as const)
               : ("unavailable" as const);
@@ -67,7 +66,7 @@ async function reconcileHistory() {
       };
     }),
   );
-  const settings = store.get("settings", {}) as Record<string, unknown>;
+  const settings = store.get("settings");
   const autoRemove = settings.missingFileBehavior === "remove";
   const removable = autoRemove
     ? next.filter(
@@ -128,7 +127,7 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
 
   ipcMain.handle("history:remove", (_, id) => {
     const target = requireString(id, "history id");
-    const history = store.get("history", []) as HistoryRecord[];
+    const history = store.get("history", []);
     const removed = history.find((item) => item.id === target);
     if (removed && isActiveJobStatus(removed.status)) {
       throw new Error("Active jobs cannot be removed from history.");
@@ -142,7 +141,7 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
   });
 
   ipcMain.handle("history:removeMissing", () => {
-    const history = store.get("history", []) as HistoryRecord[];
+    const history = store.get("history", []);
     const removed = history.filter(
       (item) => item.fileState === "missing" || item.fileState === "partial",
     );
@@ -162,7 +161,7 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
       : await dialog.showOpenDialog({ properties: ["openFile"] });
     if (result.canceled || !result.filePaths[0]) return null;
     const selected = result.filePaths[0];
-    const history = store.get("history", []) as HistoryRecord[];
+    const history = store.get("history", []);
     const next = history.map((item) =>
       item.id === target
         ? {
@@ -183,7 +182,7 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
   ipcMain.handle("history:regenerateThumbnail", () => null);
 
   ipcMain.handle("history:clear", () => {
-    const history = store.get("history", []) as HistoryRecord[];
+    const history = store.get("history", []);
     const active = history.filter(
       (item) =>
         isActiveJobStatus(item.status) ||

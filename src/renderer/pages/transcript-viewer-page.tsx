@@ -158,9 +158,11 @@ export function TranscriptViewerPage({ historyId }: { historyId: string }) {
                 aria-label="Export transcript format"
                 defaultValue=""
                 onChange={(event) => {
-                  if (event.target.value)
-                    exportAs(event.target.value as TranscriptDocumentFormat);
-                  event.target.value = "";
+                  const format = (["txt", "srt", "vtt", "json"] as const).find(
+                    (candidate) => candidate === event.currentTarget.value,
+                  );
+                  if (format) exportAs(format);
+                  event.currentTarget.value = "";
                 }}
                 className="bg-transparent text-xs text-text-primary outline-none"
               >

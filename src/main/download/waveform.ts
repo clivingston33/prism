@@ -28,9 +28,11 @@ function probeDuration(ffprobe: string, filePath: string): Promise<number> {
     child.on("error", reject);
     child.on("close", (code) => {
       const duration = Number(output.trim());
-      code === 0 && Number.isFinite(duration) && duration > 0
-        ? resolve(duration)
-        : reject(new Error("The media duration could not be read."));
+      if (code === 0 && Number.isFinite(duration) && duration > 0) {
+        resolve(duration);
+        return;
+      }
+      reject(new Error("The media duration could not be read."));
     });
   });
 }

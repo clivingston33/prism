@@ -28,7 +28,7 @@ function streamsFor(probe: MediaProbe, type: MediaStreamInfo["type"]) {
   );
 }
 
-function extensionFor(probe: MediaProbe): RemuxContainer {
+function extensionFor(probe: MediaProbe): Exclude<RemuxContainer, "auto"> {
   const extension = probe.extension.toLowerCase();
   if (extension === "mp4" || extension === "m4v") return "mp4";
   if (extension === "mov") return "mov";
@@ -125,12 +125,10 @@ export function evaluateRemuxCompatibility(
   requested: RemuxContainer,
 ): RemuxCompatibility {
   const recommended = recommendedRemuxContainer(probe);
-  const effective = (
-    requested === "auto" ? extensionFor(probe) : requested
-  ) as Exclude<RemuxContainer, "auto">;
+  const effective = requested === "auto" ? extensionFor(probe) : requested;
   const issues = probe.streams
     .map((stream) => checkStream(stream, effective))
-    .filter(Boolean) as NonNullable<ReturnType<typeof checkStream>>[];
+    .filter((issue): issue is NonNullable<typeof issue> => issue !== null);
   const level =
     issues.length === 0
       ? "fully_compatible"
@@ -234,7 +232,7 @@ export function remuxOutputPath(
     const safeName =
       path
         .basename(name)
-        .replace(/[<>:"/\\|?*\x00-\x1f]/g, " ")
+        .replace(/[<>:"/\\|?*\p{Cc}]/gu, " ")
         .trim() || sourceName;
     return path.join(directory, `${safeName}.${remuxOutputExtension(target)}`);
   }

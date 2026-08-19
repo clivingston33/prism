@@ -9,7 +9,7 @@ const USER_AGENT =
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 30_000;
 
-const EXTENSION_BY_TYPE: Record<string, string> = {
+const EXTENSION_BY_TYPE = {
   "video/mp4": "mp4",
   "video/quicktime": "mov",
   "video/webm": "webm",
@@ -103,8 +103,8 @@ function isRestrictedAccessPage(html: string) {
   );
 }
 
-export function shouldTryGenericFallback(error: unknown) {
-  const code = classifyDownloadError(error).code;
+export function shouldTryGenericFallback(cause: unknown) {
+  const code = classifyDownloadError(cause).code;
   return code === "EXTRACTOR_ERROR" || code === "UNSUPPORTED_URL";
 }
 
@@ -190,15 +190,16 @@ async function fetchWithCancellation(
     if (isCancelled()) controller.abort();
   }, 100);
   try {
+    const headers = new Headers({
+      "User-Agent": USER_AGENT,
+      Accept: "video/*,audio/*,text/html;q=0.8,*/*;q=0.5",
+      "Accept-Language": "en-US,en;q=0.9",
+    });
+    if (referer) headers.set("Referer", referer);
     return await fetch(url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "video/*,audio/*,text/html;q=0.8,*/*;q=0.5",
-        "Accept-Language": "en-US,en;q=0.9",
-        ...(referer ? { Referer: referer } : {}),
-      },
+      headers,
     });
   } catch (error) {
     if (isCancelled()) throw new JobCancelledError();

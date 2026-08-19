@@ -1,4 +1,7 @@
+import { z } from "zod";
+
 import type {
+  AppSettings,
   AudioFormat,
   ConversionFormat,
   ConversionRequest,
@@ -30,14 +33,14 @@ export class IpcValidationError extends Error {
   }
 }
 
-const DOWNLOAD_MODES: readonly DownloadMode[] = [
+const DOWNLOAD_MODES = [
   "video_audio",
   "video_only",
   "audio_only",
   "split",
-];
+] as const satisfies readonly DownloadMode[];
 
-const DOWNLOAD_FORMATS: readonly DownloadFormat[] = [
+const DOWNLOAD_FORMATS = [
   "auto",
   "mp4",
   "mp3",
@@ -48,17 +51,17 @@ const DOWNLOAD_FORMATS: readonly DownloadFormat[] = [
   "aac",
   "flac",
   "prores",
-];
+] as const satisfies readonly DownloadFormat[];
 
-const AUDIO_FORMATS: readonly AudioFormat[] = [
+const AUDIO_FORMATS = [
   "source",
   "mp3",
   "wav",
   "aac",
   "flac",
-];
+] as const satisfies readonly AudioFormat[];
 
-const QUALITIES: readonly Quality[] = [
+const QUALITIES = [
   "best",
   "2160p",
   "1440p",
@@ -66,16 +69,16 @@ const QUALITIES: readonly Quality[] = [
   "720p",
   "480p",
   "360p",
-];
+] as const satisfies readonly Quality[];
 
-const TRANSCRIPT_FORMATS: readonly TranscriptFormat[] = [
+const TRANSCRIPT_FORMATS = [
   "txt",
   "srt",
   "vtt",
   "json",
-];
+] as const satisfies readonly TranscriptFormat[];
 
-const CONVERSION_FORMATS: readonly ConversionFormat[] = [
+const CONVERSION_FORMATS = [
   "mp4",
   "mov",
   "webm",
@@ -88,69 +91,92 @@ const CONVERSION_FORMATS: readonly ConversionFormat[] = [
   "aac",
   "flac",
   "ogg",
-];
+] as const satisfies readonly ConversionFormat[];
 
-const REMUX_CONTAINERS: readonly RemuxContainer[] = [
+const REMUX_CONTAINERS = [
   "auto",
   "mkv",
   "mp4",
   "mov",
   "webm",
   "m4a",
-];
-const COMPATIBILITY_ACTIONS: readonly CompatibilityAction[] = [
+] as const satisfies readonly RemuxContainer[];
+const COMPATIBILITY_ACTIONS = [
   "recommended",
   "exclude",
   "convert",
   "cancel",
-];
+] as const satisfies readonly CompatibilityAction[];
 
-function asRecord(value: unknown, what: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+const BOUNDARY_VALUE_SCHEMA = z.unknown();
+const RECORD_SCHEMA = z.record(z.string(), BOUNDARY_VALUE_SCHEMA);
+const STRING_SCHEMA = z.string();
+const BOOLEAN_SCHEMA = z.boolean();
+const FINITE_NUMBER_SCHEMA = z.coerce.number().finite();
+
+function asRecord(value: z.input<typeof BOUNDARY_VALUE_SCHEMA>, what: string) {
+  const parsed = RECORD_SCHEMA.safeParse(value);
+  if (!parsed.success) {
     throw new IpcValidationError(`${what} must be an object.`);
   }
-  return value as Record<string, unknown>;
+  return parsed.data;
 }
 
-export function requireString(value: unknown, name: string): string {
-  if (typeof value !== "string" || !value.trim()) {
+export function requireString(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  name: string,
+): string {
+  const parsed = STRING_SCHEMA.safeParse(value);
+  if (!parsed.success || !parsed.data.trim()) {
     throw new IpcValidationError(`${name} must be a non-empty string.`);
   }
-  return value;
+  return parsed.data;
 }
 
-function optionalString(value: unknown, name: string): string | undefined {
+function optionalString(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  name: string,
+): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
-  if (typeof value !== "string") {
+  const parsed = STRING_SCHEMA.safeParse(value);
+  if (!parsed.success) {
     throw new IpcValidationError(`${name} must be a string.`);
   }
-  return value;
+  return parsed.data;
 }
 
-function optionalBoolean(value: unknown, name: string): boolean | undefined {
+function optionalBoolean(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  name: string,
+): boolean | undefined {
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== "boolean") {
+  const parsed = BOOLEAN_SCHEMA.safeParse(value);
+  if (!parsed.success) {
     throw new IpcValidationError(`${name} must be a boolean.`);
   }
-  return value;
+  return parsed.data;
 }
 
 function optionalEnum<T extends string>(
-  value: unknown,
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
   allowed: readonly T[],
   name: string,
 ): T | undefined {
   if (value === undefined || value === null || value === "") return undefined;
-  if (typeof value !== "string" || !allowed.includes(value as T)) {
+  const parsed = STRING_SCHEMA.safeParse(value);
+  const matched = parsed.success
+    ? allowed.find((candidate) => candidate === parsed.data)
+    : undefined;
+  if (matched === undefined) {
     throw new IpcValidationError(
       `${name} must be one of: ${allowed.join(", ")}.`,
     );
   }
-  return value as T;
+  return matched;
 }
 
 function requireEnum<T extends string>(
-  value: unknown,
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
   allowed: readonly T[],
   name: string,
 ): T {
@@ -164,18 +190,23 @@ function requireEnum<T extends string>(
 }
 
 function optionalFiniteNumber(
-  value: unknown,
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
   name: string,
 ): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) {
+  const parsed = FINITE_NUMBER_SCHEMA.safeParse(value);
+  if (!parsed.success) {
     throw new IpcValidationError(`${name} must be a finite number.`);
   }
-  return parsed;
+  return parsed.data;
 }
 
-function clampInteger(value: unknown, name: string, min: number, max: number) {
+function clampInteger(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  name: string,
+  min: number,
+  max: number,
+) {
   const parsed = optionalFiniteNumber(value, name);
   if (parsed === undefined) {
     throw new IpcValidationError(`${name} is required.`);
@@ -186,7 +217,10 @@ function clampInteger(value: unknown, name: string, min: number, max: number) {
 /** Matches plain seconds, M:SS, or H:MM:SS, each with optional millis. */
 const TIMESTAMP_PATTERN = /^(?:\d+|(?:\d+:)?[0-5]?\d:[0-5]\d)(?:\.\d{1,3})?$/;
 
-function optionalTimestamp(value: unknown, name: string): string | undefined {
+function optionalTimestamp(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  name: string,
+): string | undefined {
   const text = optionalString(value, name)?.trim();
   if (!text) return undefined;
   if (!TIMESTAMP_PATTERN.test(text)) {
@@ -197,7 +231,10 @@ function optionalTimestamp(value: unknown, name: string): string | undefined {
   return text;
 }
 
-export function parseHttpUrl(value: unknown, name = "URL"): string {
+export function parseHttpUrl(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  name = "URL",
+): string {
   const text = requireString(value, name).trim();
   let parsed: URL;
   try {
@@ -214,7 +251,9 @@ export function parseHttpUrl(value: unknown, name = "URL"): string {
   return text;
 }
 
-export function parseDownloadRequest(value: unknown): DownloadRequest {
+export function parseDownloadRequest(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+): DownloadRequest {
   const raw = asRecord(value, "Download request");
   const request: DownloadRequest = {
     url: parseHttpUrl(raw.url, "URL"),
@@ -323,7 +362,9 @@ export function parseDownloadRequest(value: unknown): DownloadRequest {
   return request;
 }
 
-export function parseConversionRequest(value: unknown): ConversionRequest {
+export function parseConversionRequest(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+): ConversionRequest {
   const raw = asRecord(value, "Conversion request");
   const request: ConversionRequest = {
     filePath: requireString(raw.filePath, "filePath"),
@@ -365,7 +406,9 @@ export function parseConversionRequest(value: unknown): ConversionRequest {
   return request;
 }
 
-export function parseRemuxRequest(value: unknown): RemuxRequest {
+export function parseRemuxRequest(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+): RemuxRequest {
   const raw = asRecord(value, "Remux request");
   const request: RemuxRequest = {
     filePath: requireString(raw.filePath, "filePath"),
@@ -413,28 +456,33 @@ export function parseRemuxRequest(value: unknown): RemuxRequest {
     request.preserveAttachments = preserveAttachments;
   if (raw.trackSelection !== undefined) {
     const track = asRecord(raw.trackSelection, "trackSelection");
-    const parseIndices = (value: unknown, name: string) => {
+    const parseIndices = (
+      value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+      name: string,
+    ) => {
       if (value === undefined) return undefined;
-      if (
-        !Array.isArray(value) ||
-        value.some((item) => !Number.isInteger(item) || Number(item) < 0)
-      ) {
+      const parsed = z.array(z.number().int().nonnegative()).safeParse(value);
+      if (!parsed.success) {
         throw new IpcValidationError(
           `${name} must be an array of non-negative integers.`,
         );
       }
-      return value.map(Number);
+      return parsed.data;
     };
     const selection: TrackSelection = {};
     const video = parseIndices(track.video, "trackSelection.video");
     const audio = parseIndices(track.audio, "trackSelection.audio");
     const subtitle = parseIndices(track.subtitle, "trackSelection.subtitle");
-    const parseDefaultIndex = (value: unknown, name: string) => {
+    const parseDefaultIndex = (
+      value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+      name: string,
+    ) => {
       if (value === undefined) return undefined;
-      if (!Number.isInteger(value) || Number(value) < 0) {
+      const parsed = z.number().int().nonnegative().safeParse(value);
+      if (!parsed.success) {
         throw new IpcValidationError(`${name} must be a non-negative integer.`);
       }
-      return Number(value);
+      return parsed.data;
     };
     const defaultAudio = parseDefaultIndex(
       track.defaultAudio,
@@ -455,12 +503,14 @@ export function parseRemuxRequest(value: unknown): RemuxRequest {
   return request;
 }
 
-export function parseTranscriptFormat(value: unknown): TranscriptFormat {
+export function parseTranscriptFormat(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+): TranscriptFormat {
   return requireEnum(value ?? "txt", TRANSCRIPT_FORMATS, "transcriptFormat");
 }
 
 export function parseTranscriptionRequest(
-  value: unknown,
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
 ): TranscriptionRequest {
   const raw = asRecord(value, "Transcription request");
   const language =
@@ -492,10 +542,20 @@ export function parseTranscriptionRequest(
   };
 }
 
+type SettingsValidators = {
+  [Key in keyof AppSettings]: (
+    value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+  ) => AppSettings[Key] | undefined;
+};
+
 /** Setting keys the renderer may write, with their runtime validators. */
-const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
+const SETTINGS_VALIDATORS = {
   defaultVideoFormat: (value) =>
-    requireEnum(value, DOWNLOAD_FORMATS, "defaultVideoFormat"),
+    requireEnum(
+      value,
+      ["auto", "mp4", "mov", "webm", "mkv", "prores"] as const,
+      "defaultVideoFormat",
+    ),
   defaultAudioFormat: (value) =>
     requireEnum(value, AUDIO_FORMATS, "defaultAudioFormat"),
   maxConcurrentDownloads: (value) => {
@@ -519,12 +579,7 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
       ["original", "mp4-compatible", "custom"] as const,
       "defaultDownloadMode",
     ),
-  defaultQuality: (value) =>
-    requireEnum(
-      value,
-      ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"] as const,
-      "defaultQuality",
-    ),
+  defaultQuality: (value) => requireEnum(value, QUALITIES, "defaultQuality"),
   retryCount: (value) => clampInteger(value, "retryCount", 0, 20),
   fragmentRetryCount: (value) =>
     clampInteger(value, "fragmentRetryCount", 0, 20),
@@ -533,11 +588,7 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
   defaultMediaToolsMode: (value) =>
     requireEnum(value, ["remux", "convert"] as const, "defaultMediaToolsMode"),
   defaultRemuxContainer: (value) =>
-    requireEnum(
-      value,
-      ["auto", "mkv", "mp4", "mov", "webm", "m4a"] as const,
-      "defaultRemuxContainer",
-    ),
+    requireEnum(value, REMUX_CONTAINERS, "defaultRemuxContainer"),
   hardwareAcceleration: (value) =>
     requireEnum(value, ["auto", "off"] as const, "hardwareAcceleration"),
   mediaToolsPreserveMetadata: (value) =>
@@ -556,11 +607,7 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
   transcriptionLanguage: (value) =>
     requireString(value, "transcriptionLanguage"),
   transcriptionFormat: (value) =>
-    requireEnum(
-      value,
-      ["txt", "srt", "vtt", "json"] as const,
-      "transcriptionFormat",
-    ),
+    requireEnum(value, TRANSCRIPT_FORMATS, "transcriptionFormat"),
   transcriptionSaveBesideSource: (value) =>
     optionalBoolean(value, "transcriptionSaveBesideSource"),
   transcriptionDirectory: (value) =>
@@ -575,20 +622,27 @@ const SETTINGS_VALIDATORS: Record<string, (value: unknown) => unknown> = {
     Math.max(0, optionalFiniteNumber(value, "lastYtDlpUpdateCheck") || 0),
   theme: (value) =>
     requireEnum(value, ["system", "light", "dark"] as const, "theme"),
-};
+} satisfies SettingsValidators;
 
 /**
  * Validates a partial settings update. Unknown keys are dropped rather than
  * rejected so older renderers cannot wedge settings writes; known keys with
  * invalid values throw.
  */
-export function parseSettingsPatch(value: unknown): Record<string, unknown> {
+export function parseSettingsPatch(
+  value: z.input<typeof BOUNDARY_VALUE_SCHEMA>,
+): Partial<AppSettings> {
   const raw = asRecord(value, "Settings update");
-  const patch: Record<string, unknown> = {};
+  const entries: [
+    keyof AppSettings,
+    AppSettings[keyof AppSettings] | undefined,
+  ][] = [];
   for (const [key, entry] of Object.entries(raw)) {
-    const validator = SETTINGS_VALIDATORS[key];
-    if (!validator) continue;
-    patch[key] = validator(entry);
+    if (!Object.hasOwn(SETTINGS_VALIDATORS, key)) continue;
+    // SAFETY: Object.hasOwn established that key names an owned validator.
+    const settingKey = key as keyof AppSettings;
+    entries.push([settingKey, SETTINGS_VALIDATORS[settingKey](entry)]);
   }
-  return patch;
+  // SAFETY: Every entry key and value was produced by its AppSettings validator.
+  return Object.fromEntries(entries) as Partial<AppSettings>;
 }

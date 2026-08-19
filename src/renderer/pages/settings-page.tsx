@@ -42,19 +42,21 @@ function Toggle({
   );
 }
 
-function Select({
+interface SelectProps<Value extends string> {
+  label: string;
+  value: Value;
+  options: Array<[Value, string]>;
+  onChange: (value: Value) => void;
+  help?: string;
+}
+
+function Select<Value extends string>({
   label,
   value,
   options,
   onChange,
   help,
-}: {
-  label: string;
-  value: string;
-  options: Array<[string, string]>;
-  onChange: (value: string) => void;
-  help?: string;
-}) {
+}: SelectProps<Value>) {
   return (
     <label className="block border-b border-border py-3 last:border-0">
       <span className="block text-sm text-text-primary">{label}</span>
@@ -64,7 +66,12 @@ function Select({
       <select
         className="field-control max-w-sm"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => {
+          const selected = options.find(
+            ([option]) => option === event.currentTarget.value,
+          );
+          if (selected) onChange(selected[0]);
+        }}
       >
         {options.map(([option, text]) => (
           <option key={option} value={option}>
@@ -97,7 +104,10 @@ export function SettingsPage() {
       }).`,
     );
   };
-  const update = async (key: string, value: unknown) => {
+  const update = async <Key extends keyof Settings>(
+    key: Key,
+    value: Settings[Key],
+  ) => {
     const next = await window.prism.settings.update({ [key]: value });
     setSettings(next);
   };
@@ -116,12 +126,9 @@ export function SettingsPage() {
     return (
       <main className="p-8 text-sm text-text-tertiary">Loading settings…</main>
     );
-  const value = (key: string, fallback = "") =>
-    String(settings[key] ?? fallback);
-  const bool = (key: string) => settings[key] === true;
-  const chooseDir = async (key: string) => {
+  const chooseDownloadDirectory = async () => {
     const directory = await window.prism.settings.selectDirectory();
-    if (directory) await update(key, directory);
+    if (directory) await update("downloadLocation", directory);
   };
   const render = () => {
     if (section === "Downloads")
@@ -129,12 +136,12 @@ export function SettingsPage() {
         <Panel title="Downloads">
           <DirectoryRow
             label="Download location"
-            value={value("downloadLocation")}
-            onClick={() => void chooseDir("downloadLocation")}
+            value={settings.downloadLocation}
+            onClick={() => void chooseDownloadDirectory()}
           />
           <Select
             label="Default download mode"
-            value={value("defaultDownloadMode", "original")}
+            value={settings.defaultDownloadMode}
             options={[
               ["original", "Original — fastest"],
               ["mp4-compatible", "MP4 compatible source"],
@@ -144,7 +151,7 @@ export function SettingsPage() {
           />
           <Select
             label="Default quality"
-            value={value("defaultQuality", "best")}
+            value={settings.defaultQuality}
             options={[
               ["best", "Best available"],
               ["2160p", "2160p"],
@@ -190,7 +197,7 @@ export function SettingsPage() {
           />
           <Toggle
             label="Low-resource mode"
-            value={bool("lowResourceMode")}
+            value={settings.lowResourceMode}
             onChange={(v) => void update("lowResourceMode", v)}
             help="Reduces parallel work for older machines."
           />
@@ -228,7 +235,7 @@ export function SettingsPage() {
         <Panel title="Media Tools">
           <Select
             label="Default mode"
-            value={value("defaultMediaToolsMode", "remux")}
+            value={settings.defaultMediaToolsMode}
             options={[
               ["remux", "Remux — fast and lossless"],
               ["convert", "Convert — re-encode"],
@@ -237,7 +244,7 @@ export function SettingsPage() {
           />
           <Select
             label="Default remux container"
-            value={value("defaultRemuxContainer", "auto")}
+            value={settings.defaultRemuxContainer}
             options={[
               ["auto", "Auto — recommended"],
               ["mkv", "MKV"],
@@ -264,7 +271,7 @@ export function SettingsPage() {
           />
           <Select
             label="Hardware acceleration"
-            value={value("hardwareAcceleration", "auto")}
+            value={settings.hardwareAcceleration}
             options={[
               ["auto", "Auto — use GPU encoder when available"],
               ["off", "Off — always use the CPU encoder"],
@@ -279,7 +286,7 @@ export function SettingsPage() {
         <Panel title="Library">
           <Select
             label="Missing-file behavior"
-            value={value("missingFileBehavior", "mark")}
+            value={settings.missingFileBehavior}
             options={[
               ["mark", "Mark as missing — recommended"],
               ["ask", "Ask when detected"],
@@ -309,14 +316,14 @@ export function SettingsPage() {
           ) : (
             <Select
               label="Default model"
-              value={value("transcriptionModelId", "base")}
+              value={settings.transcriptionModelId}
               options={models.map((model) => [model.id, model.displayName])}
               onChange={(v) => void update("transcriptionModelId", v)}
             />
           )}
           <Select
             label="Whisper runtime"
-            value={value("whisperRuntime", "auto")}
+            value={settings.whisperRuntime}
             options={[
               ["auto", "Auto — GPU runtime when installed"],
               ["cpu", "CPU only"],
@@ -326,7 +333,7 @@ export function SettingsPage() {
           />
           <Select
             label="Default language"
-            value={value("transcriptionLanguage", "auto")}
+            value={settings.transcriptionLanguage}
             options={[
               ["auto", "Auto detect"],
               ["en", "English"],
@@ -338,7 +345,7 @@ export function SettingsPage() {
           />
           <Select
             label="Default transcript format"
-            value={value("transcriptionFormat", "txt")}
+            value={settings.transcriptionFormat}
             options={[
               ["txt", "TXT"],
               ["srt", "SRT"],
@@ -396,7 +403,7 @@ export function SettingsPage() {
         <Panel title="Application">
           <Select
             label="Theme"
-            value={value("theme", "system")}
+            value={settings.theme}
             options={[
               ["system", "System"],
               ["dark", "Dark"],

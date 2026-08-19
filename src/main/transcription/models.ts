@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { app } from "electron";
 import crypto from "crypto";
 import fs from "fs";
@@ -150,7 +152,7 @@ export function findWhisperModel(id: string) {
 async function sha1File(filePath: string) {
   const hash = crypto.createHash("sha1");
   const stream = fs.createReadStream(filePath);
-  for await (const chunk of stream) hash.update(chunk as Buffer);
+  for await (const chunk of stream) hash.update(chunk);
   return hash.digest("hex");
 }
 
@@ -175,6 +177,14 @@ interface VerificationMarker {
   mtimeMs: number;
   sha1: string;
 }
+const VERIFICATION_MARKER_SCHEMA = z.object({
+  size: z.number(),
+  mtimeMs: z.number(),
+  sha1: z.string(),
+});
+const FAILURE_MARKER_SCHEMA = z.object({
+  error: z.string().optional(),
+});
 
 function markerPath(target: string) {
   return `${target}.ok`;
@@ -182,19 +192,13 @@ function markerPath(target: string) {
 
 async function readMarker(target: string): Promise<VerificationMarker | null> {
   try {
-    const parsed = JSON.parse(
-      await fs.promises.readFile(markerPath(target), "utf8"),
-    ) as VerificationMarker;
-    if (
-      typeof parsed.size === "number" &&
-      typeof parsed.mtimeMs === "number" &&
-      typeof parsed.sha1 === "string"
-    )
-      return parsed;
+    const parsed = VERIFICATION_MARKER_SCHEMA.safeParse(
+      JSON.parse(await fs.promises.readFile(markerPath(target), "utf8")),
+    );
+    return parsed.success ? parsed.data : null;
   } catch {
-    // No or unreadable marker.
+    return null;
   }
-  return null;
 }
 
 async function writeMarker(target: string, sha1: string) {
@@ -283,9 +287,9 @@ export async function getModelStates(): Promise<WhisperModelState[]> {
       if (bytesDownloaded)
         return { ...model, status: "paused", path: target, bytesDownloaded };
       try {
-        const failure = JSON.parse(
-          await fs.promises.readFile(`${target}.failed`, "utf8"),
-        ) as { error?: string };
+        const failure = FAILURE_MARKER_SCHEMA.parse(
+          JSON.parse(await fs.promises.readFile(`${target}.failed`, "utf8")),
+        );
         return {
           ...model,
           status: "failed",

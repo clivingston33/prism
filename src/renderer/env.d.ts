@@ -75,15 +75,7 @@ type JobStage =
   | "thumbnail"
   | "finalize";
 
-interface Settings {
-  defaultVideoFormat: "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
-  defaultAudioFormat: "source" | "mp3" | "wav" | "aac" | "flac";
-  maxConcurrentDownloads: 1 | 2 | 3;
-  concurrentFragments: number;
-  downloadLocation: string;
-  [key: string]: unknown;
-  theme: "dark" | "light" | "system";
-}
+type Settings = import("../shared/contracts.ts").AppSettings;
 
 interface GpuRuntimeState {
   status:
@@ -140,121 +132,9 @@ interface WhisperModelState {
   recommended?: boolean;
 }
 
-interface DownloadItem {
-  id: string;
-  url: string;
-  platform: string;
-  title: string;
-  format: string;
-  mode?: "video_audio" | "video_only" | "audio_only" | "split";
-  audioFormat?: string;
-  quality?: string;
-  status: JobStatus;
-  progress: number;
-  createdAt: string;
-  updatedAt?: string;
-  revision?: number;
-  attemptId?: string;
-  jobType?: "download" | "conversion" | "transcription" | "thumbnail";
-  stage?: JobStage;
-  stageLabel?: string;
-  stageProgress?: number;
-  downloadedBytes?: number;
-  totalBytes?: number;
-  estimatedTotalBytes?: number;
-  speedBytesPerSecond?: number;
-  speedMultiplier?: number;
-  etaSeconds?: number;
-  processedSeconds?: number;
-  durationSeconds?: number;
-  currentFile?: string;
-  jobError?: {
-    code: string;
-    userMessage: string;
-    technicalDetails?: string;
-    stage?: JobStage;
-    retryable: boolean;
-  };
-  completedAt?: string;
-  filePath?: string;
-  filePaths?: string[];
-  error?: string;
-  retryCount: number;
-  queueOrder?: number;
-  playlistId?: string;
-  playlistTitle?: string;
-  playlistIndex?: number;
-  playlistCount?: number;
-  playlistDirectory?: boolean;
-  thumbnail?: string;
-  fileState?: "present" | "missing" | "partial" | "unavailable";
-  missingPaths?: string[];
-  missingChecks?: number;
-  missingCheckedAt?: string;
-  size?: number;
-  duration?: number;
-  resolution?: string;
-  transcript?: boolean;
-  transcriptFormat?: "txt" | "srt" | "vtt" | "json";
-  includeSubtitles?: boolean;
-  saveSubtitleSidecar?: boolean;
-  subtitleLanguages?: string;
-  subtitleDisposition?: "default" | "forced" | "none";
-  subtitleEmbedded?: boolean;
-  subtitleTrackCount?: number;
-  subtitleVerification?: string;
-  trimStart?: string;
-  trimEnd?: string;
-  transcriptPath?: string;
-  subtitlePaths?: string[];
-  transcriptText?: string;
-  transcriptError?: string;
-  imageCount?: number;
-  containerNote?: string;
-  diagnostics?: {
-    command?: string;
-    estimatedSizeBytes?: number;
-    freeSpaceBytes?: number;
-    destination?: string;
-    outputContainer?: string;
-    logTail?: string;
-  };
-  request?: DownloadOptions;
-}
+type DownloadItem = import("../shared/contracts.ts").HistoryRecord;
 
-interface DownloadOptions {
-  url: string;
-  mode?: "video_audio" | "video_only" | "audio_only" | "split";
-  format:
-    | "auto"
-    | "mp4"
-    | "mp3"
-    | "wav"
-    | "mov"
-    | "webm"
-    | "mkv"
-    | "aac"
-    | "flac"
-    | "prores";
-  audioFormat?: "source" | "mp3" | "wav" | "aac" | "flac";
-  audioTrackId?: string;
-  conflictAction?: "rename" | "overwrite" | "skip";
-  quality?: "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
-  transcript?: boolean;
-  transcriptFormat?: "txt" | "srt" | "vtt" | "json";
-  includeSubtitles?: boolean;
-  saveSubtitleSidecar?: boolean;
-  subtitleDisposition?: "default" | "forced" | "none";
-  subtitleLanguages?: string;
-  trimStart?: string;
-  trimEnd?: string;
-  playlistId?: string;
-  playlistTitle?: string;
-  playlistIndex?: number;
-  playlistCount?: number;
-  playlistEntryTitle?: string;
-  playlistDirectory?: boolean;
-}
+type DownloadOptions = import("../shared/contracts.ts").DownloadRequest;
 
 interface PlaylistInfo {
   title: string;
@@ -344,7 +224,7 @@ interface PrismAPI {
     hardwareProfile(): Promise<HardwareProfile>;
     optimizeForDevice(): Promise<{
       profile: HardwareProfile;
-      applied: Record<string, unknown>;
+      applied: Partial<Settings>;
       settings: Settings;
     }>;
     ytdlpUpdateState(checkLatest?: boolean): Promise<YtDlpUpdateState>;

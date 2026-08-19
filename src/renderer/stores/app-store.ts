@@ -34,7 +34,9 @@ interface UpdateState {
 }
 
 function shallowEqualDownload(a: DownloadItem, b: DownloadItem) {
+  // SAFETY: Object.keys returns only owned keys from the HistoryRecord value.
   const aKeys = Object.keys(a) as (keyof DownloadItem)[];
+  // SAFETY: Object.keys returns only owned keys from the HistoryRecord value.
   const bKeys = Object.keys(b) as (keyof DownloadItem)[];
   if (aKeys.length !== bKeys.length) return false;
   return aKeys.every((key) => a[key] === b[key]);

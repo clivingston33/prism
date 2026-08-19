@@ -56,7 +56,7 @@ export function TranscriptsPage() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [format, setFormat] = useState<Format>(
-    (settings?.transcriptionFormat as Format) || "txt",
+    settings?.transcriptionFormat || "txt",
   );
   const [language, setLanguage] = useState(
     String(settings?.transcriptionLanguage || "auto"),
@@ -158,9 +158,7 @@ export function TranscriptsPage() {
   useEffect(
     () =>
       window.prism.on("history:update", (history) => {
-        const item = (history as DownloadItem[]).find(
-          (entry) => entry.id === runningId,
-        );
+        const item = history.find((entry) => entry.id === runningId);
         if (!item) return;
         if (item.status === "completed") {
           setRunningId(null);
@@ -281,6 +279,7 @@ export function TranscriptsPage() {
               onDrop={(event) => {
                 event.preventDefault();
                 setIsDragging(false);
+                // SAFETY: Electron augments dropped File objects with their absolute path.
                 const path = (
                   event.dataTransfer.files[0] as
                     (File & { path?: string }) | undefined

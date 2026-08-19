@@ -43,7 +43,7 @@ export function DownloadPage() {
   const [clipboardUrl, setClipboardUrl] = useState<string | null>(null);
   // URLs the user dismissed or already acted on; never re-offer them.
   const seenClipboardUrls = useRef(new Set<string>());
-  const [metadata, setMetadata] = useState<any>(null);
+  const [metadata, setMetadata] = useState<VideoMetadata | null>(null);
   const [isFetchingMetadata, setIsFetchingMetadata] = useState(false);
   const [playlist, setPlaylist] = useState<PlaylistInfo | null>(null);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<
@@ -69,8 +69,11 @@ export function DownloadPage() {
         event.key.toLocaleLowerCase() !== "v"
       )
         return;
-      const target = event.target as HTMLElement | null;
-      if (target?.matches("input, textarea, [contenteditable=true]")) return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.matches("input, textarea, [contenteditable=true]")
+      )
+        return;
       event.preventDefault();
       void navigator.clipboard.readText().then((text) => {
         const normalized = normalizeUrls(text);

@@ -7,14 +7,43 @@ import {
   getYtDlpUpdateState,
   installLatestYtDlp,
 } from "../download/ytdlp-updater";
+import type { AppSettings } from "../../shared/contracts.ts";
 
-function cleanSettings(settings: Record<string, unknown>) {
-  return Object.fromEntries(
-    Object.keys(defaultSettings).map((key) => [key, settings[key]]),
-  );
+function cleanSettings(settings: AppSettings): AppSettings {
+  return {
+    defaultVideoFormat: settings.defaultVideoFormat,
+    defaultAudioFormat: settings.defaultAudioFormat,
+    maxConcurrentDownloads: settings.maxConcurrentDownloads,
+    concurrentFragments: settings.concurrentFragments,
+    downloadLocation: settings.downloadLocation,
+    defaultDownloadMode: settings.defaultDownloadMode,
+    defaultQuality: settings.defaultQuality,
+    retryCount: settings.retryCount,
+    fragmentRetryCount: settings.fragmentRetryCount,
+    downloadSpeedLimit: settings.downloadSpeedLimit,
+    lowResourceMode: settings.lowResourceMode,
+    defaultMediaToolsMode: settings.defaultMediaToolsMode,
+    hardwareAcceleration: settings.hardwareAcceleration,
+    defaultRemuxContainer: settings.defaultRemuxContainer,
+    mediaToolsPreserveMetadata: settings.mediaToolsPreserveMetadata,
+    mediaToolsPreserveChapters: settings.mediaToolsPreserveChapters,
+    mediaToolsPreserveAllTracks: settings.mediaToolsPreserveAllTracks,
+    missingFileBehavior: settings.missingFileBehavior,
+    transcriptionModelId: settings.transcriptionModelId,
+    transcriptionLanguage: settings.transcriptionLanguage,
+    transcriptionFormat: settings.transcriptionFormat,
+    transcriptionSaveBesideSource: settings.transcriptionSaveBesideSource,
+    transcriptionDirectory: settings.transcriptionDirectory,
+    transcriptionThreads: settings.transcriptionThreads,
+    whisperRuntime: settings.whisperRuntime,
+    watchClipboard: settings.watchClipboard,
+    autoUpdateYtdlp: settings.autoUpdateYtdlp,
+    lastYtDlpUpdateCheck: settings.lastYtDlpUpdateCheck,
+    theme: settings.theme,
+  };
 }
 
-function settingsForRenderer(settings: Record<string, unknown>) {
+function settingsForRenderer(settings: AppSettings) {
   const clean = cleanSettings(settings);
   return clean;
 }
@@ -23,7 +52,7 @@ export function setupSettingsIPC() {
   // Normalize persisted settings on every startup. This migrates old
   // versions, removes obsolete cloud-transcription and decorative settings,
   // and preserves every setting that still has a live behavior.
-  const legacy = store.get("settings", {}) as Record<string, unknown>;
+  const legacy = store.get("settings");
   store.set("settings", cleanSettings({ ...defaultSettings, ...legacy }));
   for (const channel of [
     "settings:get",
@@ -42,7 +71,7 @@ export function setupSettingsIPC() {
   ipcMain.handle("settings:get", () => {
     return settingsForRenderer({
       ...defaultSettings,
-      ...(store.get("settings", {}) as Record<string, unknown>),
+      ...store.get("settings"),
     });
   });
 
@@ -50,7 +79,7 @@ export function setupSettingsIPC() {
     const patch = parseSettingsPatch(partialSettings);
     const current = {
       ...defaultSettings,
-      ...(store.get("settings", {}) as Record<string, unknown>),
+      ...store.get("settings"),
     };
     const updated = cleanSettings({ ...current, ...patch });
     store.set("settings", updated);
@@ -64,7 +93,7 @@ export function setupSettingsIPC() {
     const tuned = optimizedSettingsFor(profile);
     const current = {
       ...defaultSettings,
-      ...(store.get("settings", {}) as Record<string, unknown>),
+      ...store.get("settings"),
     };
     const updated = cleanSettings({ ...current, ...tuned });
     store.set("settings", updated);

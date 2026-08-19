@@ -1,7 +1,6 @@
 import Store from "electron-store";
 import { app } from "electron";
-
-export type MissingFileBehavior = "mark" | "remove" | "ask";
+import type { AppSettings, HistoryRecord } from "../shared/contracts.ts";
 
 export const defaultSettings = {
   // "auto" = Original — Fastest: keep source codecs, merge/remux only.
@@ -23,7 +22,7 @@ export const defaultSettings = {
   mediaToolsPreserveMetadata: true,
   mediaToolsPreserveChapters: true,
   mediaToolsPreserveAllTracks: true,
-  missingFileBehavior: "mark" as MissingFileBehavior,
+  missingFileBehavior: "mark",
   transcriptionModelId: "base",
   transcriptionLanguage: "auto",
   transcriptionFormat: "txt",
@@ -35,11 +34,11 @@ export const defaultSettings = {
   autoUpdateYtdlp: true,
   lastYtDlpUpdateCheck: 0,
   theme: "system",
-} as const satisfies Record<string, unknown>;
+} as const satisfies AppSettings;
 
 export const store = new Store<{
-  settings: Record<string, unknown>;
-  history: unknown[];
+  settings: AppSettings;
+  history: HistoryRecord[];
 }>({
   name: "prism-settings",
   defaults: {

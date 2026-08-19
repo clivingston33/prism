@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import fs from "fs";
 import path from "path";
 import { store } from "../store";
@@ -5,23 +7,18 @@ import { store } from "../store";
 const MAX_TRANSCRIPT_BYTES = 10 * 1024 * 1024;
 
 function recordFor(id: string) {
-  return (store.get("history", []) as Record<string, unknown>[]).find(
-    (entry) => entry.id === id,
-  );
+  return store.get("history", []).find((entry) => entry.id === id);
 }
 
 function transcriptPathFor(id: string) {
   const record = recordFor(id);
   if (!record) throw new Error("Transcript history item was not found.");
   const transcriptPath = record.transcriptPath;
-  if (typeof transcriptPath !== "string" || !transcriptPath)
+  if (!transcriptPath)
     throw new Error("This item does not have a saved transcript.");
   const allowed = new Set(
-    [
-      record.transcriptPath,
-      ...(Array.isArray(record.subtitlePaths) ? record.subtitlePaths : []),
-    ]
-      .filter((value): value is string => typeof value === "string")
+    [record.transcriptPath, ...(record.subtitlePaths || [])]
+      .filter((value): value is string => value !== undefined)
       .map((value) => path.resolve(value)),
   );
   const resolved = path.resolve(transcriptPath);
@@ -61,9 +58,10 @@ export async function writeTranscriptFile(id: string, content: string) {
   await fs.promises.writeFile(temporary, content, "utf8");
   try {
     await fs.promises.rename(temporary, filePath);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "EEXIST" && code !== "EPERM") throw error;
+  } catch (cause) {
+    const parsed = z.object({ code: z.string().optional() }).safeParse(cause);
+    const code = parsed.success ? parsed.data.code : undefined;
+    if (code !== "EEXIST" && code !== "EPERM") throw cause;
     await fs.promises.copyFile(temporary, filePath);
     await fs.promises.rm(temporary, { force: true });
   }

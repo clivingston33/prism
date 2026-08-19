@@ -4,7 +4,14 @@ module.exports = {
     "@electron-toolkit/eslint-config-ts",
     "@electron-toolkit/eslint-config-prettier",
   ],
-  ignorePatterns: ["node_modules/", "out/", "dist/", "test/fixtures/"],
+  ignorePatterns: [
+    "node_modules/",
+    "out/",
+    "dist/",
+    "test/fixtures/",
+    ".agents/",
+    "tools/oxlint/anti-slop/",
+  ],
   rules: {
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-unused-vars": [

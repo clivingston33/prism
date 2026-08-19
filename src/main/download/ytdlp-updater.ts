@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -10,16 +12,22 @@ const RELEASE_API =
   "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
 const CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
-interface ReleaseAsset {
-  name: string;
-  browser_download_url: string;
-  size?: number;
-}
+const RELEASE_RESPONSE_SCHEMA = z.object({
+  tag_name: z.string().min(1),
+  assets: z.array(
+    z.object({
+      name: z.string(),
+      browser_download_url: z.string().url(),
+      size: z.number().optional(),
+    }),
+  ),
+});
+type ReleaseResponse = z.output<typeof RELEASE_RESPONSE_SCHEMA>;
 
-interface ReleaseResponse {
-  tag_name: string;
-  assets: ReleaseAsset[];
-}
+const RUNTIME_POINTER_SCHEMA = z.object({
+  version: z.string().optional(),
+  executable: z.string().optional(),
+});
 
 export interface YtDlpUpdateState {
   status:
@@ -38,9 +46,11 @@ export function ytDlpRuntimeRoot() {
 
 export function updatedYtDlpPath(): string | null {
   try {
-    const pointer = JSON.parse(
-      fs.readFileSync(path.join(ytDlpRuntimeRoot(), "current.json"), "utf8"),
-    ) as { version?: string; executable?: string };
+    const pointer = RUNTIME_POINTER_SCHEMA.parse(
+      JSON.parse(
+        fs.readFileSync(path.join(ytDlpRuntimeRoot(), "current.json"), "utf8"),
+      ),
+    );
     const executable =
       pointer.executable ||
       (pointer.version
@@ -81,23 +91,23 @@ function bundledYtDlpPath() {
 }
 
 function runVersion(executable: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(executable, ["--version"], { windowsHide: true });
-    let output = "";
-    const timeout = setTimeout(() => child.kill(), 15_000);
-    child.stdout.on("data", (data) => (output += data.toString()));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      code === 0 && output.trim()
-        ? resolve(output.trim().split(/\s+/)[0])
-        : reject(
-            new Error(
-              "The downloaded yt-dlp executable failed its version check.",
-            ),
-          );
-    });
+  const { promise, resolve, reject } = Promise.withResolvers<string>();
+  const child = spawn(executable, ["--version"], { windowsHide: true });
+  let output = "";
+  const timeout = setTimeout(() => child.kill(), 15_000);
+  child.stdout.on("data", (data) => (output += data.toString()));
+  child.on("error", reject);
+  child.on("close", (code) => {
+    clearTimeout(timeout);
+    if (code === 0 && output.trim()) {
+      resolve(output.trim().split(/\s+/)[0]);
+      return;
+    }
+    reject(
+      new Error("The downloaded yt-dlp executable failed its version check."),
+    );
   });
+  return promise;
 }
 
 async function latestRelease() {
@@ -111,10 +121,10 @@ async function latestRelease() {
     throw new Error(
       `GitHub returned ${response.status} while checking yt-dlp.`,
     );
-  const release = (await response.json()) as ReleaseResponse;
-  if (!release.tag_name || !Array.isArray(release.assets))
+  const release = RELEASE_RESPONSE_SCHEMA.safeParse(await response.json());
+  if (!release.success)
     throw new Error("GitHub returned an invalid yt-dlp release response.");
-  return release;
+  return release.data;
 }
 
 function assetFor(release: ReleaseResponse, name: string) {
@@ -233,9 +243,9 @@ export function installLatestYtDlp() {
 }
 
 export async function maybeAutoUpdateYtDlp() {
-  const settings = store.get("settings", {}) as Record<string, unknown>;
+  const settings = store.get("settings");
   if (settings.autoUpdateYtdlp === false) return;
-  const lastCheck = Number(settings.lastYtDlpUpdateCheck || 0);
+  const lastCheck = settings.lastYtDlpUpdateCheck || 0;
   if (Date.now() - lastCheck < CHECK_INTERVAL_MS) return;
   const checked = await getYtDlpUpdateState(true);
   if (checked.status === "available") await installLatestYtDlp();

@@ -76,11 +76,7 @@ export async function pruneThumbnailCache(): Promise<void> {
     return;
   }
 
-  const historyIds = new Set(
-    (store.get("history", []) as { id?: unknown }[])
-      .map((item) => (typeof item.id === "string" ? item.id : ""))
-      .filter(Boolean),
-  );
+  const historyIds = new Set(store.get("history", []).map((item) => item.id));
 
   const survivors: { file: string; size: number; mtimeMs: number }[] = [];
   for (const entry of entries) {

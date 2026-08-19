@@ -10,10 +10,11 @@ import {
   type JobStage,
   type JobType,
 } from "../../shared/jobs.ts";
+import type { HistoryRecord } from "../../shared/contracts.ts";
 
 const runtimeProgress = new Map<string, JobProgress>();
-const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const ipcTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const persistTimers = new Map<string, NodeJS.Timeout>();
+const ipcTimers = new Map<string, NodeJS.Timeout>();
 const lastIpcSentAt = new Map<string, number>();
 
 /** Persistent snapshots at most this often while a job is running. */
@@ -22,84 +23,41 @@ const PERSIST_INTERVAL_MS = 1500;
 const IPC_INTERVAL_MS = 150;
 
 function historyItem(id: string) {
-  return (store.get("history", []) as Record<string, unknown>[]).find(
-    (item) => item.id === id,
-  );
+  return store.get("history", []).find((item) => item.id === id);
 }
 
-function toProgress(item: Record<string, unknown>): JobProgress | undefined {
-  if (
-    typeof item.id !== "string" ||
-    typeof item.attemptId !== "string" ||
-    typeof item.jobType !== "string" ||
-    typeof item.status !== "string" ||
-    typeof item.stage !== "string"
-  ) {
-    return undefined;
-  }
+function toProgress(item: HistoryRecord): JobProgress {
   return {
     jobId: item.id,
     attemptId: item.attemptId,
-    jobType: item.jobType as JobType,
-    status: item.status as JobStatus,
-    stage: item.stage as JobStage,
-    stageLabel:
-      typeof item.stageLabel === "string"
-        ? item.stageLabel
-        : formatStageLabel(item.stage as JobStage),
-    overallProgress:
-      typeof item.progress === "number" ? item.progress : undefined,
-    stageProgress:
-      typeof item.stageProgress === "number" ? item.stageProgress : undefined,
-    downloadedBytes:
-      typeof item.downloadedBytes === "number"
-        ? item.downloadedBytes
-        : undefined,
-    totalBytes:
-      typeof item.totalBytes === "number" ? item.totalBytes : undefined,
-    estimatedTotalBytes:
-      typeof item.estimatedTotalBytes === "number"
-        ? item.estimatedTotalBytes
-        : undefined,
-    speedBytesPerSecond:
-      typeof item.speedBytesPerSecond === "number"
-        ? item.speedBytesPerSecond
-        : undefined,
-    speedMultiplier:
-      typeof item.speedMultiplier === "number"
-        ? item.speedMultiplier
-        : undefined,
-    etaSeconds:
-      typeof item.etaSeconds === "number" ? item.etaSeconds : undefined,
-    processedSeconds:
-      typeof item.processedSeconds === "number"
-        ? item.processedSeconds
-        : undefined,
-    durationSeconds:
-      typeof item.durationSeconds === "number"
-        ? item.durationSeconds
-        : undefined,
-    elapsedSeconds:
-      typeof item.elapsedSeconds === "number" ? item.elapsedSeconds : 0,
-    currentFile:
-      typeof item.currentFile === "string" ? item.currentFile : undefined,
-    outputPath:
-      typeof item.outputPath === "string" ? item.outputPath : undefined,
-    error: item.jobError as JobProgress["error"],
-    revision: typeof item.revision === "number" ? item.revision : 0,
-    updatedAt:
-      typeof item.updatedAt === "string"
-        ? item.updatedAt
-        : new Date().toISOString(),
+    jobType: item.jobType,
+    status: item.status,
+    stage: item.stage,
+    stageLabel: item.stageLabel || formatStageLabel(item.stage),
+    overallProgress: item.progress,
+    stageProgress: item.stageProgress,
+    downloadedBytes: item.downloadedBytes,
+    totalBytes: item.totalBytes,
+    estimatedTotalBytes: item.estimatedTotalBytes,
+    speedBytesPerSecond: item.speedBytesPerSecond,
+    speedMultiplier: item.speedMultiplier,
+    etaSeconds: item.etaSeconds,
+    processedSeconds: item.processedSeconds,
+    durationSeconds: item.durationSeconds,
+    elapsedSeconds: item.elapsedSeconds ?? 0,
+    currentFile: item.currentFile,
+    outputPath: item.outputPath,
+    error: item.jobError,
+    revision: item.revision,
+    updatedAt: item.updatedAt || new Date().toISOString(),
   };
 }
 
 function persist(progress: JobProgress) {
-  const history = store.get("history", []) as Record<string, unknown>[];
+  const history = store.get("history", []);
   const updated = history.map((item) => {
     if (item.id !== progress.jobId) return item;
-    const currentRevision =
-      typeof item.revision === "number" ? item.revision : 0;
+    const currentRevision = item.revision;
     if (currentRevision > progress.revision) return item;
     return {
       ...item,
@@ -208,7 +166,7 @@ function notifyTerminal(mainWindow: BrowserWindow, progress: JobProgress) {
   if (mainWindow.isDestroyed() || mainWindow.isFocused()) return;
   if (!Notification.isSupported()) return;
   const item = historyItem(progress.jobId);
-  const title = typeof item?.title === "string" ? item.title : "Prism job";
+  const title = item?.title || "Prism job";
   const kind =
     progress.jobType === "conversion"
       ? "Conversion"
@@ -281,9 +239,10 @@ export function publishJobProgress(
     elapsedSeconds?: number;
   },
 ): JobProgress {
+  const stored = historyItem(input.jobId);
   const previous =
     runtimeProgress.get(input.jobId) ||
-    toProgress(historyItem(input.jobId) || {});
+    (stored ? toProgress(stored) : undefined);
   const revision = (previous?.revision || 0) + 1;
   const candidate: JobProgress = {
     jobId: input.jobId,
@@ -326,7 +285,10 @@ export function publishJobProgress(
 }
 
 export function getJobProgress(jobId: string) {
-  return runtimeProgress.get(jobId) || toProgress(historyItem(jobId) || {});
+  const stored = historyItem(jobId);
+  return (
+    runtimeProgress.get(jobId) || (stored ? toProgress(stored) : undefined)
+  );
 }
 
 export function isJobCancelled(jobId: string) {

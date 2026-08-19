@@ -32,10 +32,10 @@ function sendHistory(mainWindow: Electron.BrowserWindow) {
 
 function updateHistory(
   id: string,
-  partial: Record<string, unknown>,
+  partial: Partial<HistoryRecord>,
   mainWindow: Electron.BrowserWindow,
 ) {
-  const history = store.get("history", []) as HistoryRecord[];
+  const history = store.get("history", []);
   store.set(
     "history",
     history.map((item) =>
@@ -51,7 +51,7 @@ function issuesText(issues: CompatibilityIssue[]) {
   return issues.length ? issues.map((issue) => issue.message).join(" ") : "";
 }
 
-function errorFor(err: unknown, cancelled: boolean): JobError {
+function errorFor(cause: unknown, cancelled: boolean): JobError {
   return cancelled
     ? {
         code: "JOB_CANCELLED",
@@ -63,9 +63,9 @@ function errorFor(err: unknown, cancelled: boolean): JobError {
         code: "REMUX_FAILED",
         userMessage: "The file could not be remuxed without re-encoding.",
         technicalDetails:
-          err instanceof Error
-            ? err.message.slice(-1200)
-            : String(err).slice(-1200),
+          cause instanceof Error
+            ? cause.message.slice(-1200)
+            : String(cause).slice(-1200),
         stage: "remux",
         retryable: true,
       };
@@ -267,10 +267,7 @@ export function startRemuxJob(
       keepOriginal: request.keepOriginal !== false,
     },
   };
-  store.set("history", [
-    record,
-    ...(store.get("history", []) as HistoryRecord[]),
-  ]);
+  store.set("history", [record, ...store.get("history", [])]);
   sendHistory(mainWindow);
   void runRemux(id, request, mainWindow).catch((err) => {
     const cancelled =

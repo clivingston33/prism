@@ -12,6 +12,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useAppStore } from "../stores/app-store";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
+import { parseDownloadRequest } from "../../shared/ipc-schemas.ts";
 import { useExitPresence } from "../hooks/use-exit-presence";
 
 interface HistoryDrawerProps {
@@ -70,21 +71,24 @@ export function HistoryDrawer({
 
   const handleRedownload = async () => {
     if (!/^https?:\/\//i.test(item.url)) return;
-    await window.prism.download.addToQueue({
-      url: item.url,
-      format: item.format as DownloadOptions["format"],
-      mode: item.mode,
-      audioFormat: item.audioFormat as DownloadOptions["audioFormat"],
-      quality: item.quality as DownloadOptions["quality"],
-      transcript: item.transcript,
-      transcriptFormat: item.transcriptFormat,
-      includeSubtitles: item.includeSubtitles,
-      saveSubtitleSidecar: item.saveSubtitleSidecar,
-      subtitleLanguages: item.subtitleLanguages,
-      subtitleDisposition: item.subtitleDisposition,
-      trimStart: item.trimStart,
-      trimEnd: item.trimEnd,
-    });
+    const request =
+      item.request ??
+      parseDownloadRequest({
+        url: item.url,
+        format: item.format,
+        mode: item.mode,
+        audioFormat: item.audioFormat,
+        quality: item.quality,
+        transcript: item.transcript,
+        transcriptFormat: item.transcriptFormat,
+        includeSubtitles: item.includeSubtitles,
+        saveSubtitleSidecar: item.saveSubtitleSidecar,
+        subtitleLanguages: item.subtitleLanguages,
+        subtitleDisposition: item.subtitleDisposition,
+        trimStart: item.trimStart,
+        trimEnd: item.trimEnd,
+      });
+    await window.prism.download.addToQueue(request);
     const updatedHistory = await window.prism.history.get();
     setDownloads(updatedHistory);
     onClose();

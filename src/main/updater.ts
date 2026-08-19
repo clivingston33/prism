@@ -4,8 +4,13 @@ import * as fs from "fs";
 import * as path from "path";
 
 let mainWindow: BrowserWindow | null = null;
+interface UpdateEventPayload {
+  version?: string;
+  releaseDate?: string;
+  message?: string;
+}
 
-function sendUpdateEvent(channel: string, payload: unknown) {
+function sendUpdateEvent(channel: string, payload: UpdateEventPayload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
@@ -48,8 +53,8 @@ export function setupUpdater() {
     sendUpdateEvent("update:error", { message: error.message });
   });
 
-  void autoUpdater.checkForUpdatesAndNotify().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
+  void autoUpdater.checkForUpdatesAndNotify().catch((cause: unknown) => {
+    const message = cause instanceof Error ? cause.message : String(cause);
     console.error("[updater] Update check failed:", message);
     sendUpdateEvent("update:error", { message });
   });

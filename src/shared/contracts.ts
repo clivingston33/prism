@@ -21,6 +21,51 @@ export type Quality =
 export type TranscriptFormat = "txt" | "srt" | "vtt" | "json";
 export type DownloadConflictAction = "rename" | "overwrite" | "skip";
 export type SubtitleDisposition = "default" | "forced" | "none";
+export interface AppSettings {
+  defaultVideoFormat: "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
+  defaultAudioFormat: AudioFormat;
+  maxConcurrentDownloads: number;
+  concurrentFragments: number;
+  downloadLocation: string;
+  defaultDownloadMode: "original" | "mp4-compatible" | "custom";
+  defaultQuality: Quality;
+  retryCount: number;
+  fragmentRetryCount: number;
+  downloadSpeedLimit: string;
+  lowResourceMode: boolean;
+  defaultMediaToolsMode: "remux" | "convert";
+  hardwareAcceleration: "auto" | "off";
+  defaultRemuxContainer: "auto" | "mkv" | "mp4" | "mov" | "webm" | "m4a";
+  mediaToolsPreserveMetadata: boolean;
+  mediaToolsPreserveChapters: boolean;
+  mediaToolsPreserveAllTracks: boolean;
+  missingFileBehavior: "mark" | "remove" | "ask";
+  transcriptionModelId: string;
+  transcriptionLanguage: string;
+  transcriptionFormat: TranscriptFormat;
+  transcriptionSaveBesideSource: boolean;
+  transcriptionDirectory: string;
+  transcriptionThreads: number;
+  whisperRuntime: "auto" | "cpu";
+  watchClipboard: boolean;
+  autoUpdateYtdlp: boolean;
+  lastYtDlpUpdateCheck: number;
+  theme: "system" | "light" | "dark";
+}
+
+export interface HistoryConversionOptions {
+  operation: "remux" | "stream_copy" | "transcode" | "extract_audio";
+  videoCodec?: string;
+  audioCodec?: string;
+  videoHeight?: number | null;
+  crf?: number;
+  audioBitrate?: string;
+  fps?: string;
+  trimStart?: string;
+  trimEnd?: string;
+  container?: "auto" | "mkv" | "mp4" | "mov" | "webm" | "m4a";
+  keepOriginal?: boolean;
+}
 
 export interface DownloadRequest {
   url: string;
@@ -115,6 +160,7 @@ export interface HistoryRecord {
   filePath?: string;
   filePaths?: string[];
   error?: string;
+  elapsedSeconds?: number;
   jobError?: JobError;
   retryCount: number;
   /** Position among still-queued jobs; lower starts first. */
@@ -122,6 +168,7 @@ export interface HistoryRecord {
   playlistId?: string;
   playlistTitle?: string;
   playlistIndex?: number;
+  outputPath?: string;
   playlistCount?: number;
   playlistDirectory?: boolean;
   thumbnail?: string;
@@ -149,6 +196,7 @@ export interface HistoryRecord {
   transcriptText?: string;
   transcriptError?: string;
   imageCount?: number;
+  mediaType?: "video" | "image";
   /** Explains a container fallback (e.g. MP4 requested, MKV delivered). */
   containerNote?: string;
   diagnostics?: {
@@ -161,5 +209,5 @@ export interface HistoryRecord {
   };
   request?: DownloadRequest;
   conversionOf?: string;
-  conversionOptions?: Record<string, unknown>;
+  conversionOptions?: HistoryConversionOptions;
 }

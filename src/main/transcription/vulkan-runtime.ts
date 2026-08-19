@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -18,6 +20,18 @@ interface InstalledMarker {
   version: string;
   downloadBytes: number;
 }
+const INSTALLED_MARKER_SCHEMA = z.object({
+  version: z.string(),
+  downloadBytes: z.number(),
+});
+
+export interface VulkanRuntimeState {
+  status: VulkanStatus;
+  version: string;
+  downloadBytes: number;
+  path?: string;
+  error?: string;
+}
 
 let activeInstall: AbortController | null = null;
 let lastError: string | undefined;
@@ -36,19 +50,16 @@ function markerPath() {
 
 function marker(): InstalledMarker | null {
   try {
-    return JSON.parse(fs.readFileSync(markerPath(), "utf8")) as InstalledMarker;
+    const parsed = INSTALLED_MARKER_SCHEMA.safeParse(
+      JSON.parse(fs.readFileSync(markerPath(), "utf8")),
+    );
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
 }
 
-export function getVulkanRuntimeState(): {
-  status: VulkanStatus;
-  version: string;
-  downloadBytes: number;
-  path?: string;
-  error?: string;
-} {
+export function getVulkanRuntimeState(): VulkanRuntimeState {
   const installed = marker();
   const base = {
     version: installed?.version || "managed",
@@ -79,8 +90,7 @@ function emit(window: Electron.BrowserWindow, progress: ModelDownloadProgress) {
 
 async function sha256File(filePath: string) {
   const hash = crypto.createHash("sha256");
-  for await (const chunk of fs.createReadStream(filePath))
-    hash.update(chunk as Buffer);
+  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk);
   return hash.digest("hex");
 }
 

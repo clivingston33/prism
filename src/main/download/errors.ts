@@ -131,11 +131,15 @@ const RULES: ErrorRule[] = [
 ];
 
 export function classifyDownloadError(
-  err: unknown,
+  cause: unknown,
   stage?: JobStage,
 ): JobError {
   const raw =
-    err instanceof Error ? err.message : err === undefined ? "" : String(err);
+    cause instanceof Error
+      ? cause.message
+      : cause === undefined
+        ? ""
+        : String(cause);
   const details = raw.slice(-1500);
 
   if (/job cancelled|jobcancellederror/i.test(raw)) {

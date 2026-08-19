@@ -223,6 +223,7 @@ export function ConvertPage() {
   const handleDrop = async (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     setIsDragging(false);
+    // SAFETY: Electron augments dropped File objects with their absolute path.
     const droppedPath = (
       event.dataTransfer.files?.[0] as File & { path?: string }
     )?.path;

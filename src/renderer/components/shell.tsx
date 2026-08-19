@@ -69,12 +69,16 @@ export function Shell() {
         setDragging(true);
       }}
       onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+        if (
+          !(event.relatedTarget instanceof Node) ||
+          !event.currentTarget.contains(event.relatedTarget)
+        )
           setDragging(false);
       }}
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
+        // SAFETY: Electron augments dropped File objects with their absolute path.
         const files = Array.from(event.dataTransfer.files)
           .map((file) => (file as File & { path?: string }).path)
           .filter((value): value is string => Boolean(value));

@@ -13,6 +13,14 @@ import type { HistoryRecord } from "../../shared/contracts.ts";
 
 /** Legacy status strings written before the shared JobStatus vocabulary. */
 export const LEGACY_ACTIVE_STATUSES = ["pending", "downloading", "converting"];
+export interface HistoryTransitionResult {
+  history: HistoryRecord[];
+  changed: boolean;
+}
+export interface QueueOrderTransition<T> {
+  history: T[];
+  changed: boolean;
+}
 
 export function isRecoverableStatus(status: string | undefined): boolean {
   return (
@@ -34,17 +42,17 @@ export function interruptedError(stage: HistoryRecord["stage"]): JobError {
  * interrupted. Terminal records pass through untouched.
  */
 export function reconcileStartupHistory(
-  history: Record<string, unknown>[],
+  history: HistoryRecord[],
   now: () => string = () => new Date().toISOString(),
-): { history: Record<string, unknown>[]; changed: boolean } {
+): HistoryTransitionResult {
   let changed = false;
-  const recovered = history.map((item) => {
+  const recovered = history.map<HistoryRecord>((item) => {
     if (!isRecoverableStatus(String(item.status))) return item;
     changed = true;
-    const stage = (item.stage as HistoryRecord["stage"]) || "finalize";
+    const stage = item.stage || "finalize";
     return {
       ...item,
-      status: "interrupted" as JobStatus,
+      status: "interrupted",
       stage,
       stageLabel: "Interrupted after app restart",
       error: "The app closed before this job finished.",
@@ -69,7 +77,7 @@ export function selectCancelTargets(
     .map((item) => item.id);
 }
 
-function isQueuedStatus(status: unknown) {
+function isQueuedStatus(status: JobStatus) {
   return status === "queued" || String(status) === "pending";
 }
 
@@ -110,10 +118,9 @@ export function nextQueueOrder(
  * the list keep their position after the reordered ones; non-queued records
  * are never touched.
  */
-export function applyQueueOrder(
-  history: Record<string, unknown>[],
-  orderedIds: string[],
-): { history: Record<string, unknown>[]; changed: boolean } {
+export function applyQueueOrder<
+  T extends Pick<HistoryRecord, "id" | "status"> & { queueOrder?: number },
+>(history: T[], orderedIds: string[]): QueueOrderTransition<T> {
   const rank = new Map(orderedIds.map((id, index) => [id, index + 1]));
   let changed = false;
   const updated = history.map((item) => {

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * Prism-managed temporary download directories.
  *
@@ -121,9 +123,10 @@ export async function moveFileFast(
   await ops.mkdir(path.dirname(outputPath), { recursive: true });
   try {
     await ops.rename(inputPath, outputPath);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException)?.code;
-    if (code !== "EXDEV" && code !== "EPERM" && code !== "EEXIST") throw err;
+  } catch (cause) {
+    const parsed = z.object({ code: z.string().optional() }).safeParse(cause);
+    const code = parsed.success ? parsed.data.code : undefined;
+    if (code !== "EXDEV" && code !== "EPERM" && code !== "EEXIST") throw cause;
     await ops.copyFile(inputPath, outputPath);
     await ops.unlink(inputPath);
   }

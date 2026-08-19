@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type TranscriptDocumentFormat = "txt" | "srt" | "vtt" | "json";
 
 export interface TranscriptSegment {
@@ -10,6 +12,19 @@ export interface TranscriptSegment {
 function normalizeTimestamp(value: string) {
   return value.trim().replace(".", ",");
 }
+const TRANSCRIPT_JSON_SCHEMA = z.object({
+  segments: z
+    .array(
+      z.object({
+        id: z.unknown().optional(),
+        start: z.string().optional(),
+        end: z.string().optional(),
+        text: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
+});
 
 export function parseTranscriptDocument(
   content: string,
@@ -18,18 +33,15 @@ export function parseTranscriptDocument(
   if (format === "txt") return [{ id: "1", text: content }];
   if (format === "json") {
     try {
-      const parsed = JSON.parse(content) as Record<string, unknown>;
-      const source = Array.isArray(parsed.segments) ? parsed.segments : [];
-      const segments = source
-        .map((entry, index) => {
-          const item = entry as Record<string, unknown>;
-          return {
-            id: String(item.id ?? index + 1),
-            start: typeof item.start === "string" ? item.start : undefined,
-            end: typeof item.end === "string" ? item.end : undefined,
-            text: typeof item.text === "string" ? item.text.trim() : "",
-          };
-        })
+      const parsed = TRANSCRIPT_JSON_SCHEMA.safeParse(JSON.parse(content));
+      if (!parsed.success) return [{ id: "1", text: content }];
+      const segments = parsed.data.segments
+        .map((item, index) => ({
+          id: String(item.id ?? index + 1),
+          start: item.start,
+          end: item.end,
+          text: item.text.trim(),
+        }))
         .filter((entry) => entry.text);
       if (segments.length) return segments;
     } catch {}

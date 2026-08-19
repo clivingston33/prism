@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { app } from "electron";
 import fs from "fs";
 import path from "path";
@@ -9,6 +11,7 @@ import { StreamLineBuffer } from "./progress";
 import { JobCancelledError, processRegistry } from "./process-registry";
 import { isJobCancelled, publishJobProgress } from "./job-state";
 import type { JobStage } from "../../shared/jobs.ts";
+import type { HistoryRecord } from "../../shared/contracts.ts";
 import { MetadataCache } from "./metadata-cache";
 import {
   buildDownloadPlan,
@@ -41,6 +44,27 @@ import {
   describeExecutableProblem,
   type DownloadMode,
 } from "./utils";
+type DownloadCompletionOverrides = Partial<
+  Pick<
+    HistoryRecord,
+    | "containerNote"
+    | "format"
+    | "resolution"
+    | "size"
+    | "subtitleEmbedded"
+    | "subtitlePaths"
+    | "subtitleTrackCount"
+    | "subtitleVerification"
+    | "thumbnail"
+    | "transcriptError"
+    | "transcriptPath"
+    | "transcriptText"
+  >
+>;
+
+interface MetadataLifecycle {
+  timeout?: NodeJS.Timeout;
+}
 
 function getJsRuntimeArg(): string | null {
   const { deno } = getBinPaths();
@@ -71,14 +95,9 @@ function detectPlatform(url: string) {
   return { hostname, platform };
 }
 
-function normalizeMode(item: any): DownloadMode {
-  if (
-    ["video_audio", "video_only", "audio_only", "split"].includes(item.mode)
-  ) {
-    return item.mode;
-  }
+function normalizeMode(item: HistoryRecord): DownloadMode {
+  if (item.mode) return item.mode;
   if (isAudioFormat(item.format)) return "audio_only";
-  if (item.muteAudio) return "video_only";
   return "video_audio";
 }
 
@@ -86,12 +105,11 @@ function normalizeTranscriptFormat(format?: string): "txt" | "srt" | "vtt" {
   return format === "srt" || format === "vtt" ? format : "txt";
 }
 
-function wantsSubtitles(item: any) {
+function wantsSubtitles(item: HistoryRecord) {
   return Boolean(item.includeSubtitles ?? item.transcript);
 }
 
-function looksLikeDirectMediaUrl(value: unknown) {
-  if (typeof value !== "string") return false;
+function looksLikeDirectMediaUrl(value: string) {
   try {
     return /\.(mkv|mp4|mov|webm|avi|m4v)$/i.test(new URL(value).pathname);
   } catch {
@@ -101,11 +119,11 @@ function looksLikeDirectMediaUrl(value: unknown) {
 
 function updateHistoryItem(
   id: string,
-  partial: Record<string, any>,
+  partial: Partial<HistoryRecord>,
   mainWindow?: Electron.BrowserWindow,
   emit = true,
 ) {
-  const history = store.get("history", []) as any[];
+  const history = store.get("history", []);
   const updated = history.map((item) =>
     item.id === id
       ? { ...item, ...partial, updatedAt: new Date().toISOString() }
@@ -119,15 +137,13 @@ function updateHistoryItem(
 
 function updateDiagnostics(
   id: string,
-  partial: Record<string, unknown>,
+  partial: NonNullable<HistoryRecord["diagnostics"]>,
   mainWindow?: Electron.BrowserWindow,
 ) {
-  const current = (store.get("history", []) as any[]).find(
-    (item) => item.id === id,
-  );
+  const current = store.get("history", []).find((item) => item.id === id);
   updateHistoryItem(
     id,
-    { diagnostics: { ...(current?.diagnostics || {}), ...partial } },
+    { diagnostics: { ...current?.diagnostics, ...partial } },
     mainWindow,
   );
 }
@@ -152,9 +168,7 @@ function setProgress(
     speedBytesPerSecond?: number;
   } = {},
 ) {
-  const item = (store.get("history", []) as any[]).find(
-    (entry) => entry.id === itemId,
-  );
+  const item = store.get("history", []).find((entry) => entry.id === itemId);
   publishJobProgress(mainWindow, {
     jobId: itemId,
     attemptId: item?.attemptId || itemId,
@@ -171,7 +185,7 @@ function setProgress(
   });
 }
 
-function extractQualities(formats: any[]): string[] {
+function extractQualities(formats: YtDlpFormat[]): string[] {
   const heights = new Set<number>();
   for (const format of formats) {
     if (format?.vcodec && format.vcodec !== "none" && Number(format.height)) {
@@ -182,11 +196,11 @@ function extractQualities(formats: any[]): string[] {
   return [...heights].sort((a, b) => b - a).map((height) => `${height}p`);
 }
 
-function extractContainers(formats: any[]): string[] {
+function extractContainers(formats: YtDlpFormat[]): string[] {
   const containers = new Set<string>();
   for (const format of formats) {
-    if (typeof format?.ext === "string")
-      containers.add(format.ext.toLowerCase());
+    const ext = z.string().safeParse(format?.ext);
+    if (ext.success) containers.add(ext.data.toLowerCase());
   }
 
   return [...containers].filter((format) =>
@@ -194,45 +208,137 @@ function extractContainers(formats: any[]): string[] {
   );
 }
 
-function isHttpUrl(value: unknown): value is string {
-  return typeof value === "string" && /^https?:\/\//i.test(value);
+const YTDLP_VALUE_SCHEMA = z.unknown();
+const HTTP_URL_SCHEMA = z.string().regex(/^https?:\/\//i);
+const URL_COLLECTION_SCHEMA = z.union([
+  z.array(z.string()),
+  z.object({
+    url_list: z.array(z.string()).optional(),
+    urlList: z.array(z.string()).optional(),
+    url: z.string().optional(),
+    uri: z.string().optional(),
+  }),
+]);
+const PLAYLIST_PAYLOAD_SCHEMA = z.object({
+  _type: z.literal("playlist"),
+  title: z.string().optional(),
+  entries: z.array(
+    z.object({
+      url: z.unknown().optional(),
+      webpage_url: z.unknown().optional(),
+      title: z.string().optional(),
+      duration: z.unknown().optional(),
+    }),
+  ),
+});
+
+function firstUrlFrom(
+  value: z.input<typeof YTDLP_VALUE_SCHEMA>,
+): string | null {
+  const direct = HTTP_URL_SCHEMA.safeParse(value);
+  if (direct.success) return direct.data;
+  const collection = URL_COLLECTION_SCHEMA.safeParse(value);
+  if (!collection.success) return null;
+  const candidates = Array.isArray(collection.data)
+    ? collection.data
+    : [
+        ...(collection.data.url_list || []),
+        ...(collection.data.urlList || []),
+        collection.data.url,
+        collection.data.uri,
+      ].filter((candidate): candidate is string => candidate !== undefined);
+  return (
+    candidates.find(
+      (candidate) => HTTP_URL_SCHEMA.safeParse(candidate).success,
+    ) || null
+  );
+}
+const YTDLP_IMAGE_SCHEMA = z.object({
+  display_image: z.unknown().optional(),
+  image_url: z.unknown().optional(),
+  owner_watermark_image: z.unknown().optional(),
+  url_list: z.unknown().optional(),
+  url: z.unknown().optional(),
+});
+const YTDLP_IMAGE_ROOT_SCHEMA = z
+  .object({ images: z.array(YTDLP_IMAGE_SCHEMA).optional().default([]) })
+  .optional();
+const YTDLP_FORMAT_SCHEMA = z.object({
+  format_id: z.string().optional(),
+  vcodec: z.string().optional(),
+  acodec: z.string().optional(),
+  height: z.number().optional(),
+  ext: z.string().optional(),
+  language: z.string().optional(),
+  format_note: z.string().optional(),
+  abr: z.number().optional(),
+  filesize: z.number().optional(),
+  filesize_approx: z.number().optional(),
+});
+type YtDlpFormat = z.output<typeof YTDLP_FORMAT_SCHEMA>;
+
+const YTDLP_METADATA_SCHEMA = z.object({
+  title: z.string().optional(),
+  extractor_key: z.string().optional(),
+  duration: z.number().optional(),
+  thumbnail: z.string().optional(),
+  resolution: z.string().optional(),
+  height: z.number().optional(),
+  filesize: z.number().optional(),
+  filesize_approx: z.number().optional(),
+  direct: z.boolean().optional(),
+  formats: z.array(YTDLP_FORMAT_SCHEMA).optional().default([]),
+  subtitles: z.record(z.string(), z.unknown()).optional().default({}),
+  automatic_captions: z.record(z.string(), z.unknown()).optional().default({}),
+  image_post_info: YTDLP_IMAGE_ROOT_SCHEMA,
+  imagePostInfo: YTDLP_IMAGE_ROOT_SCHEMA,
+  aweme_detail: z
+    .object({
+      image_post_info: YTDLP_IMAGE_ROOT_SCHEMA,
+      imagePostInfo: YTDLP_IMAGE_ROOT_SCHEMA,
+    })
+    .optional(),
+  images: z.array(z.unknown()).optional().default([]),
+});
+type YtDlpMetadata = z.output<typeof YTDLP_METADATA_SCHEMA>;
+
+interface ResolvedMetadata {
+  title: string;
+  platform: string;
+  duration?: number;
+  thumbnail?: string;
+  formats: string[];
+  qualities: string[];
+  height?: string;
+  resolution?: string;
+  mediaType: "video" | "image";
+  imageUrls: string[];
+  imageCount: number;
+  estimatedSizeBytes?: number;
+  audioTracks: { id: string; language?: string; label: string }[];
+  subtitleTracks: { language: string; label: string; automatic: boolean }[];
+  directMedia: boolean;
+  fromFallback?: boolean;
 }
 
-function firstUrlFrom(value: any): string | null {
-  if (isHttpUrl(value)) return value;
-  if (Array.isArray(value)) return value.find(isHttpUrl) || null;
-  if (!value || typeof value !== "object") return null;
-  if (Array.isArray(value.url_list))
-    return value.url_list.find(isHttpUrl) || null;
-  if (Array.isArray(value.urlList))
-    return value.urlList.find(isHttpUrl) || null;
-  if (isHttpUrl(value.url)) return value.url;
-  if (isHttpUrl(value.uri)) return value.uri;
-  return null;
-}
-
-function collectImagePostUrls(parsed: any): string[] {
+function collectImagePostUrls(parsed: YtDlpMetadata): string[] {
   const urls = new Set<string>();
   const roots = [
-    parsed?.image_post_info,
-    parsed?.imagePostInfo,
-    parsed?.aweme_detail?.image_post_info,
-    parsed?.aweme_detail?.imagePostInfo,
+    parsed.image_post_info,
+    parsed.imagePostInfo,
+    parsed.aweme_detail?.image_post_info,
+    parsed.aweme_detail?.imagePostInfo,
   ];
 
   for (const root of roots) {
-    const images = root?.images;
-    if (!Array.isArray(images)) continue;
-
-    for (const image of images) {
+    for (const image of root?.images || []) {
       const candidates = [
-        image?.display_image,
-        image?.image_url,
-        image?.owner_watermark_image,
-        image?.url_list,
-        image?.url,
+        image.display_image,
+        image.image_url,
+        image.owner_watermark_image,
+        image.url_list,
+        image.url,
       ];
-
       for (const candidate of candidates) {
         const url = firstUrlFrom(candidate);
         if (url) {
@@ -243,7 +349,7 @@ function collectImagePostUrls(parsed: any): string[] {
     }
   }
 
-  if (urls.size === 0 && Array.isArray(parsed?.images)) {
+  if (urls.size === 0) {
     for (const image of parsed.images) {
       const url = firstUrlFrom(image);
       if (url) urls.add(url);
@@ -253,7 +359,7 @@ function collectImagePostUrls(parsed: any): string[] {
   return [...urls];
 }
 
-function fallbackMetadata(url: string) {
+function fallbackMetadata(url: string): ResolvedMetadata {
   const { hostname, platform } = detectPlatform(url);
   return {
     title: `Video from ${hostname}`,
@@ -274,8 +380,8 @@ function fallbackMetadata(url: string) {
 
 const METADATA_TIMEOUT_MS = 45_000;
 
-async function fetchMetadata(url: string): Promise<any> {
-  return new Promise((resolve) => {
+async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
+  return new Promise<ResolvedMetadata>((resolve) => {
     const fallback = fallbackMetadata(url);
     const { ytdlp } = getBinPaths();
 
@@ -291,9 +397,9 @@ async function fetchMetadata(url: string): Promise<any> {
     args.push(url);
 
     let child: ReturnType<typeof spawn>;
-    const lifecycle: { timeout?: ReturnType<typeof setTimeout> } = {};
+    const lifecycle: MetadataLifecycle = {};
     let settled = false;
-    const finish = (value: any) => {
+    const finish = (value: ResolvedMetadata) => {
       if (settled) return;
       settled = true;
       if (lifecycle.timeout) clearTimeout(lifecycle.timeout);
@@ -329,16 +435,14 @@ async function fetchMetadata(url: string): Promise<any> {
       }
 
       try {
-        const parsed = JSON.parse(output);
-        const parsedFormats = Array.isArray(parsed.formats)
-          ? parsed.formats
-          : [];
+        const parsed = YTDLP_METADATA_SCHEMA.parse(JSON.parse(output));
+        const parsedFormats = parsed.formats;
         const qualities = extractQualities(parsedFormats);
         const containers = extractContainers(parsedFormats);
         const imageUrls = collectImagePostUrls(parsed);
         const platform = parsed.extractor_key || fallback.platform;
         const hasVideo = parsedFormats.some(
-          (format: any) => format?.vcodec && format.vcodec !== "none",
+          (format) => format.vcodec && format.vcodec !== "none",
         );
         const isTikTokImages =
           platform === "TikTok" &&
@@ -346,13 +450,13 @@ async function fetchMetadata(url: string): Promise<any> {
           (!hasVideo || imageUrls.length > 1);
         const audioTracks = parsedFormats
           .filter(
-            (format: any) =>
-              format?.format_id &&
-              format?.acodec &&
+            (format) =>
+              format.format_id &&
+              format.acodec &&
               format.acodec !== "none" &&
               (!format.vcodec || format.vcodec === "none"),
           )
-          .map((format: any) => ({
+          .map((format) => ({
             id: String(format.format_id),
             language: format.language ? String(format.language) : undefined,
             label:
@@ -366,7 +470,7 @@ async function fetchMetadata(url: string): Promise<any> {
                 .join(" · ") || `Audio ${format.format_id}`,
           }))
           .filter(
-            (track: any, index: number, all: any[]) =>
+            (track, index, all) =>
               all.findIndex((entry) => entry.id === track.id) === index,
           )
           .slice(0, 40);
@@ -394,18 +498,14 @@ async function fetchMetadata(url: string): Promise<any> {
         const videoBytes = Math.max(
           0,
           ...parsedFormats
-            .filter((format: any) => format?.vcodec && format.vcodec !== "none")
-            .map((format: any) =>
-              Number(format.filesize || format.filesize_approx || 0),
-            ),
+            .filter((format) => format.vcodec && format.vcodec !== "none")
+            .map((format) => format.filesize || format.filesize_approx || 0),
         );
         const audioBytes = Math.max(
           0,
           ...parsedFormats
-            .filter((format: any) => format?.acodec && format.acodec !== "none")
-            .map((format: any) =>
-              Number(format.filesize || format.filesize_approx || 0),
-            ),
+            .filter((format) => format.acodec && format.acodec !== "none")
+            .map((format) => format.filesize || format.filesize_approx || 0),
         );
 
         finish({
@@ -507,28 +607,29 @@ export async function getPlaylistInfo(
       clearTimeout(timeout);
       if (code !== 0) return resolve(null);
       try {
-        const parsed = JSON.parse(output);
-        if (parsed?._type !== "playlist" || !Array.isArray(parsed.entries))
-          return resolve(null);
-        const entries: PlaylistEntry[] = parsed.entries
-          .map((entry: any) => ({
-            url: firstUrlFrom(entry?.url) || firstUrlFrom(entry?.webpage_url),
-            title: typeof entry?.title === "string" ? entry.title : "",
-            durationSeconds: Number.isFinite(Number(entry?.duration))
-              ? Number(entry.duration)
-              : undefined,
-          }))
-          .filter((entry: PlaylistEntry) => Boolean(entry.url))
-          .map((entry: PlaylistEntry) => ({
-            ...entry,
-            title: entry.title || entry.url,
-          }));
+        const parsed = PLAYLIST_PAYLOAD_SCHEMA.safeParse(JSON.parse(output));
+        if (!parsed.success) return resolve(null);
+        const entries: PlaylistEntry[] = parsed.data.entries.flatMap(
+          (entry) => {
+            const url =
+              firstUrlFrom(entry.url) || firstUrlFrom(entry.webpage_url);
+            if (!url) return [];
+            const duration = z.coerce
+              .number()
+              .finite()
+              .safeParse(entry.duration);
+            return [
+              {
+                url,
+                title: entry.title || url,
+                durationSeconds: duration.success ? duration.data : undefined,
+              },
+            ];
+          },
+        );
         if (entries.length < 2) return resolve(null);
         resolve({
-          title:
-            typeof parsed.title === "string" && parsed.title
-              ? parsed.title
-              : "Playlist",
+          title: parsed.data.title || "Playlist",
           entries,
         });
       } catch {
@@ -543,7 +644,7 @@ export async function getPlaylistInfo(
  * single extraction, concurrent requests for the same URL share one in-flight
  * promise, and extractor fallbacks are never cached.
  */
-const metadataCache = new MetadataCache<any>({
+const metadataCache = new MetadataCache<ResolvedMetadata>({
   fetcher: fetchMetadata,
   ttlMs: 5 * 60 * 1000,
   isCacheable: (value) => !value?.fromFallback,
@@ -552,7 +653,7 @@ const metadataCache = new MetadataCache<any>({
 export async function getMetadata(
   url: string,
   options: { forceRefresh?: boolean } = {},
-): Promise<any> {
+): Promise<ResolvedMetadata> {
   return metadataCache.get(url, options);
 }
 
@@ -613,7 +714,7 @@ export async function getTranscript(
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(ytdlp, args);
-    } catch (err) {
+    } catch {
       removeDirectorySafe(tmpDir);
       resolve(
         `Could not retrieve transcript: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
@@ -747,23 +848,20 @@ export function extractThumbnail(
 }
 
 export function getConcurrentFragments(): number {
-  const settings = (store.get("settings") || {}) as any;
+  const settings = store.get("settings");
   if (settings.lowResourceMode) return 1;
   return clampConcurrentFragments(settings.concurrentFragments);
 }
 
-function baseYtDlpArgs(tempDir: string, item: any) {
+function baseYtDlpArgs(tempDir: string, item: HistoryRecord) {
   const { ffmpeg } = getBinPaths();
+  const settings = store.get("settings");
   const args = buildBaseYtDlpFlags({
     tempDir,
     concurrentFragments: getConcurrentFragments(),
-    retryCount: Number((store.get("settings") as any)?.retryCount ?? 10),
-    fragmentRetryCount: Number(
-      (store.get("settings") as any)?.fragmentRetryCount ?? 10,
-    ),
-    speedLimit: String(
-      (store.get("settings") as any)?.downloadSpeedLimit || "",
-    ),
+    retryCount: settings.retryCount ?? 10,
+    fragmentRetryCount: settings.fragmentRetryCount ?? 10,
+    speedLimit: settings.downloadSpeedLimit || "",
     trimStart: item.trimStart,
     trimEnd: item.trimEnd,
     subtitles: wantsSubtitles(item)
@@ -904,7 +1002,7 @@ async function deliverSubtitles(
   return delivered;
 }
 
-const SUBTITLE_LANGUAGE_CODES: Record<string, string> = {
+const SUBTITLE_LANGUAGE_CODES = {
   en: "eng",
   es: "spa",
   fr: "fra",
@@ -914,7 +1012,7 @@ const SUBTITLE_LANGUAGE_CODES: Record<string, string> = {
   it: "ita",
   ko: "kor",
   zh: "zho",
-};
+} satisfies Record<string, string>;
 
 function subtitleLanguageFromPath(filePath: string) {
   const base = path.basename(filePath, path.extname(filePath));
@@ -930,7 +1028,7 @@ function subtitleLanguageFromPath(filePath: string) {
  * are never silently discarded.
  */
 async function embedSubtitleFiles(
-  item: any,
+  item: HistoryRecord,
   mediaPath: string,
   subtitleFiles: string[],
   tempDir: string,
@@ -996,14 +1094,14 @@ async function embedSubtitleFiles(
 }
 
 async function verifyAndDeliverSubtitles(
-  item: any,
+  item: HistoryRecord,
   tempDir: string,
   outputPath: string,
   subtitleFiles: string[],
   mainWindow: Electron.BrowserWindow,
-  embedError?: unknown,
+  cause?: unknown,
 ) {
-  const overrides: Record<string, any> = {};
+  const overrides: DownloadCompletionOverrides = {};
   if (!subtitleFiles.length) {
     overrides.transcriptError =
       "No subtitles were available for the requested languages.";
@@ -1029,9 +1127,8 @@ async function verifyAndDeliverSubtitles(
     }
   }
 
-  if (embedError) {
-    const message =
-      embedError instanceof Error ? embedError.message : String(embedError);
+  if (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
     overrides.transcriptError =
       "Subtitles were downloaded but could not be embedded.";
     overrides.subtitleEmbedded = false;
@@ -1087,7 +1184,7 @@ interface RunYtDlpOptions {
 
 async function runYtDlp(
   args: string[],
-  item: any,
+  item: HistoryRecord,
   mainWindow: Electron.BrowserWindow,
   options: RunYtDlpOptions,
 ) {
@@ -1110,7 +1207,7 @@ async function runYtDlp(
     let child: ReturnType<typeof spawn>;
     try {
       child = spawn(ytdlp, args);
-    } catch (err) {
+    } catch {
       reject(new Error(describeExecutableProblem("yt-dlp", ytdlp)));
       return;
     }
@@ -1252,7 +1349,7 @@ function inferImageExtension(url: string, contentType?: string | null) {
 }
 
 async function downloadImage(url: string, outputPath: string) {
-  const response = await (globalThis as any).fetch(url, {
+  const response = await fetch(url, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Prism/1.0",
@@ -1269,8 +1366,8 @@ async function downloadImage(url: string, outputPath: string) {
 }
 
 async function downloadTikTokImages(
-  item: any,
-  metadata: any,
+  item: HistoryRecord,
+  metadata: ResolvedMetadata,
   dest: string,
   mainWindow: Electron.BrowserWindow,
 ) {
@@ -1310,11 +1407,11 @@ async function downloadTikTokImages(
 }
 
 async function completeDownload(
-  item: any,
+  item: HistoryRecord,
   filePath: string,
   filePaths: string[],
   mainWindow: Electron.BrowserWindow,
-  overrides: Record<string, any> = {},
+  overrides: DownloadCompletionOverrides = {},
 ) {
   if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
     throw new JobCancelledError();
@@ -1340,7 +1437,7 @@ async function completeDownload(
       ),
     completedAt: new Date().toISOString(),
     ...overrides,
-  };
+  } satisfies Partial<HistoryRecord>;
 
   publishJobProgress(mainWindow, {
     jobId: item.id,
@@ -1363,7 +1460,7 @@ async function completeDownload(
  * to re-encode — the user asked for ProRes by name.
  */
 async function convertToProRes(
-  item: any,
+  item: HistoryRecord,
   sourcePath: string,
   dest: string,
   mainWindow: Electron.BrowserWindow,
@@ -1439,7 +1536,7 @@ async function deliverDownloadedFile(
 }
 
 async function downloadSingleMedia(
-  item: any,
+  item: HistoryRecord,
   dest: string,
   mainWindow: Electron.BrowserWindow,
 ) {
@@ -1604,7 +1701,7 @@ async function downloadSingleMedia(
       if (containerNote) console.log(`[download] ${item.id} ${containerNote}`);
     }
 
-    let subtitleOverrides: Record<string, any> = {};
+    let subtitleOverrides: DownloadCompletionOverrides = {};
     if (wantsSubtitles(item)) {
       subtitleOverrides = await verifyAndDeliverSubtitles(
         item,
@@ -1638,12 +1735,19 @@ async function downloadSingleMedia(
       }
     }
 
-    await completeDownload(item, outputPath, [outputPath], mainWindow, {
+    const completion: DownloadCompletionOverrides = {
       resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
       format: path.extname(outputPath).replace(/^\./, "") || item.format,
-      ...(containerNote ? { containerNote } : {}),
       ...subtitleOverrides,
-    });
+    };
+    if (containerNote) completion.containerNote = containerNote;
+    await completeDownload(
+      item,
+      outputPath,
+      [outputPath],
+      mainWindow,
+      completion,
+    );
   } finally {
     removeDirectorySafe(tempDir);
     removeTempRootIfEmpty(dest);
@@ -1651,7 +1755,7 @@ async function downloadSingleMedia(
 }
 
 async function downloadSplitMedia(
-  item: any,
+  item: HistoryRecord,
   dest: string,
   mainWindow: Electron.BrowserWindow,
 ) {
@@ -1790,7 +1894,7 @@ async function downloadSplitMedia(
 }
 
 export async function startDownload(
-  item: any,
+  item: HistoryRecord,
   mainWindow: Electron.BrowserWindow,
 ) {
   const { ytdlp, ffmpeg } = getBinPaths();
@@ -1801,7 +1905,7 @@ export async function startDownload(
     throw new Error(describeExecutableProblem("FFmpeg", ffmpeg));
   }
 
-  const settings = (store.get("settings") || {}) as any;
+  const settings = store.get("settings");
   const baseDest = settings.downloadLocation || app.getPath("downloads");
   const dest =
     item.playlistDirectory && item.playlistTitle

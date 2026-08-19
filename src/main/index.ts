@@ -42,16 +42,17 @@ function serveAudioPreview(filePath: string, request: Request) {
     }
     status = 206;
   }
-  const headers: Record<string, string> = {
+  const headers = new Headers({
     "Accept-Ranges": "bytes",
     "Content-Type": "audio/mpeg",
     "Content-Length": String(end - start + 1),
     "Cache-Control": "private, max-age=3600",
-  };
+  });
   if (status === 206)
-    headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
+    headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
   if (request.method === "HEAD") return new Response(null, { status, headers });
   const stream = Readable.toWeb(fs.createReadStream(filePath, { start, end }));
+  // SAFETY: Node's web ReadableStream is runtime-compatible with the Fetch BodyInit contract.
   return new Response(stream as BodyInit, { status, headers });
 }
 
@@ -151,7 +152,7 @@ app.whenReady().then(() => {
       rawPath.replace(/^\/+/, process.platform === "win32" ? "" : "/"),
     );
     const absolutePath = path.resolve(filePath);
-    const settings = store.get("settings", {}) as { downloadLocation?: string };
+    const settings = store.get("settings");
     const downloadRoot = path.resolve(
       settings.downloadLocation || app.getPath("downloads"),
     );

@@ -46,12 +46,13 @@ function transcriptOutputPath(
   request: TranscriptionRequest,
   sourcePath: string,
 ) {
-  const settings = store.get("settings", {}) as Record<string, unknown>;
+  const settings = store.get("settings");
   const directory =
     request.saveBesideSource !== false
       ? path.dirname(sourcePath)
       : request.outputDirectory?.trim() ||
-        String(settings.transcriptionDirectory || app.getPath("documents"));
+        settings.transcriptionDirectory ||
+        app.getPath("documents");
   const name = `${path.basename(sourcePath, path.extname(sourcePath))} transcript`;
   return ensureUniquePath(directory, name, outputExtension(request.format));
 }
@@ -153,10 +154,7 @@ export async function transcribeLocalFile(
     retryCount: 0,
     filePath: outputPath,
   };
-  store.set("history", [
-    record,
-    ...(store.get("history", []) as HistoryRecord[]),
-  ]);
+  store.set("history", [record, ...store.get("history", [])]);
   sendHistory(window);
   let tempDir: string | undefined;
   let actualOutput: string | undefined;
@@ -173,10 +171,7 @@ export async function transcribeLocalFile(
     const { ffmpeg, whisper: bundledWhisper } = getBinPaths();
     // Prefer the optional CUDA runtime when it is installed and not disabled;
     // fall back to the bundled CPU binary otherwise.
-    const runtimeSettings = store.get("settings", {}) as Record<
-      string,
-      unknown
-    >;
+    const runtimeSettings = store.get("settings");
     const whisper =
       preferredWhisperBinary(runtimeSettings.whisperRuntime) || bundledWhisper;
     if (!isUsableExecutable(ffmpeg))
@@ -274,9 +269,8 @@ export async function transcribeLocalFile(
     args.push("-l", request.language || "auto");
     if (request.includeTimestamps === false) args.push("-nt");
     if (request.translateToEnglish) args.push("-tr");
-    const settings = store.get("settings", {}) as Record<string, unknown>;
-    const threads =
-      request.threads ?? Number(settings.transcriptionThreads || 0);
+    const settings = store.get("settings");
+    const threads = request.threads ?? settings.transcriptionThreads ?? 0;
     if (threads > 0) args.push("-t", String(threads));
     const transcriptStartedAt = Date.now();
     await runWhisper(whisper, args, id, (event) => {
@@ -332,10 +326,10 @@ export async function transcribeLocalFile(
         outputPath: generatedOutput,
       },
     });
-    const history = store.get("history", []) as HistoryRecord[];
+    const history = store.get("history", []);
     store.set(
       "history",
-      history.map((item) =>
+      history.map<HistoryRecord>((item) =>
         item.id === id
           ? {
               ...item,
@@ -365,10 +359,10 @@ export async function transcribeLocalFile(
       stage: "transcript",
       patch: { error: jobError },
     });
-    const failedHistory = store.get("history", []) as HistoryRecord[];
+    const failedHistory = store.get("history", []);
     store.set(
       "history",
-      failedHistory.map((item) =>
+      failedHistory.map<HistoryRecord>((item) =>
         item.id === id
           ? {
               ...item,

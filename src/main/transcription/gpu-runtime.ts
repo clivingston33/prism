@@ -18,6 +18,7 @@ import path from "path";
 import { spawn } from "child_process";
 import { openModelResponse } from "./models";
 import type { ModelDownloadProgress } from "../../shared/transcription.ts";
+import type { AppSettings } from "../../shared/contracts.ts";
 import { getVulkanRuntimeState } from "./vulkan-runtime";
 
 /** Synthetic id used on the shared model-progress channel for runtime events. */
@@ -109,7 +110,7 @@ export function getGpuRuntimeState(): GpuRuntimeState {
  * fall back to the bundled CPU binary.
  */
 export function preferredWhisperBinary(
-  whisperRuntimeSetting: unknown,
+  whisperRuntimeSetting: AppSettings["whisperRuntime"],
 ): string | undefined {
   if (whisperRuntimeSetting === "cpu") return undefined;
   const state = getGpuRuntimeState();
@@ -126,7 +127,7 @@ function emit(window: Electron.BrowserWindow, progress: ModelDownloadProgress) {
 async function sha256File(filePath: string) {
   const hash = crypto.createHash("sha256");
   const stream = fs.createReadStream(filePath);
-  for await (const chunk of stream) hash.update(chunk as Buffer);
+  for await (const chunk of stream) hash.update(chunk);
   return hash.digest("hex");
 }
 

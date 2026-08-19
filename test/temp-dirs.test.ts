@@ -120,12 +120,16 @@ test("moveFileFast falls back to copy + unlink across drives (EXDEV)", async () 
     const target = path.join(dest, "out.bin");
     fs.writeFileSync(source, "cross-drive");
     const calls: string[] = [];
-    const ops = {
+    const ops: Pick<
+      typeof fs.promises,
+      "rename" | "copyFile" | "unlink" | "mkdir"
+    > = {
       mkdir: fs.promises.mkdir.bind(fs.promises),
       rename: async () => {
         calls.push("rename");
-        const err = new Error("cross-device link") as NodeJS.ErrnoException;
-        err.code = "EXDEV";
+        const err = Object.assign(new Error("cross-device link"), {
+          code: "EXDEV",
+        });
         throw err;
       },
       copyFile: async (from: fs.PathLike, to: fs.PathLike) => {
@@ -137,7 +141,7 @@ test("moveFileFast falls back to copy + unlink across drives (EXDEV)", async () 
         await fs.promises.unlink(file);
       },
     };
-    await moveFileFast(source, target, ops as never);
+    await moveFileFast(source, target, ops);
     assert.deepEqual(calls, ["rename", "copyFile", "unlink"]);
     assert.equal(fs.readFileSync(target, "utf-8"), "cross-drive");
     assert.ok(!fs.existsSync(source));
@@ -149,22 +153,20 @@ test("moveFileFast falls back to copy + unlink across drives (EXDEV)", async () 
 test("moveFileFast surfaces real failures instead of masking them", async () => {
   const dest = makeDest();
   try {
-    const ops = {
+    const ops: Pick<
+      typeof fs.promises,
+      "rename" | "copyFile" | "unlink" | "mkdir"
+    > = {
       mkdir: fs.promises.mkdir.bind(fs.promises),
       rename: async () => {
-        const err = new Error("disk full") as NodeJS.ErrnoException;
-        err.code = "ENOSPC";
+        const err = Object.assign(new Error("disk full"), { code: "ENOSPC" });
         throw err;
       },
       copyFile: async () => assert.fail("must not copy on ENOSPC"),
       unlink: async () => assert.fail("must not unlink on ENOSPC"),
     };
     await assert.rejects(
-      moveFileFast(
-        path.join(dest, "in.bin"),
-        path.join(dest, "out.bin"),
-        ops as never,
-      ),
+      moveFileFast(path.join(dest, "in.bin"), path.join(dest, "out.bin"), ops),
       /disk full/,
     );
   } finally {

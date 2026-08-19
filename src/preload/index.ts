@@ -2,8 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 import packageJson from "../../package.json";
 import type { JobProgress } from "../shared/jobs.ts";
 import type {
+  AppSettings,
   ConversionRequest,
   DownloadRequest,
+  HistoryRecord,
 } from "../shared/contracts.ts";
 import type { RemuxRequest } from "../shared/media-tools.ts";
 import type { TranscriptionRequest } from "../shared/transcription.ts";
@@ -11,23 +13,16 @@ import type { TranscriptionRequest } from "../shared/transcription.ts";
 type DownloadOptions = DownloadRequest;
 type ConversionOptions = ConversionRequest;
 
-interface ConversionResult {
-  id: string;
-  filePath: string;
-  title: string;
-}
-
 // Custom APIs for renderer
 const prismAPI = {
   version: packageJson.version,
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
-    update: (settings: Record<string, unknown>) =>
+    update: (settings: Partial<AppSettings>) =>
       ipcRenderer.invoke("settings:update", settings),
     selectDirectory: () => ipcRenderer.invoke("settings:selectDirectory"),
     checkForUpdates: () => ipcRenderer.invoke("settings:checkForUpdates"),
-    downloadUpdate: () =>
-      ipcRenderer.invoke("settings:downloadUpdate") as Promise<void>,
+    downloadUpdate: () => ipcRenderer.invoke("settings:downloadUpdate"),
     quitAndInstall: () => ipcRenderer.invoke("settings:quitAndInstall"),
     hardwareProfile: () => ipcRenderer.invoke("settings:hardwareProfile"),
     optimizeForDevice: () => ipcRenderer.invoke("settings:optimizeForDevice"),
@@ -66,17 +61,11 @@ const prismAPI = {
     getTranscript: (url: string, format: string) =>
       ipcRenderer.invoke("download:getTranscript", url, format),
     convertFile: (options: ConversionOptions) =>
-      ipcRenderer.invoke(
-        "download:convertFile",
-        options,
-      ) as Promise<ConversionResult>,
+      ipcRenderer.invoke("download:convertFile", options),
     startConversion: (options: ConversionOptions) =>
-      ipcRenderer.invoke(
-        "download:startConversion",
-        options,
-      ) as Promise<string>,
+      ipcRenderer.invoke("download:startConversion", options),
     startRemux: (options: RemuxRequest) =>
-      ipcRenderer.invoke("download:startRemux", options) as Promise<string>,
+      ipcRenderer.invoke("download:startRemux", options),
     probeFile: (filePath: string) =>
       ipcRenderer.invoke("download:probeFile", filePath),
     getWaveform: (filePath: string) =>
@@ -84,8 +73,7 @@ const prismAPI = {
     getMediaPreviewUrl: (filePath: string) =>
       ipcRenderer.invoke("download:getMediaPreviewUrl", filePath),
     selectFile: () => ipcRenderer.invoke("download:selectFile"),
-    selectMediaFiles: () =>
-      ipcRenderer.invoke("download:selectMediaFiles") as Promise<string[]>,
+    selectMediaFiles: () => ipcRenderer.invoke("download:selectMediaFiles"),
     selectVideoFile: () => ipcRenderer.invoke("download:selectVideoFile"),
   },
   transcription: {
@@ -101,7 +89,7 @@ const prismAPI = {
     openModelDirectory: () =>
       ipcRenderer.invoke("transcription:openModelDirectory"),
     start: (request: TranscriptionRequest) =>
-      ipcRenderer.invoke("transcription:start", request) as Promise<string>,
+      ipcRenderer.invoke("transcription:start", request),
     gpuRuntimeState: () => ipcRenderer.invoke("transcription:gpuRuntimeState"),
     installGpuRuntime: () =>
       ipcRenderer.invoke("transcription:installGpuRuntime"),
@@ -121,7 +109,10 @@ const prismAPI = {
     const subscription = (
       _event: Electron.IpcRendererEvent,
       ...args: unknown[]
-    ) => callback(args[0] as EventPayloads[K]);
+    ) => {
+      // SAFETY: each allowed channel is paired with its main-process EventPayloads contract.
+      callback(args[0] as EventPayloads[K]);
+    };
     ipcRenderer.on(channel, subscription);
     return () => {
       ipcRenderer.removeListener(channel, subscription);
@@ -143,7 +134,7 @@ interface EventPayloads {
     technicalDetails?: string;
     retryCount: number;
   };
-  "history:update": unknown[];
+  "history:update": HistoryRecord[];
   "transcription:model-progress": {
     modelId: string;
     status: string;

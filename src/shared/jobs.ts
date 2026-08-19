@@ -72,11 +72,11 @@ export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = [
 ];
 
 export function isActiveJobStatus(status: string | undefined): boolean {
-  return ACTIVE_JOB_STATUSES.includes(status as JobStatus);
+  return ACTIVE_JOB_STATUSES.some((candidate) => candidate === status);
 }
 
 export function isTerminalJobStatus(status: string | undefined): boolean {
-  return TERMINAL_JOB_STATUSES.includes(status as JobStatus);
+  return TERMINAL_JOB_STATUSES.some((candidate) => candidate === status);
 }
 
 export function clampProgress(value: number | undefined): number | undefined {
@@ -85,7 +85,7 @@ export function clampProgress(value: number | undefined): number | undefined {
 }
 
 export function formatStageLabel(stage: JobStage): string {
-  const labels: Record<JobStage, string> = {
+  const labels = {
     metadata: "Resolving media",
     download: "Downloading media",
     download_video: "Downloading video",
@@ -98,7 +98,7 @@ export function formatStageLabel(stage: JobStage): string {
     transcript: "Generating transcript",
     thumbnail: "Generating thumbnail",
     finalize: "Finalizing",
-  };
+  } satisfies Record<JobStage, string>;
   return labels[stage];
 }
 
@@ -156,6 +156,8 @@ export function mergeJobProgress(
   const merged = { ...previous, ...normalized };
   for (const field of optionalFields) {
     if (normalized[field] === undefined && sameStage) {
+      // SAFETY: optionalFields contains only writable optional JobProgress keys,
+      // and both values share that owner contract.
       merged[field] = previous[field] as never;
     }
   }

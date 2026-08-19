@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * Pure format/container selection for the fast download engine.
  *
@@ -238,13 +240,17 @@ export const DEFAULT_CONCURRENT_FRAGMENTS = 8;
  * Clamps the concurrent-fragments setting to yt-dlp's sensible range (1-16),
  * falling back to the default of 8 for missing or invalid values.
  */
-export function clampConcurrentFragments(value: unknown): number {
+const FRAGMENT_COUNT_INPUT_SCHEMA = z.unknown();
+
+export function clampConcurrentFragments(
+  value: z.input<typeof FRAGMENT_COUNT_INPUT_SCHEMA>,
+): number {
   if (value === null || value === undefined || value === "") {
     return DEFAULT_CONCURRENT_FRAGMENTS;
   }
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return DEFAULT_CONCURRENT_FRAGMENTS;
-  return Math.max(1, Math.min(16, Math.round(parsed)));
+  const parsed = z.coerce.number().finite().safeParse(value);
+  if (!parsed.success) return DEFAULT_CONCURRENT_FRAGMENTS;
+  return Math.max(1, Math.min(16, Math.round(parsed.data)));
 }
 
 /** True when the plan expects two separate streams that yt-dlp must merge. */

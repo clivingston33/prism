@@ -3,10 +3,27 @@ import { X, Loader2, Video, Music } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { useNavigate } from "@tanstack/react-router";
 import { LoadingIndicator } from "./loading-indicator";
+import type {
+  DownloadFormat,
+  DownloadMode,
+  Quality,
+} from "../../shared/contracts.ts";
 
-type DownloadMode = "video_audio" | "video_only" | "audio_only" | "split";
-type VideoFormat = "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
+type VideoFormat = Extract<
+  DownloadFormat,
+  "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores"
+>;
 type AudioFormat = "source" | "mp3" | "wav" | "aac" | "flac";
+
+const QUALITY_VALUES = [
+  "best",
+  "2160p",
+  "1440p",
+  "1080p",
+  "720p",
+  "480p",
+  "360p",
+] as const satisfies readonly Quality[];
 
 interface OptionsDrawerProps {
   isOpen: boolean;
@@ -30,7 +47,7 @@ interface QueueOptions {
   audioFormat: AudioFormat;
   audioTrackId: string;
   conflictAction: "rename" | "overwrite" | "skip";
-  quality: string;
+  quality: Quality;
   trimEnabled: boolean;
   trimStart: string;
   trimEnd: string;
@@ -73,7 +90,7 @@ const AUDIO_FORMATS: { value: AudioFormat; label: string }[] = [
   { value: "flac", label: "FLAC" },
 ];
 
-const CONTAINER_HINTS: Record<VideoFormat, string> = {
+const CONTAINER_HINTS = {
   auto: "Auto — Recommended. Original — Fastest: keeps the source video and audio exactly as published (no re-encoding). Uses a native container, MKV if needed.",
   mp4: "MP4 compatibility: picks H.264/AAC source streams and remuxes without re-encoding. If the source has no MP4-compatible streams, Prism saves the original quality as MKV — you can convert it later in Media Tools.",
   mov: "MOV: remuxes H.264/AAC source streams without re-encoding; falls back to MKV when the source is incompatible.",
@@ -81,7 +98,7 @@ const CONTAINER_HINTS: Record<VideoFormat, string> = {
   mkv: "MKV: stores any source streams without re-encoding. The safest container.",
   prores:
     "ProRes converts the download to ProRes video (slow, large files, re-encodes). Only pick this when an editing workflow requires it.",
-};
+} satisfies Record<VideoFormat, string>;
 
 const MODE_OPTIONS: {
   value: DownloadMode;
@@ -108,7 +125,7 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
     audioFormat: settings?.defaultAudioFormat || "source",
     audioTrackId: "",
     conflictAction: "rename",
-    quality: (settings?.defaultQuality as QueueOptions["quality"]) || "best",
+    quality: settings?.defaultQuality || "best",
     trimEnabled: false,
     trimStart: "00:00:00",
     trimEnd: "00:00:00",
@@ -164,19 +181,17 @@ export function OptionsDrawer({
     setSelectedIndex(0);
     setQueueOptions(
       urls.map((itemUrl) => {
+        const options = defaultOptions(settings, itemUrl);
         const entry = playlist?.entries.find((item) => item.url === itemUrl);
+        if (!entry) return options;
         return {
-          ...defaultOptions(settings, itemUrl),
-          ...(entry
-            ? {
-                playlistId: playlist?.id,
-                playlistTitle: playlist?.title,
-                playlistIndex: entry.originalIndex,
-                playlistCount: playlist?.totalCount,
-                playlistEntryTitle: entry.title,
-                playlistDirectory: playlist?.useDirectory,
-              }
-            : {}),
+          ...options,
+          playlistId: playlist?.id,
+          playlistTitle: playlist?.title,
+          playlistIndex: entry.originalIndex,
+          playlistCount: playlist?.totalCount,
+          playlistEntryTitle: entry.title,
+          playlistDirectory: playlist?.useDirectory,
         };
       }),
     );
@@ -238,9 +253,11 @@ export function OptionsDrawer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen, onClose]);
 
-  const qualityOptions = useMemo(() => {
+  const qualityOptions = useMemo<Quality[]>(() => {
     const available = metadata?.qualities || [];
-    return ["best", ...available.filter((quality) => quality !== "best")];
+    return QUALITY_VALUES.filter(
+      (quality) => quality === "best" || available.includes(quality),
+    );
   }, [metadata?.qualities]);
 
   const updateCurrent = (partial: Partial<QueueOptions>) => {
@@ -267,16 +284,16 @@ export function OptionsDrawer({
         await window.prism.download.addToQueue({
           url: item.url,
           mode: item.mode,
-          format: (item.mode === "audio_only"
-            ? item.audioFormat
-            : item.format) as DownloadOptions["format"],
+          format:
+            item.mode === "audio_only"
+              ? item.audioFormat === "source"
+                ? "auto"
+                : item.audioFormat
+              : item.format,
           audioFormat: item.audioFormat,
           audioTrackId: item.audioTrackId || undefined,
           conflictAction: item.conflictAction,
-          quality:
-            item.mode === "audio_only"
-              ? undefined
-              : (item.quality as DownloadOptions["quality"]),
+          quality: item.mode === "audio_only" ? undefined : item.quality,
           trimStart: item.trimEnabled ? item.trimStart : undefined,
           trimEnd: item.trimEnabled ? item.trimEnd : undefined,
           includeSubtitles: includeSubtitles || undefined,
@@ -504,7 +521,12 @@ export function OptionsDrawer({
               </label>
               <select
                 value={current.quality}
-                onChange={(e) => updateCurrent({ quality: e.target.value })}
+                onChange={(event) => {
+                  const quality = QUALITY_VALUES.find(
+                    (candidate) => candidate === event.currentTarget.value,
+                  );
+                  if (quality) updateCurrent({ quality });
+                }}
                 className="field-input text-sm"
               >
                 {qualityOptions.map((quality) => (
@@ -575,12 +597,14 @@ export function OptionsDrawer({
                   </select>
                   <select
                     value={current.subtitleDisposition}
-                    onChange={(e) =>
-                      updateCurrent({
-                        subtitleDisposition: e.target
-                          .value as QueueOptions["subtitleDisposition"],
-                      })
-                    }
+                    onChange={(event) => {
+                      const value = (
+                        ["default", "forced", "none"] as const
+                      ).find(
+                        (candidate) => candidate === event.currentTarget.value,
+                      );
+                      if (value) updateCurrent({ subtitleDisposition: value });
+                    }}
                     aria-label="Subtitle behavior"
                     className="field-input px-2 text-xs"
                   >
@@ -603,12 +627,13 @@ export function OptionsDrawer({
                   {current.saveSubtitleSidecar && (
                     <select
                       value={current.subtitleFormat}
-                      onChange={(event) =>
-                        updateCurrent({
-                          subtitleFormat: event.target
-                            .value as QueueOptions["subtitleFormat"],
-                        })
-                      }
+                      onChange={(event) => {
+                        const value = (["srt", "vtt", "txt"] as const).find(
+                          (candidate) =>
+                            candidate === event.currentTarget.value,
+                        );
+                        if (value) updateCurrent({ subtitleFormat: value });
+                      }}
                       aria-label="External subtitle format"
                       className="field-input col-span-2 px-2 text-xs"
                     >
@@ -628,12 +653,12 @@ export function OptionsDrawer({
             </label>
             <select
               value={current.conflictAction}
-              onChange={(event) =>
-                updateCurrent({
-                  conflictAction: event.target
-                    .value as QueueOptions["conflictAction"],
-                })
-              }
+              onChange={(event) => {
+                const value = (["rename", "overwrite", "skip"] as const).find(
+                  (candidate) => candidate === event.currentTarget.value,
+                );
+                if (value) updateCurrent({ conflictAction: value });
+              }}
               className="field-input"
             >
               <option value="rename">Keep both (rename new file)</option>

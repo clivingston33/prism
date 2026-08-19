@@ -7,7 +7,9 @@ import "@fontsource/geist-mono/400.css";
 import "./index.css";
 import { App } from "./app";
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+const root = document.getElementById("root");
+if (!root) throw new Error("Renderer root element is missing.");
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>,

@@ -132,7 +132,7 @@ export function parseWhisperProgressPercent(text: string): number | undefined {
  * remain available to diagnostics and the history drawer.
  */
 export function transcriptionJobError(
-  error: unknown,
+  cause: unknown,
   cancelled: boolean,
 ): JobError {
   return {
@@ -142,9 +142,9 @@ export function transcriptionJobError(
       : "The transcription could not be completed.",
     technicalDetails: cancelled
       ? undefined
-      : error instanceof Error
-        ? error.message.slice(-1200)
-        : String(error).slice(-1200),
+      : cause instanceof Error
+        ? cause.message.slice(-1200)
+        : String(cause).slice(-1200),
     stage: "transcript",
     retryable: !cancelled,
   };

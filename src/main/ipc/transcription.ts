@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { ipcMain, shell } from "electron";
 import {
   modelDirectory,
@@ -117,10 +119,11 @@ export function setupTranscriptionIPC(mainWindow: Electron.BrowserWindow) {
   ipcMain.handle("transcription:readTranscript", (_, id) =>
     readTranscriptFile(requireString(id, "history id")),
   );
-  ipcMain.handle("transcription:writeTranscript", (_, id, content) =>
-    writeTranscriptFile(
+  ipcMain.handle("transcription:writeTranscript", (_, id, content) => {
+    const parsed = z.string().safeParse(content);
+    return writeTranscriptFile(
       requireString(id, "history id"),
-      typeof content === "string" ? content : "",
-    ),
-  );
+      parsed.success ? parsed.data : "",
+    );
+  });
 }

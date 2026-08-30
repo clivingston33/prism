@@ -1,21 +1,19 @@
-# Prism 0.1.0-alpha.4
+# Prism 0.1.0-alpha.5
 
-This alpha hardens downloads and releases, simplifies runtime contracts, and
-adds in-app updates.
+This alpha fixes the update popup, polishes the UI, and ships the audit batch: pause/resume, scheduled limits, subtitle-only downloads, and transcript search.
 
 ## Highlights
 
-- Prism now checks for updates at startup and offers an in-app popup to download,
-  restart, and install them. NSIS blockmaps enable differential downloads when
-  the prior package is available.
-- Release artifacts record their Authenticode signature state in
-  `SIGNING-STATUS.txt`; publishing fails when signatures are invalid.
-- Model and TikTok image downloads now flush fully, support cancellation, enforce
-  bounded streaming, and stage temporary files outside download destinations.
-- Prism now enforces one running instance, serializes Library reconciliation,
-  and validates development navigation by exact origin.
-- Renderer and preload APIs now share one contract, IPC validation uses
-  declarative Zod schemas, and dead job/history APIs were removed.
+- Fixed update check reporting “available” when already on the latest version (now uses `isUpdateAvailable`). On latest, no popup.
+- Restyled the update dialog with the app’s card design (`UpdateCard`) and surfaced update errors as toasts.
+- Removed the dead Vulkan GPU runtime path (unpublished manifest, 8× ternaries) — CUDA-only, leaner.
+- Settings “Check for updates” now opens the same update popup instead of a text line.
+- Split heavy pages (Media Tools 67 kB, Transcripts 37 kB) — main bundle 1.19M → 1.07M.
+- Raised max simultaneous downloads 3 → 5.
+- Pause/Resume downloads — paused jobs keep `.part` files in `prism-downloads/<jobId>` and resume in place.
+- Scheduled speed-limit window (Downloads settings): e.g. `2M` during `22:00–06:00`, applied at start.
+- Subtitle-only download mode (captions without media) via `--skip-download`.
+- Library search now matches transcript text as well as titles.
 
 ## Important: unsigned Windows alpha
 

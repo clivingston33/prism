@@ -2,6 +2,15 @@
 
 All notable changes to Prism will be documented here.
 
+## [0.1.0-alpha.5] - 2026-08-30
+
+- Fixed update check reporting available on latest; restyled update dialog and surfaced update errors as toasts.
+- Removed dead Vulkan GPU runtime path and simplified GPU state to CUDA-only.
+- Split heavy renderer pages into lazy chunks (main 1.19M → 1.07M) and raised max concurrent downloads to 5.
+- Added Pause/Resume for downloads with preserved temp dirs for yt-dlp resume.
+- Added scheduled speed-limit window applied at download start.
+- Added subtitle-only download mode and Library transcript-text search.
+
 ## [0.1.0-alpha.4] - 2026-08-30
 
 - Added in-app update prompts with background differential downloads and one-click restart/install.

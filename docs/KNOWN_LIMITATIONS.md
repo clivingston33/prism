@@ -1,6 +1,6 @@
 # Known limitations
 
-Prism `0.1.0-alpha.4` is an unsigned Windows x64 public alpha. It is intended
+Prism `0.1.0-alpha.5` is an unsigned Windows x64 public alpha. It is intended
 for testing with media you are authorized to download and process.
 
 - Windows SmartScreen may warn about or block the unsigned installer. Verify

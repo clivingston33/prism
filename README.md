@@ -20,9 +20,9 @@ uses yt-dlp, FFmpeg, FFprobe, and whisper.cpp while keeping your media,
 transcripts, settings, and history on your computer.
 
 > [!WARNING]
-> Prism is currently a **Windows 10/11 x64 public alpha**. Release artifacts
-> are Authenticode-signed and include published checksums. Windows SmartScreen
-> may still warn while the publisher builds reputation.
+> Prism is currently a **Windows 10/11 x64 public alpha**. The installer is
+> currently unsigned, so Windows SmartScreen may warn or block it. Verify the
+> published checksum before running the installer.
 
 ## Get Prism
 
@@ -31,7 +31,7 @@ Download **[Prism v0.1.0-alpha.4](https://github.com/clivingston33/prism/release
 The release includes the Windows installer, updater metadata, a blockmap, and:
 
 - `SHA256SUMS-windows.txt` for checksum verification
-- `SIGNING-STATUS.txt` documenting the Authenticode signature state
+- `SIGNING-STATUS.txt` documenting the artifact signature state
 
 ## The workspace
 

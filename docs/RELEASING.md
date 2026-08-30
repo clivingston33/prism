@@ -10,7 +10,7 @@ Do not publish automatically from a pull request. Releases are created from a re
 6. Confirm `LICENSE`, `THIRD_PARTY_NOTICES.md`, and every native license under `resources/licenses` are present in the unpacked application resources.
 7. Exercise a short download, a source-preserving download, a remux, a conversion, model verification, offline transcription, cancellation, restart recovery, Library reconciliation, and settings persistence.
 8. Generate SHA-256 checksums for every installer and publish them beside the artifacts.
-9. Confirm `WINDOWS_CERTIFICATE` contains the base64-encoded PFX and `WINDOWS_CERTIFICATE_PASSWORD` contains its password. The workflow must reject missing credentials, invalid signatures, or artifacts signed by different certificates.
+9. Confirm the workflow recorded the artifact signature state in `SIGNING-STATUS.txt`. Add `WINDOWS_CERTIFICATE` (base64-encoded PFX) and `WINDOWS_CERTIFICATE_PASSWORD` secrets and restore the fail-closed signing gate before requiring signed releases.
 10. Review the installer’s uninstall behavior. It must not delete per-user settings, history, transcripts, downloads, or Whisper models.
 11. Create a draft GitHub release, attach artifacts and checksums, review the notes, then publish manually.
 

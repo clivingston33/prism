@@ -4,7 +4,7 @@
   <p><strong>A private Windows workspace for downloading, shaping, organizing, and transcribing media.</strong></p>
   <p>
     <a href="https://github.com/clivingston33/prism/actions/workflows/ci.yml"><img alt="CI checks" src="https://img.shields.io/github/actions/workflow/status/clivingston33/prism/ci.yml?branch=main&style=flat-square&label=checks" /></a>
-    <a href="https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.3"><img alt="Current release" src="https://img.shields.io/github/v/tag/clivingston33/prism?sort=semver&style=flat-square&label=release" /></a>
+    <a href="https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.4"><img alt="Current release" src="https://img.shields.io/github/v/tag/clivingston33/prism?sort=semver&style=flat-square&label=release" /></a>
     <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat-square&logo=windows11&logoColor=white" />
     <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" /></a>
   </p>
@@ -20,13 +20,13 @@ uses yt-dlp, FFmpeg, FFprobe, and whisper.cpp while keeping your media,
 transcripts, settings, and history on your computer.
 
 > [!WARNING]
-> Prism is currently a **Windows 10/11 x64 public alpha**. The published
-> `0.1.0-alpha.3` installer predates required release signing, so Windows
-> SmartScreen may warn or block it. Verify its published checksum before use.
+> Prism is currently a **Windows 10/11 x64 public alpha**. Release artifacts
+> are Authenticode-signed and include published checksums. Windows SmartScreen
+> may still warn while the publisher builds reputation.
 
 ## Get Prism
 
-Download **[Prism v0.1.0-alpha.3](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.3)**.
+Download **[Prism v0.1.0-alpha.4](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.4)**.
 
 The release includes the Windows installer, updater metadata, a blockmap, and:
 
@@ -81,10 +81,10 @@ Prism does not bypass DRM or guarantee every yt-dlp-supported site.
 
 ## Installation
 
-1. Open the [alpha release](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.3).
+1. Open the [alpha release](https://github.com/clivingston33/prism/releases/tag/v0.1.0-alpha.4).
 2. Download the installer and `SHA256SUMS-windows.txt`.
-3. Verify the installer's SHA-256 value.
-4. Run the installer and allow Windows SmartScreen only if the checksum matches.
+3. Verify the Authenticode signature and installer's SHA-256 value.
+4. Run the installer.
 
 Prism keeps models, settings, history, and application data in the per-user
 application-data directory. Your downloads and transcripts remain wherever you

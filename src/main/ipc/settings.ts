@@ -138,11 +138,7 @@ export function setupSettingsIPC() {
   });
 
   ipcMain.handle("settings:downloadUpdate", async () => {
-    try {
-      await autoUpdater.downloadUpdate();
-    } catch (err) {
-      console.error("[updater] Update download failed:", err);
-    }
+    await autoUpdater.downloadUpdate();
   });
 
   ipcMain.handle("settings:quitAndInstall", async () => {

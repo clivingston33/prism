@@ -3,6 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { useAppStore } from "./stores/app-store";
 import { Toasts } from "./components/toasts";
+import { Modal } from "./components/modal";
 
 function jobKind(item: DownloadItem | undefined) {
   if (item?.jobType === "conversion") return "Conversion";
@@ -15,6 +16,7 @@ export function App() {
     setSettings,
     setDownloads,
     settings,
+    update,
     updateDownload,
     applyProgress,
     setUpdate,
@@ -89,6 +91,12 @@ export function App() {
       setUpdate({ status: "error", message: data.message });
     });
 
+    void window.prism.settings.checkForUpdates().then((result) => {
+      if (result?.status === "available" && result.version) {
+        setUpdate({ status: "available", version: result.version });
+      }
+    });
+
     return () => {
       unsubProgress();
       unsubComplete();
@@ -131,10 +139,81 @@ export function App() {
 
   if (!settings) return null;
 
+  const updateOpen =
+    update.status === "available" ||
+    update.status === "downloading" ||
+    update.status === "downloaded";
+  const downloadUpdate = () => {
+    setUpdate({ status: "downloading" });
+    void window.prism.settings.downloadUpdate().catch((error: unknown) =>
+      setUpdate({
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  };
+
   return (
     <>
       <RouterProvider router={router} />
       <Toasts />
+      <Modal
+        open={updateOpen}
+        onClose={() => setUpdate({ status: "idle" })}
+        title={
+          update.status === "downloaded"
+            ? "Update ready"
+            : update.status === "downloading"
+              ? "Downloading update"
+              : "Prism update available"
+        }
+        description={update.version ? `Version ${update.version}` : undefined}
+        footer={
+          update.status === "available" ? (
+            <>
+              <button
+                type="button"
+                className="field-button"
+                onClick={() => setUpdate({ status: "idle" })}
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={downloadUpdate}
+              >
+                Download update
+              </button>
+            </>
+          ) : update.status === "downloaded" ? (
+            <>
+              <button
+                type="button"
+                className="field-button"
+                onClick={() => setUpdate({ status: "idle" })}
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => window.prism.settings.quitAndInstall()}
+              >
+                Restart and install
+              </button>
+            </>
+          ) : undefined
+        }
+      >
+        <p className="text-pretty text-sm leading-relaxed text-text-secondary">
+          {update.status === "downloaded"
+            ? "Restart Prism to finish installing the update."
+            : update.status === "downloading"
+              ? "Prism is downloading the update in the background. You can keep working."
+              : "Download the update in Prism. Windows packages use differential updates when available."}
+        </p>
+      </Modal>
     </>
   );
 }

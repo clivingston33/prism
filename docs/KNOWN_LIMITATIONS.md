@@ -1,10 +1,10 @@
 # Known limitations
 
-Prism `0.1.0-alpha.3` is an unsigned Windows x64 public alpha. It is intended
-for testing with media you are authorized to download and process.
+Prism `0.1.0-alpha.4` is a signed Windows x64 public alpha. It is intended for
+testing with media you are authorized to download and process.
 
-- Windows SmartScreen may warn about or block the unsigned installer. Verify
-  the published SHA-256 checksum before running it.
+- Windows SmartScreen may still warn while the publisher builds reputation.
+  Verify the Authenticode signature and published SHA-256 checksum before use.
 - Website support follows yt-dlp and can change when a site changes. Private,
   authenticated, age-restricted, or DRM-protected media may not work.
 - Prism does not bypass DRM and does not provide cookies or site credentials.

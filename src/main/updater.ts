@@ -18,9 +18,7 @@ function sendUpdateEvent(channel: string, payload: UpdateEventPayload) {
 
 export function setupUpdater() {
   autoUpdater.autoDownload = false;
-  // Prism's public releases are intentionally unsigned prereleases. Keep
-  // alpha-to-alpha updates visible instead of filtering them out as prerelease
-  // versions.
+  // Keep alpha-to-alpha updates visible instead of filtering prereleases.
   autoUpdater.allowPrerelease = true;
 
   // Use dev config file if it exists (for development/testing)
@@ -51,12 +49,6 @@ export function setupUpdater() {
   autoUpdater.on("error", (error) => {
     console.error("[updater] Update error:", error.message);
     sendUpdateEvent("update:error", { message: error.message });
-  });
-
-  void autoUpdater.checkForUpdatesAndNotify().catch((cause: unknown) => {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    console.error("[updater] Update check failed:", message);
-    sendUpdateEvent("update:error", { message });
   });
 }
 

@@ -198,7 +198,7 @@ test("parseSettingsPatch clamps numbers, drops unknown keys, validates enums", (
     unknownKey: "dropped",
   });
   assert.deepEqual(patch, {
-    maxConcurrentDownloads: 3,
+    maxConcurrentDownloads: 5,
     concurrentFragments: 1,
     theme: "dark",
   });

@@ -37,8 +37,8 @@ export interface GpuRuntimeState {
   error?: string;
   supported: boolean;
   gpuName?: string;
-  runtimeId: "cuda" | "vulkan";
-  runtimeLabel: "CUDA" | "Vulkan";
+  runtimeId: "cuda";
+  runtimeLabel: "CUDA";
 }
 
 export interface PlaylistInfo {
@@ -133,6 +133,8 @@ export interface PrismAPI {
   download: {
     addToQueue(options: DownloadRequest): Promise<string>;
     cancel(id: string): Promise<boolean>;
+    pause(id: string): Promise<boolean>;
+    resume(id: string): Promise<boolean>;
     cancelAll(): Promise<void>;
     reorderQueue(ids: string[]): Promise<boolean>;
     getMetadata(url: string): Promise<VideoMetadata | null>;

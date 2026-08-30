@@ -42,6 +42,8 @@ const prismAPI: PrismAPI = {
     addToQueue: (options: DownloadRequest) =>
       ipcRenderer.invoke("download:addToQueue", options),
     cancel: (id: string) => ipcRenderer.invoke("download:cancel", id),
+    pause: (id: string) => ipcRenderer.invoke("download:pause", id),
+    resume: (id: string) => ipcRenderer.invoke("download:resume", id),
     cancelAll: () => ipcRenderer.invoke("download:cancelAll"),
     reorderQueue: (ids: string[]) =>
       ipcRenderer.invoke("download:reorderQueue", ids),

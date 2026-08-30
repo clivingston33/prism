@@ -30,6 +30,7 @@ const DOWNLOAD_MODES = [
   "video_only",
   "audio_only",
   "split",
+  "subtitles_only",
 ] as const satisfies readonly DownloadMode[];
 const DOWNLOAD_FORMATS = [
   "auto",
@@ -283,14 +284,28 @@ const SETTINGS_SCHEMA: z.ZodType<Partial<AppSettings>> = z
   .object({
     defaultVideoFormat: z.enum(["auto", "mp4", "mov", "webm", "mkv", "prores"]),
     defaultAudioFormat: z.enum(AUDIO_FORMATS),
-    maxConcurrentDownloads: clampedInteger(1, 3),
+    maxConcurrentDownloads: clampedInteger(1, 5),
     concurrentFragments: clampedInteger(1, 16),
     downloadLocation: requiredString,
     defaultDownloadMode: z.enum(["original", "mp4-compatible", "custom"]),
     defaultQuality: z.enum(QUALITIES),
-    retryCount: clampedInteger(0, 20),
-    fragmentRetryCount: clampedInteger(0, 20),
     downloadSpeedLimit: requiredString,
+    scheduledSpeedLimit: optionalString,
+    scheduleWindowStart: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+        .optional(),
+    ),
+    scheduleWindowEnd: z.preprocess(
+      emptyToUndefined,
+      z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+        .optional(),
+    ),
+    fragmentRetryCount: clampedInteger(0, 20),
     lowResourceMode: z.boolean(),
     defaultMediaToolsMode: z.enum(["remux", "convert"]),
     hardwareAcceleration: z.enum(["auto", "off"]),

@@ -21,6 +21,9 @@ function cleanSettings(settings: AppSettings): AppSettings {
     retryCount: settings.retryCount,
     fragmentRetryCount: settings.fragmentRetryCount,
     downloadSpeedLimit: settings.downloadSpeedLimit,
+    scheduledSpeedLimit: settings.scheduledSpeedLimit,
+    scheduleWindowStart: settings.scheduleWindowStart,
+    scheduleWindowEnd: settings.scheduleWindowEnd,
     lowResourceMode: settings.lowResourceMode,
     defaultMediaToolsMode: settings.defaultMediaToolsMode,
     hardwareAcceleration: settings.hardwareAcceleration,
@@ -120,13 +123,16 @@ export function setupSettingsIPC() {
   ipcMain.handle("settings:checkForUpdates", async () => {
     try {
       const result = await autoUpdater.checkForUpdates();
-      if (result?.updateInfo?.version) {
+      if (result?.isUpdateAvailable && result.updateInfo?.version) {
         return {
           status: "available" as const,
           isUpdateAvailable: true,
           version: result.updateInfo.version,
           releaseDate: result.updateInfo.releaseDate,
-          releaseNotes: result.updateInfo.releaseNotes,
+          releaseNotes:
+            typeof result.updateInfo.releaseNotes === "string"
+              ? result.updateInfo.releaseNotes
+              : undefined,
         };
       }
       return { status: "up_to_date" as const, isUpdateAvailable: false };

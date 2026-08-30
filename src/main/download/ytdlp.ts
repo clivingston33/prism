@@ -8,7 +8,11 @@ import { store } from "../store";
 import { convertMedia, runFfmpeg } from "./converter";
 import { probeMediaFile } from "./media-probe";
 import { StreamLineBuffer } from "./progress";
-import { JobCancelledError, processRegistry } from "./process-registry";
+import {
+  JobCancelledError,
+  JobPausedError,
+  processRegistry,
+} from "./process-registry";
 import { isJobCancelled, publishJobProgress } from "./job-state";
 import type { JobStage } from "../../shared/jobs.ts";
 import type { HistoryRecord } from "../../shared/contracts.ts";
@@ -21,7 +25,7 @@ import {
   type DownloadPlan,
 } from "./format-selection";
 import { DownloadAggregator, parsePrismProgressLine } from "./progress-tracker";
-import { buildBaseYtDlpFlags } from "./ytdlp-args";
+import { buildBaseYtDlpFlags, effectiveSpeedLimit } from "./ytdlp-args";
 import {
   downloadGenericMedia,
   saveResponse,
@@ -858,7 +862,13 @@ function baseYtDlpArgs(tempDir: string, item: HistoryRecord) {
     concurrentFragments: getConcurrentFragments(),
     retryCount: settings.retryCount ?? 10,
     fragmentRetryCount: settings.fragmentRetryCount ?? 10,
-    speedLimit: settings.downloadSpeedLimit || "",
+    speedLimit:
+      effectiveSpeedLimit(
+        settings.downloadSpeedLimit,
+        settings.scheduledSpeedLimit,
+        settings.scheduleWindowStart,
+        settings.scheduleWindowEnd,
+      ) ?? "",
     trimStart: item.trimStart,
     trimEnd: item.trimEnd,
     subtitles: wantsSubtitles(item)
@@ -1171,7 +1181,7 @@ async function verifyAndDeliverSubtitles(
 interface RunYtDlpOptions {
   /** How many separate streams the format selector may download. */
   expectedStreams: number;
-  kind: "video" | "audio";
+  kind: "video" | "audio" | "single";
   /** The window of overall progress this run occupies (e.g. 0-96). */
   progressStart: number;
   progressEnd: number;
@@ -1308,6 +1318,10 @@ async function runYtDlp(
         reject(new JobCancelledError());
         return;
       }
+      if (processRegistry.isPaused(item.id)) {
+        reject(new JobPausedError());
+        return;
+      }
       if (code === 0) {
         resolve({ outputFiles: [...outputFiles] });
         return;
@@ -1323,6 +1337,10 @@ async function runYtDlp(
     child.on("error", () => {
       if (processRegistry.isCancelled(item.id)) {
         reject(new JobCancelledError());
+        return;
+      }
+      if (processRegistry.isPaused(item.id)) {
+        reject(new JobPausedError());
         return;
       }
       reject(new Error(describeExecutableProblem("yt-dlp", ytdlp)));
@@ -1782,10 +1800,64 @@ async function downloadSingleMedia(
       completion,
     );
   } finally {
-    removeDirectorySafe(tempDir);
+    // A paused job keeps its temp dir so yt-dlp can resume the .part files.
+    if (!processRegistry.isPaused(item.id)) removeDirectorySafe(tempDir);
   }
 }
+/**
+ * Subtitles-only mode: fetch the caption tracks without the media. The
+ * delivered subtitle files are the job's output; the primary (first) file is
+ * the history record's filePath.
+ */
+async function downloadSubtitlesOnly(
+  item: HistoryRecord,
+  dest: string,
+  mainWindow: Electron.BrowserWindow,
+) {
+  const tempDir = createJobTempDir(item.id);
+  try {
+    publishJobProgress(mainWindow, {
+      jobId: item.id,
+      attemptId: item.attemptId || item.id,
+      jobType: item.jobType || "download",
+      status: "running",
+      stage: "download",
+      patch: { overallProgress: 5, stageProgress: 5 },
+    });
+    const args = baseYtDlpArgs(tempDir, {
+      ...item,
+      includeSubtitles: true,
+      saveSubtitleSidecar: true,
+    });
+    args.push("--skip-download", item.url);
+    await runYtDlp(args, item, mainWindow, {
+      expectedStreams: 0,
+      kind: "single",
+      progressStart: 5,
+      progressEnd: 90,
+    });
+    if (processRegistry.isPaused(item.id)) throw new JobPausedError();
 
+    const requestedFormat = normalizeTranscriptFormat(item.transcriptFormat);
+    const targetBase = path.join(dest, item.title || "subtitles");
+    const delivered = await deliverSubtitles(
+      tempDir,
+      targetBase,
+      requestedFormat,
+    );
+    if (delivered.length === 0) {
+      throw new Error(
+        "No subtitles were available for the requested languages.",
+      );
+    }
+    await completeDownload(item, delivered[0], delivered, mainWindow, {
+      format: path.extname(delivered[0]).replace(/^\./, "") || requestedFormat,
+      subtitlePaths: delivered,
+    });
+  } finally {
+    if (!processRegistry.isPaused(item.id)) removeDirectorySafe(tempDir);
+  }
+}
 async function downloadSplitMedia(
   item: HistoryRecord,
   dest: string,
@@ -1920,7 +1992,7 @@ async function downloadSplitMedia(
       },
     );
   } finally {
-    removeDirectorySafe(tempDir);
+    if (!processRegistry.isPaused(item.id)) removeDirectorySafe(tempDir);
   }
 }
 
@@ -2011,6 +2083,11 @@ export async function startDownload(
 
   if (metadata?.mediaType === "image") {
     await downloadTikTokImages(effectiveItem, metadata, dest, mainWindow);
+    return;
+  }
+
+  if (mode === "subtitles_only") {
+    await downloadSubtitlesOnly(effectiveItem, dest, mainWindow);
     return;
   }
 

@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import {
   createRouter,
   createRoute,
@@ -11,9 +12,21 @@ import { DownloadPage } from "./pages/download-page";
 import { HistoryPage } from "./pages/history-page";
 import { LibraryPage } from "./pages/library-page";
 import { SettingsPage } from "./pages/settings-page";
-import { TranscriptsPage } from "./pages/transcripts-page";
-import { MediaToolsPage } from "./pages/media-tools-page";
-import { TranscriptViewerPage } from "./pages/transcript-viewer-page";
+const TranscriptsPage = lazy(() =>
+  import("./pages/transcripts-page").then((m) => ({
+    default: m.TranscriptsPage,
+  })),
+);
+const MediaToolsPage = lazy(() =>
+  import("./pages/media-tools-page").then((m) => ({
+    default: m.MediaToolsPage,
+  })),
+);
+const TranscriptViewerPage = lazy(() =>
+  import("./pages/transcript-viewer-page").then((m) => ({
+    default: m.TranscriptViewerPage,
+  })),
+);
 
 const rootRoute = createRootRoute({
   component: Shell,
@@ -40,7 +53,11 @@ const libraryRoute = createRoute({
 const transcriptsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/transcript",
-  component: TranscriptsPage,
+  component: () => (
+    <Suspense fallback={null}>
+      <TranscriptsPage />
+    </Suspense>
+  ),
 });
 
 const transcriptViewerRoute = createRoute({
@@ -48,14 +65,22 @@ const transcriptViewerRoute = createRoute({
   path: "/transcript/$historyId",
   component: () => {
     const { historyId } = transcriptViewerRoute.useParams();
-    return <TranscriptViewerPage historyId={historyId} />;
+    return (
+      <Suspense fallback={null}>
+        <TranscriptViewerPage historyId={historyId} />
+      </Suspense>
+    );
   },
 });
 
 const mediaToolsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/media-tools",
-  component: MediaToolsPage,
+  component: () => (
+    <Suspense fallback={null}>
+      <MediaToolsPage />
+    </Suspense>
+  ),
 });
 
 function LegacyConvertRedirect() {

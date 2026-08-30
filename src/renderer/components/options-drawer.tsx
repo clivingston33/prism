@@ -113,6 +113,11 @@ const MODE_OPTIONS: {
   { value: "video_only", label: "Video only", description: "No audio track" },
   { value: "audio_only", label: "Audio only", description: "Extract audio" },
   { value: "split", label: "Split A/V", description: "Separate files" },
+  {
+    value: "subtitles_only",
+    label: "Subtitles only",
+    description: "Captions only",
+  },
 ];
 
 function defaultOptions(settings: Settings | null, url: string): QueueOptions {
@@ -147,6 +152,7 @@ function formatSummary(item: QueueOptions) {
   const subtitleSummary = item.subtitlesEnabled
     ? ` · ${item.subtitleLanguages.replace(".*", "").toUpperCase()} subtitles embedded${item.saveSubtitleSidecar ? " + sidecar" : ""}`
     : "";
+  if (item.mode === "subtitles_only") return "Subtitles only";
   if (item.mode === "audio_only")
     return `${containerLabel(item.audioFormat)} audio`;
   if (item.mode === "video_only")
@@ -280,7 +286,8 @@ export function OptionsDrawer({
     try {
       for (const item of queueOptions) {
         const includeSubtitles =
-          item.mode !== "audio_only" && item.subtitlesEnabled;
+          item.mode === "subtitles_only" ||
+          (item.mode !== "audio_only" && item.subtitlesEnabled);
         await window.prism.download.addToQueue({
           url: item.url,
           mode: item.mode,
@@ -289,11 +296,16 @@ export function OptionsDrawer({
               ? item.audioFormat === "source"
                 ? "auto"
                 : item.audioFormat
-              : item.format,
+              : item.mode === "subtitles_only"
+                ? "auto"
+                : item.format,
           audioFormat: item.audioFormat,
           audioTrackId: item.audioTrackId || undefined,
           conflictAction: item.conflictAction,
-          quality: item.mode === "audio_only" ? undefined : item.quality,
+          quality:
+            item.mode === "audio_only" || item.mode === "subtitles_only"
+              ? undefined
+              : item.quality,
           trimStart: item.trimEnabled ? item.trimStart : undefined,
           trimEnd: item.trimEnabled ? item.trimEnd : undefined,
           includeSubtitles: includeSubtitles || undefined,

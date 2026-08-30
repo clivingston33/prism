@@ -9,9 +9,19 @@ export class JobCancelledError extends Error {
   }
 }
 
+export class JobPausedError extends Error {
+  readonly code = "JOB_PAUSED";
+
+  constructor(message = "Job paused") {
+    super(message);
+    this.name = "JobPausedError";
+  }
+}
+
 export class ProcessRegistry {
   private readonly processes = new Map<string, Set<ChildProcess>>();
   private readonly cancelled = new Set<string>();
+  private readonly paused = new Set<string>();
 
   register(jobId: string, child: ChildProcess) {
     if (this.cancelled.has(jobId)) {
@@ -40,6 +50,10 @@ export class ProcessRegistry {
     return this.cancelled.has(jobId);
   }
 
+  isPaused(jobId: string) {
+    return this.paused.has(jobId);
+  }
+
   cancel(jobId: string) {
     this.cancelled.add(jobId);
     const processes = this.processes.get(jobId);
@@ -49,6 +63,21 @@ export class ProcessRegistry {
       this.terminate(child);
     }
     return true;
+  }
+
+  pause(jobId: string) {
+    this.paused.add(jobId);
+    const processes = this.processes.get(jobId);
+    if (!processes) return false;
+
+    for (const child of processes) {
+      this.terminate(child);
+    }
+    return true;
+  }
+
+  resume(jobId: string) {
+    this.paused.delete(jobId);
   }
 
   private terminate(child: ChildProcess) {
@@ -73,6 +102,7 @@ export class ProcessRegistry {
   clear(jobId: string) {
     this.processes.delete(jobId);
     this.cancelled.delete(jobId);
+    this.paused.delete(jobId);
   }
 }
 

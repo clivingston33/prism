@@ -7,7 +7,11 @@ import {
   isAudioFormat,
   isUsableExecutable,
 } from "./utils";
-import { JobCancelledError, processRegistry } from "./process-registry";
+import {
+  JobCancelledError,
+  JobPausedError,
+  processRegistry,
+} from "./process-registry";
 import { clearJobProgress, publishJobProgress } from "./job-state";
 import { classifyDownloadError } from "./errors";
 import { cleanupAbandonedTempDirs } from "./temp-dirs";
@@ -29,7 +33,7 @@ const DOWNLOAD_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 function getMaxConcurrentDownloads() {
   const settings = store.get("settings");
   if (settings.lowResourceMode) return 1;
-  return Math.max(1, Math.min(3, settings.maxConcurrentDownloads || 2));
+  return Math.max(1, Math.min(5, settings.maxConcurrentDownloads || 2));
 }
 
 function createId() {
@@ -257,10 +261,27 @@ class DownloadManager {
       }
       await startDownload({ ...item, status: "preparing" }, mainWindow);
     } catch (err) {
+      const paused =
+        err instanceof JobPausedError || processRegistry.isPaused(id);
       const cancelled =
-        err instanceof JobCancelledError || processRegistry.isCancelled(id);
+        !paused &&
+        (err instanceof JobCancelledError || processRegistry.isCancelled(id));
       const current = store.get("history", []).find((entry) => entry.id === id);
-      if (current) {
+      if (current && paused) {
+        publishJobProgress(mainWindow, {
+          jobId: id,
+          attemptId: current.attemptId,
+          jobType: "download",
+          status: "paused",
+          stage: current.stage,
+          patch: {},
+        });
+        updateHistoryItem(
+          id,
+          { status: "paused", stageLabel: "Paused" },
+          mainWindow,
+        );
+      } else if (current) {
         const error = cancelled
           ? errorFor(
               "JOB_CANCELLED",
@@ -300,15 +321,43 @@ class DownloadManager {
         }
       }
     } finally {
-      processRegistry.clear(id);
+      // Keep the paused flag: downloadSingleMedia's finally checks it to
+      // preserve the temp dir for .part resume; pause() re-arms the registry
+      // flag so clearing here must not drop a pause in flight.
+      if (!processRegistry.isPaused(id)) processRegistry.clear(id);
       ACTIVE_DOWNLOADS.delete(id);
       this.activeCount = Math.max(0, this.activeCount - 1);
-      // The job reached a terminal state and its history record is persisted;
-      // drop the in-memory progress entry and its timers so long sessions do
-      // not accumulate one entry per finished job.
-      clearJobProgress(id);
+      if (!processRegistry.isPaused(id)) clearJobProgress(id);
       this.processQueue(mainWindow);
     }
+  }
+
+  pause(id: string): boolean {
+    const history = store.get("history", []);
+    const item = history.find((entry) => entry.id === id);
+    if (!item || item.jobType !== "download") return false;
+    const active =
+      isActiveJobStatus(item.status) ||
+      ACTIVE_DOWNLOADS.has(id) ||
+      processRegistry.has(id);
+    if (!active) return false;
+    processRegistry.pause(id);
+    return true;
+  }
+
+  resume(id: string): boolean {
+    const history = store.get("history", []);
+    const item = history.find((entry) => entry.id === id);
+    if (!item || item.status !== "paused") return false;
+    processRegistry.resume(id);
+    const window = this.mainWindow;
+    updateHistoryItem(
+      id,
+      { status: "queued", stageLabel: "Queued" },
+      window ?? undefined,
+    );
+    if (window) this.processQueue(window);
+    return true;
   }
 
   cancel(id: string): boolean {

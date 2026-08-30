@@ -86,6 +86,7 @@ function Select<Value extends string>({
 export function SettingsPage() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
+  const setUpdateState = useAppStore((state) => state.setUpdate);
   const [section, setSection] = useState<Section>("Downloads");
   const [models, setModels] = useState<WhisperModelState[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -161,6 +162,70 @@ export function SettingsPage() {
             ]}
             onChange={(v) => void update("defaultQuality", v)}
           />
+          <label className="flex items-center justify-between gap-4 border-b border-border py-3">
+            <span>
+              <span className="block text-sm text-text-primary">
+                Speed limit
+              </span>
+              <span className="mt-1 block text-xs text-text-tertiary">
+                yt-dlp rate cap, e.g. 5M or 500K. Empty for none.
+              </span>
+            </span>
+            <input
+              className="field-input w-24 text-right"
+              value={settings.downloadSpeedLimit}
+              onChange={(e) =>
+                void update("downloadSpeedLimit", e.target.value)
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4 border-b border-border py-3">
+            <span>
+              <span className="block text-sm text-text-primary">
+                Scheduled slow limit
+              </span>
+              <span className="mt-1 block text-xs text-text-tertiary">
+                Applies only inside the window below. Applied when a download
+                starts.
+              </span>
+            </span>
+            <input
+              className="field-input w-24 text-right"
+              value={settings.scheduledSpeedLimit}
+              onChange={(e) =>
+                void update("scheduledSpeedLimit", e.target.value)
+              }
+            />
+          </label>
+          <div className="flex items-center justify-between gap-4 border-b border-border py-3">
+            <span>
+              <span className="block text-sm text-text-primary">
+                Schedule window
+              </span>
+              <span className="mt-1 block text-xs text-text-tertiary">
+                HH:MM to HH:MM. Overnight windows like 22:00–06:00 work.
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <input
+                className="field-input w-20 text-right tabular-nums"
+                placeholder="09:00"
+                value={settings.scheduleWindowStart}
+                onChange={(e) =>
+                  void update("scheduleWindowStart", e.target.value)
+                }
+              />
+              <span className="text-xs text-text-tertiary">to</span>
+              <input
+                className="field-input w-20 text-right tabular-nums"
+                placeholder="17:00"
+                value={settings.scheduleWindowEnd}
+                onChange={(e) =>
+                  void update("scheduleWindowEnd", e.target.value)
+                }
+              />
+            </span>
+          </div>
         </Panel>
       );
     if (section === "Performance")
@@ -170,7 +235,7 @@ export function SettingsPage() {
             label="Maximum simultaneous downloads"
             value={Number(settings.maxConcurrentDownloads || 2)}
             min={1}
-            max={3}
+            max={5}
             onChange={(v) => void update("maxConcurrentDownloads", v)}
           />
           <NumberRow
@@ -495,17 +560,21 @@ export function SettingsPage() {
         <button
           className="button-secondary mt-5"
           onClick={() =>
-            void window.prism.settings
-              .checkForUpdates()
-              .then((result) =>
+            void window.prism.settings.checkForUpdates().then((result) => {
+              if (result?.status === "available" && result.version) {
+                setUpdateState({
+                  status: "available",
+                  version: result.version,
+                });
+                setUpdateMessage(`Update ${result.version} is available.`);
+              } else {
                 setUpdateMessage(
-                  result?.status === "available"
-                    ? `Update ${result.version} is available.`
-                    : result?.status === "up_to_date"
-                      ? "Prism is up to date."
-                      : result?.error || "Update check failed.",
-                ),
-              )
+                  result?.status === "up_to_date"
+                    ? "Prism is up to date."
+                    : result?.error || "Update check failed.",
+                );
+              }
+            })
           }
         >
           Check for updates

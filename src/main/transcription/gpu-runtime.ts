@@ -19,7 +19,6 @@ import { spawn } from "child_process";
 import { openModelResponse } from "./models";
 import type { ModelDownloadProgress } from "../../shared/transcription.ts";
 import type { AppSettings } from "../../shared/contracts.ts";
-import { getVulkanRuntimeState } from "./vulkan-runtime";
 
 /** Synthetic id used on the shared model-progress channel for runtime events. */
 export const GPU_RUNTIME_PROGRESS_ID = "cuda-runtime";
@@ -115,8 +114,7 @@ export function preferredWhisperBinary(
   if (whisperRuntimeSetting === "cpu") return undefined;
   const state = getGpuRuntimeState();
   if (state.status === "installed") return state.path;
-  const vulkan = getVulkanRuntimeState();
-  return vulkan.status === "installed" ? vulkan.path : undefined;
+  return undefined;
 }
 
 function emit(window: Electron.BrowserWindow, progress: ModelDownloadProgress) {

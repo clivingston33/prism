@@ -1,7 +1,7 @@
 import type { JobError, JobStage, JobStatus, JobType } from "./jobs.ts";
 
 export type DownloadMode =
-  "video_audio" | "video_only" | "audio_only" | "split";
+  "video_audio" | "video_only" | "audio_only" | "split" | "subtitles_only";
 
 export type DownloadFormat =
   | "auto"
@@ -32,6 +32,9 @@ export interface AppSettings {
   retryCount: number;
   fragmentRetryCount: number;
   downloadSpeedLimit: string;
+  scheduledSpeedLimit: string;
+  scheduleWindowStart: string;
+  scheduleWindowEnd: string;
   lowResourceMode: boolean;
   defaultMediaToolsMode: "remux" | "convert";
   hardwareAcceleration: "auto" | "off";

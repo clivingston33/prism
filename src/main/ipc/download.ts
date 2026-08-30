@@ -19,8 +19,9 @@ export function setupDownloadIPC(mainWindow: Electron.BrowserWindow) {
   for (const channel of [
     "download:addToQueue",
     "download:cancel",
+    "download:pause",
+    "download:resume",
     "download:cancelAll",
-    "download:reorderQueue",
     "download:getMetadata",
     "download:getPlaylistInfo",
     "download:isUrlSupported",
@@ -49,8 +50,12 @@ export function setupDownloadIPC(mainWindow: Electron.BrowserWindow) {
     return queueManager.cancel(requireString(id, "job id"));
   });
 
-  ipcMain.handle("download:cancelAll", () => {
-    queueManager.cancelAll();
+  ipcMain.handle("download:pause", (_, id) => {
+    return queueManager.pause(requireString(id, "job id"));
+  });
+
+  ipcMain.handle("download:resume", (_, id) => {
+    return queueManager.resume(requireString(id, "job id"));
   });
 
   ipcMain.handle("download:reorderQueue", (_, ids) => {

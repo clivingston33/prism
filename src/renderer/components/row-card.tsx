@@ -6,6 +6,8 @@ import {
   Trash2,
   ChevronUp,
   ChevronDown,
+  Pause,
+  PlayCircle,
 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
@@ -203,6 +205,35 @@ export function RowCard({
                   <ChevronDown size={14} strokeWidth={2} />
                 </button>
               </>
+            )}
+            {isDownloading &&
+              item.status !== "paused" &&
+              item.status !== "queued" &&
+              item.jobType === "download" && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void window.prism.download.pause(item.id);
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-text-secondary transition-[background-color,border-color,color,transform] hover:border-border-subtle hover:bg-bg hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  title="Pause"
+                  aria-label={`Pause ${item.title || "job"}`}
+                >
+                  <Pause size={14} strokeWidth={2} />
+                </button>
+              )}
+            {item.status === "paused" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void window.prism.download.resume(item.id);
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-success transition-[background-color,border-color,transform] hover:border-success/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                title="Resume"
+                aria-label={`Resume ${item.title || "job"}`}
+              >
+                <PlayCircle size={14} strokeWidth={2} />
+              </button>
             )}
             {isDownloading && (
               <button

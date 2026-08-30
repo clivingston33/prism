@@ -591,13 +591,9 @@ export function TranscriptsPage() {
                     setGpuRuntime({ ...gpuRuntime, status: "downloading" });
                     setModelProgress((current) => ({
                       ...current,
-                      [gpuRuntime.runtimeId === "cuda"
-                        ? "cuda-runtime"
-                        : "vulkan-runtime"]: current[
-                        gpuRuntime.runtimeId === "cuda"
-                          ? "cuda-runtime"
-                          : "vulkan-runtime"
-                      ] ?? { value: 0 },
+                      "cuda-runtime": current["cuda-runtime"] ?? {
+                        value: 0,
+                      },
                     }));
                     void window.prism.transcription
                       .installGpuRuntime()
@@ -612,39 +608,20 @@ export function TranscriptsPage() {
               )}
             </div>
             {gpuRuntime.status === "downloading" &&
-              modelProgress[
-                gpuRuntime.runtimeId === "cuda"
-                  ? "cuda-runtime"
-                  : "vulkan-runtime"
-              ] && (
+              modelProgress["cuda-runtime"] && (
                 <div className="mt-2">
                   <div className="h-1.5 overflow-hidden rounded-full bg-progress-track">
                     <div
                       className="h-full rounded-full bg-progress-fill transition-[width] duration-200"
                       style={{
-                        width: `${
-                          modelProgress[
-                            gpuRuntime.runtimeId === "cuda"
-                              ? "cuda-runtime"
-                              : "vulkan-runtime"
-                          ].value
-                        }%`,
+                        width: `${modelProgress["cuda-runtime"].value}%`,
                       }}
                     />
                   </div>
                   <div className="mt-1 text-[11px] tabular-nums text-text-tertiary">
-                    {modelProgress[
-                      gpuRuntime.runtimeId === "cuda"
-                        ? "cuda-runtime"
-                        : "vulkan-runtime"
-                    ].value.toFixed(0)}
-                    %
-                    {modelProgress[
-                      gpuRuntime.runtimeId === "cuda"
-                        ? "cuda-runtime"
-                        : "vulkan-runtime"
-                    ].speed
-                      ? ` · ${(modelProgress[gpuRuntime.runtimeId === "cuda" ? "cuda-runtime" : "vulkan-runtime"].speed! / 1024 / 1024).toFixed(1)} MB/s`
+                    {modelProgress["cuda-runtime"].value.toFixed(0)}%
+                    {modelProgress["cuda-runtime"].speed
+                      ? ` · ${(modelProgress["cuda-runtime"].speed! / 1024 / 1024).toFixed(1)} MB/s`
                       : ""}
                   </div>
                 </div>

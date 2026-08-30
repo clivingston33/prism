@@ -84,3 +84,36 @@ export function buildBaseYtDlpFlags(input: BaseYtDlpFlagsInput): string[] {
 
   return args;
 }
+
+/**
+ * The rate cap applied to a download starting now: inside the configured
+ * schedule window the scheduled (typically slower) limit wins; outside it the
+ * always-on limit applies. Applies at job start only — an in-flight download
+ * keeps its rate until paused and resumed.
+ */
+export function effectiveSpeedLimit(
+  baseLimit: string | undefined,
+  scheduledLimit: string | undefined,
+  windowStart: string | undefined,
+  windowEnd: string | undefined,
+  now = new Date(),
+): string | undefined {
+  const scheduled = scheduledLimit?.trim();
+  const start = windowStart?.trim();
+  const end = windowEnd?.trim();
+  if (!scheduled || !start || !end) return baseLimit?.trim() || undefined;
+
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const toMinutes = (value: string) => {
+    const [h, m] = value.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const from = toMinutes(start);
+  const to = toMinutes(end);
+  // A start later than the end means an overnight window (22:00-06:00).
+  const inWindow =
+    from <= to
+      ? minutes >= from && minutes < to
+      : minutes >= from || minutes < to;
+  return inWindow ? scheduled : baseLimit?.trim() || undefined;
+}

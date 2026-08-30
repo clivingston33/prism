@@ -131,8 +131,10 @@ export async function convertHistoryFile(
     const hardwareAcceleration =
       store.get("settings").hardwareAcceleration === "off" ? "off" : "auto";
     await convertMedia(ffmpeg, sourcePath, outputPath, options.format, {
-      mode: record.mode === "split" ? "video_audio" : record.mode,
-      videoCodec: options.videoCodec,
+      mode:
+        record.mode === "split" || record.mode === "subtitles_only"
+          ? "video_audio"
+          : record.mode,
       audioCodec: options.audioCodec,
       videoHeight: options.videoHeight,
       crf: options.crf,

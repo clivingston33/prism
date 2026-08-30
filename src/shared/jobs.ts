@@ -3,6 +3,7 @@ export type JobStatus =
   | "preparing"
   | "running"
   | "processing"
+  | "paused"
   | "completed"
   | "cancelled"
   | "failed"
@@ -62,6 +63,7 @@ export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = [
   "preparing",
   "running",
   "processing",
+  "paused",
 ];
 
 export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = [

@@ -19,11 +19,6 @@ import {
 } from "../transcription/gpu-runtime";
 import { getHardwareProfile } from "../hardware";
 import {
-  cancelVulkanRuntimeInstall,
-  getVulkanRuntimeState,
-  removeVulkanRuntime,
-} from "../transcription/vulkan-runtime";
-import {
   describeExecutableProblem,
   getBinPaths,
   isUsableExecutable,
@@ -83,20 +78,15 @@ export function setupTranscriptionIPC(mainWindow: Electron.BrowserWindow) {
   ipcMain.handle("transcription:gpuRuntimeState", async () => {
     const profile = await getHardwareProfile();
     const nvidia = profile.gpus.find((gpu) => gpu.vendor === "nvidia");
-    const vulkanGpu = profile.gpus.find(
-      (gpu) => gpu.vendor === "amd" || gpu.vendor === "intel",
-    );
-    const runtimeId = nvidia ? "cuda" : vulkanGpu ? "vulkan" : "cuda";
-    const runtimeState =
-      runtimeId === "cuda" ? getGpuRuntimeState() : getVulkanRuntimeState();
+    const runtimeState = getGpuRuntimeState();
     return {
       ...runtimeState,
-      runtimeId,
-      runtimeLabel: runtimeId === "cuda" ? "CUDA" : "Vulkan",
+      runtimeId: "cuda" as const,
+      runtimeLabel: "CUDA",
       supported:
         process.platform === "win32" &&
         Boolean(nvidia || runtimeState.status === "installed"),
-      gpuName: nvidia?.name || vulkanGpu?.name,
+      gpuName: nvidia?.name,
     };
   });
   ipcMain.handle("transcription:installGpuRuntime", async () => {
@@ -110,11 +100,9 @@ export function setupTranscriptionIPC(mainWindow: Electron.BrowserWindow) {
   });
   ipcMain.handle("transcription:cancelGpuRuntimeInstall", async () => {
     cancelGpuRuntimeInstall();
-    cancelVulkanRuntimeInstall();
   });
   ipcMain.handle("transcription:removeGpuRuntime", async () => {
-    const profile = await getHardwareProfile();
-    return profile.hasNvidiaGpu ? removeGpuRuntime() : removeVulkanRuntime();
+    return removeGpuRuntime();
   });
   ipcMain.handle("transcription:readTranscript", (_, id) =>
     readTranscriptFile(requireString(id, "history id")),

@@ -205,9 +205,13 @@ export function LibraryPage() {
     const needle = query.trim().toLocaleLowerCase();
     const audio = new Set(["mp3", "m4a", "wav", "aac", "flac", "ogg"]);
     const items = allCompleted.filter((item) => {
-      if (needle && !item.title.toLocaleLowerCase().includes(needle))
-        return false;
-      if (typeFilter === "all") return true;
+      if (needle) {
+        const inTitle = item.title.toLocaleLowerCase().includes(needle);
+        const inTranscript = (item.transcriptText ?? "")
+          .toLocaleLowerCase()
+          .includes(needle);
+        if (!inTitle && !inTranscript) return false;
+      }
       if (typeFilter === "transcripts")
         return Boolean(item.transcriptPath || item.transcriptText);
       const isAudio =
@@ -327,7 +331,7 @@ export function LibraryPage() {
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search downloads..."
+                placeholder="Search titles or transcript text..."
                 className="h-10 w-full rounded-lg border border-border bg-transparent pl-10 pr-3 text-sm text-text-primary outline-none transition-[border-color,box-shadow] focus:border-text-tertiary focus:ring-2 focus:ring-accent/10"
               />
             </label>

@@ -35,7 +35,7 @@
     "@fontsource/geist-mono": "^5.0.0",
     "@fontsource/geist-sans": "^5.0.0",
     "@tanstack/react-router": "^1.81.0",
-    "electron-store": "^8.2.0",
+    "electron-store": "^11.0.2",
     "electron-updater": "^6.1.8",
     "lucide-react": "^0.400.0",
     "react": "^19.0.0",

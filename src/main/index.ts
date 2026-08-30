@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, protocol, net } from "electron";
 import fs from "fs";
 import path from "path";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { Readable } from "stream";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import { setupSettingsIPC } from "./ipc/settings";
@@ -78,6 +78,9 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1100,
@@ -125,9 +128,15 @@ function createWindow(): void {
     const productionUrl = pathToFileURL(
       path.join(__dirname, "../renderer/index.html"),
     ).toString();
-    const allowed = devUrl
-      ? url.startsWith(devUrl)
-      : url.startsWith(productionUrl);
+    let allowed = false;
+    try {
+      allowed = devUrl
+        ? new URL(url).origin === new URL(devUrl).origin
+        : path.normalize(fileURLToPath(url)) ===
+          path.normalize(fileURLToPath(productionUrl));
+    } catch {
+      // Malformed and non-file production URLs are never navigable.
+    }
     if (!allowed) event.preventDefault();
   });
 
@@ -143,7 +152,18 @@ function createWindow(): void {
   }
 }
 
+if (hasSingleInstanceLock) {
+  app.on("second-instance", () => {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return;
   electronApp.setAppUserModelId("com.prism.desktop");
 
   protocol.handle("local", async (request) => {

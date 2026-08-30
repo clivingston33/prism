@@ -70,10 +70,6 @@ export class ProcessRegistry {
     }
   }
 
-  clearCancellation(jobId: string) {
-    this.cancelled.delete(jobId);
-  }
-
   clear(jobId: string) {
     this.processes.delete(jobId);
     this.cancelled.delete(jobId);

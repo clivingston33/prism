@@ -7,65 +7,70 @@ import type { HistoryRecord } from "../../shared/contracts.ts";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
 import { requireString } from "../../shared/ipc-schemas.ts";
 
-async function reconcileHistory() {
+interface ReconciliationResult {
+  history: HistoryRecord[];
+  changed: boolean;
+}
+
+async function scanHistory(): Promise<ReconciliationResult> {
   const history = store.get("history", []);
   let changed = false;
-  const next = await Promise.all(
-    history.map(async (item) => {
-      if (
-        item.status !== "completed" ||
-        (!item.filePath && !item.filePaths?.length)
-      )
-        return item;
-      const paths = item.filePaths?.length
-        ? item.filePaths
-        : item.filePath
-          ? [item.filePath]
-          : [];
-      const results = await Promise.all(
-        paths.map(async (filePath) => {
-          try {
-            await fs.promises.stat(filePath);
-            return "present" as const;
-          } catch (cause) {
-            const parsed = z.object({ code: z.string() }).safeParse(cause);
-            const code = parsed.success ? parsed.data.code : "UNKNOWN";
-            return code === "ENOENT" || code === "ENOTDIR"
-              ? ("missing" as const)
-              : ("unavailable" as const);
-          }
-        }),
-      );
-      const unavailable = results.includes("unavailable");
-      const present = results.filter((state) => state === "present").length;
-      const fileState: HistoryRecord["fileState"] = unavailable
-        ? "unavailable"
-        : present === 0
-          ? "missing"
-          : present === results.length
-            ? "present"
-            : "partial";
-      const missingPaths = paths.filter(
-        (_, index) => results[index] === "missing",
-      );
-      const missingChecks =
-        fileState === "present" ? 0 : (item.missingChecks || 0) + 1;
-      if (
-        item.fileState !== fileState ||
-        JSON.stringify(item.missingPaths || []) !==
-          JSON.stringify(missingPaths) ||
-        item.missingChecks !== missingChecks
-      )
-        changed = true;
-      return {
-        ...item,
-        fileState,
-        missingPaths,
-        missingChecks,
-        missingCheckedAt: new Date().toISOString(),
-      };
-    }),
-  );
+  const next: HistoryRecord[] = [];
+  for (const item of history) {
+    if (
+      item.status !== "completed" ||
+      (!item.filePath && !item.filePaths?.length)
+    ) {
+      next.push(item);
+      continue;
+    }
+    const paths = item.filePaths?.length
+      ? item.filePaths
+      : item.filePath
+        ? [item.filePath]
+        : [];
+    const results: ("present" | "missing" | "unavailable")[] = [];
+    for (const filePath of paths) {
+      try {
+        await fs.promises.stat(filePath);
+        results.push("present");
+      } catch (cause) {
+        const parsed = z.object({ code: z.string() }).safeParse(cause);
+        const code = parsed.success ? parsed.data.code : "UNKNOWN";
+        results.push(
+          code === "ENOENT" || code === "ENOTDIR" ? "missing" : "unavailable",
+        );
+      }
+    }
+    const unavailable = results.includes("unavailable");
+    const present = results.filter((state) => state === "present").length;
+    const fileState: HistoryRecord["fileState"] = unavailable
+      ? "unavailable"
+      : present === 0
+        ? "missing"
+        : present === results.length
+          ? "present"
+          : "partial";
+    const missingPaths = paths.filter(
+      (_, index) => results[index] === "missing",
+    );
+    const missingChecks =
+      fileState === "present" ? 0 : (item.missingChecks || 0) + 1;
+    if (
+      item.fileState !== fileState ||
+      JSON.stringify(item.missingPaths || []) !==
+        JSON.stringify(missingPaths) ||
+      item.missingChecks !== missingChecks
+    )
+      changed = true;
+    next.push({
+      ...item,
+      fileState,
+      missingPaths,
+      missingChecks,
+      missingCheckedAt: new Date().toISOString(),
+    });
+  }
   const settings = store.get("settings");
   const autoRemove = settings.missingFileBehavior === "remove";
   const removable = autoRemove
@@ -83,6 +88,16 @@ async function reconcileHistory() {
     for (const item of removable) cleanupThumbnail(next, item);
   }
   return { history: finalHistory, changed: changed || removable.length > 0 };
+}
+
+let activeReconciliation: Promise<ReconciliationResult> | null = null;
+
+function reconcileHistory() {
+  if (activeReconciliation) return activeReconciliation;
+  activeReconciliation = scanHistory().finally(() => {
+    activeReconciliation = null;
+  });
+  return activeReconciliation;
 }
 
 function cleanupThumbnail(history: HistoryRecord[], item: HistoryRecord) {
@@ -178,8 +193,6 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
     mainWindow?.webContents.send("history:update", next);
     return selected;
   });
-
-  ipcMain.handle("history:regenerateThumbnail", () => null);
 
   ipcMain.handle("history:clear", () => {
     const history = store.get("history", []);

@@ -1,20 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 import packageJson from "../../package.json";
-import type { JobProgress } from "../shared/jobs.ts";
 import type {
   AppSettings,
   ConversionRequest,
   DownloadRequest,
-  HistoryRecord,
 } from "../shared/contracts.ts";
 import type { RemuxRequest } from "../shared/media-tools.ts";
 import type { TranscriptionRequest } from "../shared/transcription.ts";
-
-type DownloadOptions = DownloadRequest;
-type ConversionOptions = ConversionRequest;
+import type { EventPayloads, PrismAPI } from "../shared/prism-api.ts";
 
 // Custom APIs for renderer
-const prismAPI = {
+const prismAPI: PrismAPI = {
   version: packageJson.version,
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
@@ -36,8 +32,6 @@ const prismAPI = {
     remove: (id: string) => ipcRenderer.invoke("history:remove", id),
     removeMissing: () => ipcRenderer.invoke("history:removeMissing"),
     locate: (id: string) => ipcRenderer.invoke("history:locate", id),
-    regenerateThumbnail: (id: string) =>
-      ipcRenderer.invoke("history:regenerateThumbnail", id),
     clear: () => ipcRenderer.invoke("history:clear"),
     openFolder: (filePath: string) =>
       ipcRenderer.invoke("history:openFolder", filePath),
@@ -45,7 +39,7 @@ const prismAPI = {
       ipcRenderer.invoke("history:openFile", filePath),
   },
   download: {
-    addToQueue: (options: DownloadOptions) =>
+    addToQueue: (options: DownloadRequest) =>
       ipcRenderer.invoke("download:addToQueue", options),
     cancel: (id: string) => ipcRenderer.invoke("download:cancel", id),
     cancelAll: () => ipcRenderer.invoke("download:cancelAll"),
@@ -60,9 +54,9 @@ const prismAPI = {
     getActiveCount: () => ipcRenderer.invoke("download:getActiveCount"),
     getTranscript: (url: string, format: string) =>
       ipcRenderer.invoke("download:getTranscript", url, format),
-    convertFile: (options: ConversionOptions) =>
+    convertFile: (options: ConversionRequest) =>
       ipcRenderer.invoke("download:convertFile", options),
-    startConversion: (options: ConversionOptions) =>
+    startConversion: (options: ConversionRequest) =>
       ipcRenderer.invoke("download:startConversion", options),
     startRemux: (options: RemuxRequest) =>
       ipcRenderer.invoke("download:startRemux", options),
@@ -120,39 +114,8 @@ const prismAPI = {
   },
 };
 
-interface EventPayloads {
-  "download:progress": JobProgress;
-  "download:complete": {
-    id: string;
-    filePath: string;
-    filePaths?: string[];
-  };
-  "download:error": {
-    id: string;
-    code?: string;
-    error: string;
-    technicalDetails?: string;
-    retryCount: number;
-  };
-  "history:update": HistoryRecord[];
-  "transcription:model-progress": {
-    modelId: string;
-    status: string;
-    bytesDownloaded: number;
-    totalBytes: number;
-    speedBytesPerSecond?: number;
-    etaSeconds?: number;
-    error?: string;
-  };
-  "update:available": { version: string; releaseDate?: string };
-  "update:downloaded": { version: string };
-  "update:error": { message: string };
-}
-
 try {
   contextBridge.exposeInMainWorld("prism", prismAPI);
 } catch (error) {
   console.error(error);
 }
-
-export type PrismAPI = typeof prismAPI;

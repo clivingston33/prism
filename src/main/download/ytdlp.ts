@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { store } from "../store";
-import { convertMedia, moveFileUnique, runFfmpeg } from "./converter";
+import { convertMedia, runFfmpeg } from "./converter";
 import { probeMediaFile } from "./media-probe";
 import { StreamLineBuffer } from "./progress";
 import { JobCancelledError, processRegistry } from "./process-registry";
@@ -24,6 +24,7 @@ import { DownloadAggregator, parsePrismProgressLine } from "./progress-tracker";
 import { buildBaseYtDlpFlags } from "./ytdlp-args";
 import {
   downloadGenericMedia,
+  saveResponse,
   shouldTryGenericFallback,
 } from "./generic-download";
 import { createJobTempDir, moveFileFast } from "./temp-dirs";
@@ -1344,21 +1345,41 @@ function inferImageExtension(url: string, contentType?: string | null) {
   return "jpg";
 }
 
-async function downloadImage(url: string, outputPath: string) {
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Prism/1.0",
-    },
-  });
+const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 
-  if (!response.ok) {
-    throw new Error(`Image request failed with ${response.status}`);
+async function downloadImage(url: string, outputPath: string, itemId: string) {
+  const isCancelled = () => processRegistry.isCancelled(itemId);
+  if (isCancelled()) throw new JobCancelledError();
+  const controller = new AbortController();
+  const cancellation = setInterval(() => {
+    if (isCancelled()) controller.abort();
+  }, 100);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Prism/1.0",
+      },
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(`Image request failed with ${response.status}`);
+    }
+    await saveResponse(
+      response,
+      outputPath,
+      isCancelled,
+      undefined,
+      MAX_IMAGE_BYTES,
+    );
+    return response.headers.get("content-type");
+  } catch (error) {
+    if (isCancelled()) throw new JobCancelledError();
+    throw error;
+  } finally {
+    clearInterval(cancellation);
   }
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(outputPath, buffer);
-  return response.headers?.get("content-type") || null;
 }
 
 async function downloadTikTokImages(
@@ -1374,32 +1395,48 @@ async function downloadTikTokImages(
     );
   }
 
-  const folder = ensureUniqueDirectory(
-    dest,
-    metadata.title || item.title || "TikTok images",
-  );
-  const savedPaths: string[] = [];
+  const tempDir = createJobTempDir(item.id);
+  let folder: string | undefined;
+  try {
+    const staged: { path: string; extension: string }[] = [];
+    for (let index = 0; index < imageUrls.length; index += 1) {
+      const url = imageUrls[index];
+      const tempPath = path.join(tempDir, `image-${index}`);
+      const contentType = await downloadImage(url, tempPath, item.id);
+      staged.push({
+        path: tempPath,
+        extension: inferImageExtension(url, contentType),
+      });
+      setProgress(item.id, ((index + 1) / imageUrls.length) * 100, mainWindow);
+    }
 
-  for (let index = 0; index < imageUrls.length; index += 1) {
-    const url = imageUrls[index];
-    const tempPath = path.join(folder, `.prism-image-${index}`);
-    const contentType = await downloadImage(url, tempPath);
-    const ext = inferImageExtension(url, contentType);
-    const finalPath = ensureUniquePath(
-      folder,
-      `${String(index + 1).padStart(2, "0")}`,
-      ext,
+    folder = ensureUniqueDirectory(
+      dest,
+      metadata.title || item.title || "TikTok images",
     );
-    moveFileUnique(tempPath, finalPath);
-    savedPaths.push(finalPath);
-    setProgress(item.id, ((index + 1) / imageUrls.length) * 100, mainWindow);
-  }
+    const savedPaths: string[] = [];
+    for (let index = 0; index < staged.length; index += 1) {
+      if (processRegistry.isCancelled(item.id)) throw new JobCancelledError();
+      const image = staged[index];
+      const finalPath = path.join(
+        folder,
+        `${String(index + 1).padStart(2, "0")}.${image.extension}`,
+      );
+      await moveFileFast(image.path, finalPath);
+      savedPaths.push(finalPath);
+    }
 
-  await completeDownload(item, folder, savedPaths, mainWindow, {
-    format: "images",
-    thumbnail: savedPaths[0],
-    size: sumFileSizes(savedPaths),
-  });
+    await completeDownload(item, folder, savedPaths, mainWindow, {
+      format: "images",
+      thumbnail: savedPaths[0],
+      size: sumFileSizes(savedPaths),
+    });
+  } catch (error) {
+    if (folder) removeDirectorySafe(folder);
+    throw error;
+  } finally {
+    removeDirectorySafe(tempDir);
+  }
 }
 
 async function completeDownload(

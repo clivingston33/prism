@@ -210,21 +210,33 @@ async function fetchWithCancellation(
   }
 }
 
-async function saveResponse(
+export async function saveResponse(
   response: Response,
   outputPath: string,
   isCancelled: () => boolean,
   onProgress?: (downloadedBytes: number, totalBytes?: number) => void,
+  maxBytes?: number,
 ) {
   if (!response.body) throw new Error("The media response had no content.");
   const totalHeader = Number(response.headers.get("content-length"));
   const totalBytes =
     Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined;
+  if (
+    maxBytes !== undefined &&
+    totalBytes !== undefined &&
+    totalBytes > maxBytes
+  ) {
+    await response.body.cancel();
+    throw new Error(`Response exceeded the ${maxBytes}-byte limit.`);
+  }
   const output = fs.createWriteStream(outputPath, { flags: "wx" });
   let downloadedBytes = 0;
   try {
     for await (const chunk of responseChunks(response.body, isCancelled)) {
       downloadedBytes += chunk.length;
+      if (maxBytes !== undefined && downloadedBytes > maxBytes) {
+        throw new Error(`Response exceeded the ${maxBytes}-byte limit.`);
+      }
       if (!output.write(chunk)) await once(output, "drain");
       onProgress?.(downloadedBytes, totalBytes);
     }

@@ -284,13 +284,6 @@ export function publishJobProgress(
   return next;
 }
 
-export function getJobProgress(jobId: string) {
-  const stored = historyItem(jobId);
-  return (
-    runtimeProgress.get(jobId) || (stored ? toProgress(stored) : undefined)
-  );
-}
-
 export function isJobCancelled(jobId: string) {
   return runtimeProgress.get(jobId)?.status === "cancelled";
 }

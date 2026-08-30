@@ -474,13 +474,3 @@ export async function convertMedia(
     durationSeconds: options.durationSeconds,
   });
 }
-
-export function moveFileUnique(inputPath: string, outputPath: string) {
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  try {
-    fs.renameSync(inputPath, outputPath);
-  } catch {
-    fs.copyFileSync(inputPath, outputPath);
-    fs.unlinkSync(inputPath);
-  }
-}

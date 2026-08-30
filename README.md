@@ -20,9 +20,9 @@ uses yt-dlp, FFmpeg, FFprobe, and whisper.cpp while keeping your media,
 transcripts, settings, and history on your computer.
 
 > [!WARNING]
-> Prism is currently a **Windows 10/11 x64 public alpha**. The installer is
-> intentionally unsigned, so Windows SmartScreen may warn or block it. Download
-> the checksum file from the release and verify it before running the installer.
+> Prism is currently a **Windows 10/11 x64 public alpha**. The published
+> `0.1.0-alpha.3` installer predates required release signing, so Windows
+> SmartScreen may warn or block it. Verify its published checksum before use.
 
 ## Get Prism
 
@@ -31,7 +31,7 @@ Download **[Prism v0.1.0-alpha.3](https://github.com/clivingston33/prism/release
 The release includes the Windows installer, updater metadata, a blockmap, and:
 
 - `SHA256SUMS-windows.txt` for checksum verification
-- `SIGNING-STATUS.txt` documenting the unsigned build
+- `SIGNING-STATUS.txt` documenting the Authenticode signature state
 
 ## The workspace
 
@@ -118,7 +118,7 @@ Useful commands:
 | `npm run typecheck`          | Type-check the app                                     |
 | `npm test`                   | Run deterministic tests                                |
 | `npm run test:e2e:native`    | Exercise native download and media pipelines           |
-| `npm run build:win`          | Build the unsigned Windows installer                   |
+| `npm run build:win`          | Build the Windows installer (signs when configured)    |
 | `npm run screenshots:readme` | Recapture the README screenshots from the unpacked app |
 
 ## Project notes

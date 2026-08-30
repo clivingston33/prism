@@ -6,6 +6,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import https from "https";
+import { pipeline } from "stream/promises";
 import {
   recommendedModelId,
   type ModelDownloadProgress,
@@ -384,12 +385,7 @@ export async function downloadModel(
           speed > 0 ? Math.max(0, (total - downloaded) / speed) : undefined,
       });
     });
-    await new Promise<void>((resolve, reject) => {
-      response.pipe(stream);
-      response.on("end", resolve);
-      response.on("error", reject);
-      stream.on("error", reject);
-    });
+    await pipeline(response, stream);
     emitProgress(window, {
       modelId,
       status: "verifying",

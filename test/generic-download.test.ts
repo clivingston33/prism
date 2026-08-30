@@ -9,6 +9,7 @@ import path from "node:path";
 import {
   discoverMediaUrls,
   downloadGenericMedia,
+  saveResponse,
   shouldTryGenericFallback,
 } from "../src/main/download/generic-download.ts";
 
@@ -113,4 +114,38 @@ test("reports a restricted page instead of treating it as missing media", async 
     }),
     /page access is restricted in this region/i,
   );
+});
+
+test("bounded response streaming removes oversized partial files", async (t) => {
+  const outputDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "prism-image-test-"),
+  );
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
+  const outputPath = path.join(outputDirectory, "image");
+
+  await assert.rejects(
+    saveResponse(
+      new Response(new Uint8Array(6)),
+      outputPath,
+      () => false,
+      undefined,
+      5,
+    ),
+    /5-byte limit/,
+  );
+  assert.ok(!fs.existsSync(outputPath));
+});
+
+test("response streaming removes partial files when cancelled", async (t) => {
+  const outputDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "prism-image-test-"),
+  );
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
+  const outputPath = path.join(outputDirectory, "image");
+
+  await assert.rejects(
+    saveResponse(new Response(new Uint8Array(6)), outputPath, () => true),
+    /cancelled/i,
+  );
+  assert.ok(!fs.existsSync(outputPath));
 });

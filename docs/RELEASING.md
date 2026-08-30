@@ -10,8 +10,8 @@ Do not publish automatically from a pull request. Releases are created from a re
 6. Confirm `LICENSE`, `THIRD_PARTY_NOTICES.md`, and every native license under `resources/licenses` are present in the unpacked application resources.
 7. Exercise a short download, a source-preserving download, a remux, a conversion, model verification, offline transcription, cancellation, restart recovery, Library reconciliation, and settings persistence.
 8. Generate SHA-256 checksums for every installer and publish them beside the artifacts.
-9. Prism releases are intentionally unsigned. Confirm the workflow rejects unexpectedly signed artifacts and includes `SIGNING-STATUS.txt`. Keep every release marked as a prerelease and explain the Windows SmartScreen warning.
+9. Confirm `WINDOWS_CERTIFICATE` contains the base64-encoded PFX and `WINDOWS_CERTIFICATE_PASSWORD` contains its password. The workflow must reject missing credentials, invalid signatures, or artifacts signed by different certificates.
 10. Review the installer’s uninstall behavior. It must not delete per-user settings, history, transcripts, downloads, or Whisper models.
 11. Create a draft GitHub release, attach artifacts and checksums, review the notes, then publish manually.
 
-Unsigned releases must remain marked as prereleases and explain the Windows SmartScreen warning. The workflow always creates a draft so maintainers can review artifacts and checksums before publication.
+Releases must remain marked as prereleases during the alpha. The workflow always creates a draft so maintainers can review signatures, artifacts, and checksums before publication.

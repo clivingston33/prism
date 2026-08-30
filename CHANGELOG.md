@@ -6,6 +6,9 @@ All notable changes to Prism will be documented here.
 
 - Kept download work files in the OS temp directory and added retrying cleanup so failed or cancelled jobs no longer leave `.prism-tmp` folders in download destinations.
 - Updated compatible dependencies and patched transitive packages with known vulnerabilities.
+- Hardened model and image downloads with flushed writes, bounded streaming, cancellation, and temp staging before final placement.
+- Added single-instance startup, serialized Library reconciliation, exact-origin navigation checks, and required Authenticode signing for release artifacts.
+- Unified the preload/renderer API contract, replaced manual IPC parsing with Zod schemas, and removed unused IPC and job-state APIs.
 
 ## [0.1.0-alpha.3] - 2026-07-21
 

@@ -4,6 +4,9 @@ All notable changes to Prism will be documented here.
 
 ## [Unreleased]
 
+- Kept download work files in the OS temp directory and added retrying cleanup so failed or cancelled jobs no longer leave `.prism-tmp` folders in download destinations.
+- Updated compatible dependencies and patched transitive packages with known vulnerabilities.
+
 ## [0.1.0-alpha.3] - 2026-07-21
 
 - Added a direct-media fallback for pages that yt-dlp cannot extract, with safe diagnostics for restricted, unsupported, and inaccessible pages.

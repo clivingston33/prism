@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
 
       - name: Install Node.js
         uses: actions/setup-node@v7.0.0
@@ -49,7 +49,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Check out Git repository and LFS objects
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           lfs: true
 

@@ -8,94 +8,66 @@ import {
   createJobTempDir,
   moveFileFast,
   prismTempRoot,
-  PRISM_TEMP_DIR_NAME,
 } from "../src/main/download/temp-dirs.ts";
 
 function makeDest() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "prism-test-dest-"));
 }
 
-test("job temp dirs live inside the destination for same-drive renames", () => {
+test("job temp dirs never appear in the download destination", () => {
   const dest = makeDest();
+  const dir = createJobTempDir(`location-${process.pid}`);
   try {
-    const dir = createJobTempDir(dest, "job-1");
-    assert.ok(dir.startsWith(path.join(dest, PRISM_TEMP_DIR_NAME)));
-    assert.ok(fs.existsSync(dir));
+    assert.ok(dir.startsWith(prismTempRoot()));
+    assert.deepEqual(fs.readdirSync(dest), []);
   } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(dest, { recursive: true, force: true });
   }
 });
 
 test("job ids are sanitized into safe directory names", () => {
-  const dest = makeDest();
+  const dir = createJobTempDir(`job-${process.pid}/../../evil:*?`);
   try {
-    const dir = createJobTempDir(dest, "job/../../evil:*?");
-    assert.ok(dir.startsWith(prismTempRoot(dest)));
-    assert.ok(!dir.includes(".."));
+    assert.ok(dir.startsWith(prismTempRoot()));
+    assert.ok(!path.relative(prismTempRoot(), dir).includes(".."));
   } finally {
-    fs.rmSync(dest, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("abandoned temp dirs are cleaned; active jobs and user files survive", async () => {
   const dest = makeDest();
+  const abandonedId = `crashed-${process.pid}`;
+  const activeId = `active-${process.pid}`;
+  const abandoned = createJobTempDir(abandonedId);
+  const active = createJobTempDir(activeId);
   try {
-    const abandoned = createJobTempDir(dest, "crashed-job");
     fs.writeFileSync(path.join(abandoned, "clip.mp4.part"), "partial");
-    const active = createJobTempDir(dest, "active-job");
     const userFile = path.join(dest, "My finished video.mp4");
     fs.writeFileSync(userFile, "user output");
 
-    await cleanupAbandonedTempDirs(dest, new Set(["active-job"]));
+    await cleanupAbandonedTempDirs(dest, new Set([activeId]));
 
     assert.ok(!fs.existsSync(abandoned), "abandoned dir should be removed");
     assert.ok(fs.existsSync(active), "active job dir must survive");
     assert.ok(fs.existsSync(userFile), "user output must never be removed");
   } finally {
+    fs.rmSync(active, { recursive: true, force: true });
     fs.rmSync(dest, { recursive: true, force: true });
   }
 });
 
-test("cleanup removes the temp root when it becomes empty", async () => {
+test("cleanup removes legacy temp roots from the download destination", async () => {
   const dest = makeDest();
+  const legacyRoot = path.join(dest, ".prism-tmp");
   try {
-    createJobTempDir(dest, "only-job");
+    fs.mkdirSync(path.join(legacyRoot, "old-job"), { recursive: true });
     await cleanupAbandonedTempDirs(dest);
-    assert.ok(!fs.existsSync(prismTempRoot(dest)));
-  } finally {
-    fs.rmSync(dest, { recursive: true, force: true });
-  }
-});
-
-test("cleanup on a destination without a temp root is a no-op", async () => {
-  const dest = makeDest();
-  try {
-    await cleanupAbandonedTempDirs(dest);
+    assert.ok(!fs.existsSync(legacyRoot));
     assert.ok(fs.existsSync(dest));
   } finally {
     fs.rmSync(dest, { recursive: true, force: true });
-  }
-});
-
-test("cleanup also removes abandoned OS-temp fallback jobs", async () => {
-  const destination = makeDest();
-  const fallbackRoot = path.join(os.tmpdir(), "prism-downloads");
-  const abandoned = path.join(fallbackRoot, "fallback-abandoned-test");
-  const active = path.join(fallbackRoot, "fallback-active-test");
-  try {
-    fs.mkdirSync(abandoned, { recursive: true });
-    fs.mkdirSync(active, { recursive: true });
-    await cleanupAbandonedTempDirs(
-      destination,
-      new Set(["fallback-active-test"]),
-    );
-    assert.ok(!fs.existsSync(abandoned));
-    assert.ok(fs.existsSync(active));
-  } finally {
-    fs.rmSync(abandoned, { recursive: true, force: true });
-    fs.rmSync(active, { recursive: true, force: true });
-    fs.rmSync(fallbackRoot, { recursive: true, force: true });
-    fs.rmSync(destination, { recursive: true, force: true });
   }
 });
 

@@ -26,11 +26,7 @@ import {
   downloadGenericMedia,
   shouldTryGenericFallback,
 } from "./generic-download";
-import {
-  createJobTempDir,
-  moveFileFast,
-  removeTempRootIfEmpty,
-} from "./temp-dirs";
+import { createJobTempDir, moveFileFast } from "./temp-dirs";
 import {
   ensureUniqueDirectory,
   ensureUniquePath,
@@ -1552,7 +1548,7 @@ async function downloadSingleMedia(
     audioTrackId: item.audioTrackId,
     heightForQuality: qualityToHeight(item.quality),
   });
-  const tempDir = createJobTempDir(dest, item.id);
+  const tempDir = createJobTempDir(item.id);
 
   try {
     const args = baseYtDlpArgs(tempDir, item);
@@ -1750,7 +1746,6 @@ async function downloadSingleMedia(
     );
   } finally {
     removeDirectorySafe(tempDir);
-    removeTempRootIfEmpty(dest);
   }
 }
 
@@ -1759,7 +1754,7 @@ async function downloadSplitMedia(
   dest: string,
   mainWindow: Electron.BrowserWindow,
 ) {
-  const tempDir = createJobTempDir(dest, item.id);
+  const tempDir = createJobTempDir(item.id);
   const videoTemp = path.join(tempDir, "video");
   const audioTemp = path.join(tempDir, "audio");
   fs.mkdirSync(videoTemp, { recursive: true });
@@ -1889,7 +1884,6 @@ async function downloadSplitMedia(
     );
   } finally {
     removeDirectorySafe(tempDir);
-    removeTempRootIfEmpty(dest);
   }
 }
 

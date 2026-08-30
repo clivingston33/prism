@@ -3,60 +3,31 @@ import { z } from "zod";
 /**
  * Prism-managed temporary download directories.
  *
- * Temp files live in a predictable `.prism-tmp` directory inside the download
- * destination so the final move is a same-filesystem rename instead of a
- * cross-drive copy. Abandoned job directories (from crashes) are cleaned at
- * startup; cleanup only ever touches Prism-managed temp roots, never a
- * user's completed output.
+ * Work files live under the OS temp directory, never beside the user's
+ * downloads. Finished files are renamed when both locations share a
+ * filesystem; moveFileFast falls back to copy + unlink across drives.
  */
 import fs from "fs";
 import os from "os";
 import path from "path";
 
-export const PRISM_TEMP_DIR_NAME = ".prism-tmp";
+const LEGACY_PRISM_TEMP_DIR_NAME = ".prism-tmp";
 
-export function prismTempRoot(destination: string): string {
-  return path.join(destination, PRISM_TEMP_DIR_NAME);
+export function prismTempRoot(): string {
+  return path.join(os.tmpdir(), "prism-downloads");
 }
 
-/**
- * Creates a per-job temp directory next to the destination (same drive →
- * fast rename on completion). Falls back to the OS temp dir when the
- * destination is not writable.
- */
-export function createJobTempDir(destination: string, jobId: string): string {
+export function createJobTempDir(jobId: string): string {
   const safeId = jobId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const preferred = path.join(prismTempRoot(destination), safeId);
-  try {
-    fs.mkdirSync(preferred, { recursive: true });
-    return preferred;
-  } catch {
-    const fallback = path.join(os.tmpdir(), "prism-downloads", safeId);
-    fs.mkdirSync(fallback, { recursive: true });
-    return fallback;
-  }
+  const directory = path.join(prismTempRoot(), safeId);
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
 }
 
 /**
- * Removes the `.prism-tmp` root when it holds no job directories. Called after
- * a job's own temp directory is deleted so a finished download does not leave a
- * stray (empty) `.prism-tmp` folder sitting in the user's download location
- * until the next launch. Safe to call unconditionally: a non-empty root (from a
- * concurrent job) or a missing root is simply left alone.
- */
-export function removeTempRootIfEmpty(destination: string): void {
-  const root = prismTempRoot(destination);
-  try {
-    if (fs.readdirSync(root).length === 0) fs.rmdirSync(root);
-  } catch {
-    // Missing, non-empty, or locked — nothing to do.
-  }
-}
-
-/**
- * Removes abandoned job directories under `.prism-tmp`, skipping any that
- * belong to currently active jobs. Async so it never blocks a download hot
- * path. Errors are ignored — a locked file just gets cleaned next launch.
+ * Removes abandoned job directories from Prism temp roots, skipping any that
+ * belong to currently active jobs. Errors are ignored — a locked file gets
+ * another cleanup attempt next launch.
  */
 async function cleanupTempRoot(
   root: string,
@@ -77,6 +48,8 @@ async function cleanupTempRoot(
         await fs.promises.rm(path.join(root, entry.name), {
           recursive: true,
           force: true,
+          maxRetries: 10,
+          retryDelay: 100,
         });
       } catch {
         // Locked or already gone; retry next startup.
@@ -97,15 +70,13 @@ export async function cleanupAbandonedTempDirs(
   destination: string,
   activeJobIds: ReadonlySet<string> = new Set(),
 ): Promise<void> {
-  await cleanupTempRoot(prismTempRoot(destination), activeJobIds);
-
-  // A destination that cannot be created (for example, a disconnected drive)
-  // uses this OS-temp fallback. Clean abandoned fallback jobs too, but only
-  // inside Prism's own namespaced directory.
-  const fallbackRoot = path.join(os.tmpdir(), "prism-downloads");
-  if (path.resolve(fallbackRoot) !== path.resolve(prismTempRoot(destination))) {
-    await cleanupTempRoot(fallbackRoot, activeJobIds);
-  }
+  // Clean roots created by older Prism versions without creating new work
+  // files in the user's download directory.
+  await cleanupTempRoot(
+    path.join(destination, LEGACY_PRISM_TEMP_DIR_NAME),
+    activeJobIds,
+  );
+  await cleanupTempRoot(prismTempRoot(), activeJobIds);
 }
 
 /**

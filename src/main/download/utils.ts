@@ -272,7 +272,12 @@ export function sumFileSizes(paths: string[]): number {
 
 export function removeDirectorySafe(directory: string) {
   try {
-    fs.rmSync(directory, { recursive: true, force: true });
+    fs.rmSync(directory, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   } catch (err) {
     console.warn(`[cleanup] failed to remove ${directory}`, err);
   }

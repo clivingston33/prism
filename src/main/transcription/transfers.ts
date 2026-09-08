@@ -48,3 +48,20 @@ export function getTransfer(
 export function abortAllTransfers(): void {
   for (const transfer of transfers.values()) transfer.controller.abort();
 }
+
+/**
+ * Runs activation phases in order, refusing to start each phase once the
+ * operation was cancelled. A cancelled install/download must never write
+ * markers, rename artifacts into place, or report success afterward: every
+ * irreversible step sits behind a gate.
+ */
+export async function runGatedPhases(
+  phases: Array<() => Promise<unknown>>,
+  signal: AbortSignal,
+): Promise<void> {
+  for (const phase of phases) {
+    signal.throwIfAborted();
+    await phase();
+  }
+  signal.throwIfAborted();
+}

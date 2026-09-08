@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ProcessRegistry } from "../src/main/download/process-registry.ts";
+import { processRegistry } from "../src/main/download/process-registry.ts";
 
 const SLEEPER = "setInterval(() => {}, 1000);";
 
@@ -180,4 +181,22 @@ test("cancelling an already-exited root is safe", async (t) => {
   // ESRCH internally and must stay inside termination handling.
   registry.cancel("job-gone");
   registry.shutdown();
+});
+
+test("aborting extraction terminates the registered extractor child", async (t) => {
+  // Same path expandArchive uses on abort: the aux owner routes through
+  // registry termination (taskkill tree on Windows).
+  const child = sleepChild();
+  t.after(() => {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  });
+  processRegistry.register("aux:gpu-runtime", child);
+  try {
+    processRegistry.cancel("aux:gpu-runtime");
+    await waitForExit(child, 8000);
+  } finally {
+    processRegistry.clear("aux:gpu-runtime");
+  }
 });

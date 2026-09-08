@@ -4,6 +4,7 @@ import {
   abortAllTransfers,
   claimTransfer,
   getTransfer,
+  runGatedPhases,
 } from "../src/main/transcription/transfers.ts";
 
 function deferred<T>() {
@@ -90,4 +91,43 @@ test("abort-all reaches every in-flight owner", () => {
     signals.map((signal) => signal.aborted),
     [true, true],
   );
+});
+
+test("cancelled activation runs no further phases", async () => {
+  const ran: string[] = [];
+  const controller = new AbortController();
+  const phases = [
+    async () => {
+      ran.push("verify");
+    },
+    async () => {
+      ran.push("rename");
+      controller.abort();
+    },
+    async () => {
+      ran.push("marker");
+    },
+  ];
+  await assert.rejects(runGatedPhases(phases, controller.signal));
+  assert.deepEqual(ran, ["verify", "rename"]);
+});
+
+test("abort before activation starts runs nothing", async () => {
+  const ran: string[] = [];
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    runGatedPhases([async () => void ran.push("marker")], controller.signal),
+  );
+  assert.deepEqual(ran, []);
+});
+
+test("uncancelled activation runs every phase including the final gate", async () => {
+  const ran: string[] = [];
+  const controller = new AbortController();
+  await runGatedPhases(
+    [async () => void ran.push("verify"), async () => void ran.push("marker")],
+    controller.signal,
+  );
+  assert.deepEqual(ran, ["verify", "marker"]);
 });

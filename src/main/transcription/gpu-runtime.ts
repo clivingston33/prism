@@ -17,6 +17,8 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { processRegistry } from "../download/process-registry";
+import { pipeline } from "stream/promises";
+import { runGatedPhases } from "./transfers.ts";
 import { openModelResponse } from "./models";
 import type { ModelDownloadProgress } from "../../shared/transcription.ts";
 import type { AppSettings } from "../../shared/contracts.ts";
@@ -130,7 +132,11 @@ async function sha256File(filePath: string) {
   return hash.digest("hex");
 }
 
-function expandArchive(zipPath: string, destination: string) {
+function expandArchive(
+  zipPath: string,
+  destination: string,
+  signal?: AbortSignal,
+) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(
       "powershell.exe",
@@ -147,11 +153,20 @@ function expandArchive(zipPath: string, destination: string) {
       if (stderr.length < 8000) stderr += data.toString();
     });
     processRegistry.register("aux:gpu-runtime", child);
+    // Cancellation must stop the extractor rather than abandon it: route
+    // the abort through registry termination so its process tree dies too.
+    const onAbort = () => processRegistry.cancel("aux:gpu-runtime");
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
     child.on("error", (cause) => {
+      signal?.removeEventListener("abort", onAbort);
       processRegistry.unregister("aux:gpu-runtime", child);
       reject(cause);
     });
     child.on("close", (code) => {
+      signal?.removeEventListener("abort", onAbort);
       processRegistry.unregister("aux:gpu-runtime", child);
       code === 0
         ? resolve()
@@ -162,7 +177,7 @@ function expandArchive(zipPath: string, destination: string) {
   });
 }
 
-function smokeTest(binary: string) {
+function smokeTest(binary: string, signal?: AbortSignal) {
   return new Promise<boolean>((resolve) => {
     let child;
     try {
@@ -180,12 +195,19 @@ function smokeTest(binary: string) {
       resolve(false);
     }, 15_000);
     processRegistry.register("aux:gpu-runtime", child);
+    const onAbort = () => processRegistry.cancel("aux:gpu-runtime");
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
     child.on("error", () => {
+      signal?.removeEventListener("abort", onAbort);
       processRegistry.unregister("aux:gpu-runtime", child);
       clearTimeout(timer);
       resolve(false);
     });
     child.on("close", (code) => {
+      signal?.removeEventListener("abort", onAbort);
       processRegistry.unregister("aux:gpu-runtime", child);
       clearTimeout(timer);
       resolve(code === 0);
@@ -242,12 +264,10 @@ export async function installGpuRuntime(
           speed > 0 ? Math.max(0, (total - downloaded) / speed) : undefined,
       });
     });
-    await new Promise<void>((resolve, reject) => {
-      response.pipe(stream);
-      response.on("error", reject);
-      stream.on("error", reject);
-      stream.on("finish", resolve);
-    });
+    // pipeline owns transfer teardown; the abort gate below stops a
+    // completed transfer from activating after cancellation.
+    await pipeline(response, stream);
+    controller.signal.throwIfAborted();
 
     emit(window, {
       modelId: GPU_RUNTIME_PROGRESS_ID,
@@ -258,26 +278,41 @@ export async function installGpuRuntime(
     if ((await sha256File(zipPath)) !== RUNTIME_SHA256)
       throw new Error("CUDA runtime checksum verification failed.");
 
-    await fs.promises.rm(extractDir, { recursive: true, force: true });
-    await expandArchive(zipPath, extractDir);
-    await fs.promises.rm(directory, { recursive: true, force: true });
-    await fs.promises.mkdir(directory, { recursive: true });
-    for (const file of RUNTIME_FILES) {
-      await fs.promises.copyFile(
-        path.join(extractDir, "Release", file),
-        path.join(directory, file),
-      );
-    }
-    if (!(await smokeTest(runtimeBinaryPath())))
-      throw new Error(
-        "The CUDA runtime did not start on this machine. The CPU runtime remains active.",
-      );
-    await fs.promises.writeFile(
-      markerFile(),
-      JSON.stringify({
-        version: RUNTIME_VERSION,
-        installedAt: new Date().toISOString(),
-      }),
+    // Every irreversible step (extract, copy, smoke test, marker) sits
+    // behind a cancellation gate: a cancelled install never activates.
+    await runGatedPhases(
+      [
+        async () => {
+          await fs.promises.rm(extractDir, { recursive: true, force: true });
+          await expandArchive(zipPath, extractDir, controller.signal);
+        },
+        async () => {
+          await fs.promises.rm(directory, { recursive: true, force: true });
+          await fs.promises.mkdir(directory, { recursive: true });
+          for (const file of RUNTIME_FILES) {
+            await fs.promises.copyFile(
+              path.join(extractDir, "Release", file),
+              path.join(directory, file),
+            );
+          }
+        },
+        async () => {
+          if (!(await smokeTest(runtimeBinaryPath(), controller.signal)))
+            throw new Error(
+              "The CUDA runtime did not start on this machine. The CPU runtime remains active.",
+            );
+        },
+        async () => {
+          await fs.promises.writeFile(
+            markerFile(),
+            JSON.stringify({
+              version: RUNTIME_VERSION,
+              installedAt: new Date().toISOString(),
+            }),
+          );
+        },
+      ],
+      controller.signal,
     );
     emit(window, {
       modelId: GPU_RUNTIME_PROGRESS_ID,

@@ -17,6 +17,7 @@ import {
   abortAllTransfers,
   claimTransfer,
   getTransfer,
+  runGatedPhases,
 } from "./transfers.ts";
 
 // Model files are pinned by their upstream SHA-1 values. The manifest version
@@ -392,12 +393,26 @@ async function runModelDownload(
       bytesDownloaded: total,
       totalBytes: total,
     });
-    if (!(await verifyModelFile(model, part)))
-      throw new Error("Whisper model checksum verification failed.");
-    await fs.promises.rm(target, { force: true });
-    await fs.promises.rename(part, target);
-    // Record the passing hash so later listings skip the expensive re-hash.
-    await writeMarker(target, model.sha1);
+    // Activation below is irreversible: verify/rename/marker each sit
+    // behind a cancellation gate, and a cancelled transfer never activates
+    // merely because its bytes arrived first.
+    await runGatedPhases(
+      [
+        async () => {
+          if (!(await verifyModelFile(model, part)))
+            throw new Error("Whisper model checksum verification failed.");
+        },
+        async () => {
+          await fs.promises.rm(target, { force: true });
+          await fs.promises.rename(part, target);
+        },
+        async () => {
+          // Record the passing hash so later listings skip the re-hash.
+          await writeMarker(target, model.sha1);
+        },
+      ],
+      controller.signal,
+    );
     emitProgress(window, {
       modelId,
       status: "installed",

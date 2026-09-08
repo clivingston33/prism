@@ -140,9 +140,7 @@ export function RowCard({
 
   const handlePlay = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (item.filePath) {
-      await window.prism.history.openFile(item.filePath);
-    }
+    await window.prism.history.openFile(item.id);
   };
 
   const handleDelete = async (e: React.MouseEvent) => {

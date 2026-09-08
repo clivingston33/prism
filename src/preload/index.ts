@@ -35,8 +35,8 @@ const prismAPI: PrismAPI = {
     clear: () => ipcRenderer.invoke("history:clear"),
     openFolder: (filePath: string) =>
       ipcRenderer.invoke("history:openFolder", filePath),
-    openFile: (filePath: string) =>
-      ipcRenderer.invoke("history:openFile", filePath),
+    openFile: (id: string) =>
+      ipcRenderer.invoke("history:openFile", id),
   },
   download: {
     addToQueue: (options: DownloadRequest) =>

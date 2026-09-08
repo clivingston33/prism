@@ -743,7 +743,7 @@ export function ConvertPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    void window.prism.history.openFile(completed.filePath)
+                    void window.prism.history.openFile(completed.id)
                   }
                   className="primary-button"
                 >

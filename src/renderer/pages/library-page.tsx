@@ -263,7 +263,7 @@ export function LibraryPage() {
     )
       return;
     try {
-      await window.prism.history.openFile(item.filePath);
+      await window.prism.history.openFile(item.id);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
       void reconcile();

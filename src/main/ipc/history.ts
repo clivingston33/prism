@@ -10,6 +10,19 @@ import {
   mergeFileStateObservations,
   type FileStateObservation,
 } from "../download/queue-state.ts";
+import { resolveHistoryOpenTarget } from "./history-open.ts";
+
+/**
+ * Rejects IPC from anything but a live app window. The bridge is only
+ * exposed in the main renderer; utility processes or detached senders have
+ * no window and must not drive file actions.
+ */
+function requireMainWindow(event: Electron.IpcMainInvokeEvent): BrowserWindow {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  if (!window || window.isDestroyed())
+    throw new Error("Unauthorized IPC sender.");
+  return window;
+}
 
 interface ReconciliationResult {
   history: HistoryRecord[];
@@ -199,7 +212,8 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
     store.set("history", active);
   });
 
-  ipcMain.handle("history:openFolder", (_, filePath) => {
+  ipcMain.handle("history:openFolder", (event, filePath) => {
+    requireMainWindow(event);
     const clean = requireString(filePath, "filePath")
       .replace(/^["']|["']$/g, "")
       .trim();
@@ -207,18 +221,23 @@ export function setupHistoryIPC(mainWindow?: BrowserWindow) {
     shell.showItemInFolder(absolutePath);
   });
 
-  ipcMain.handle("history:openFile", async (_, filePath) => {
-    const clean = requireString(filePath, "filePath")
-      .replace(/^["']|["']$/g, "")
-      .trim();
-    const absolutePath = path.resolve(clean);
+  // Renderer supplies only a history ID; main resolves the stored media
+  // path, so renderer code cannot reach an arbitrary executable or script.
+  ipcMain.handle("history:openFile", async (event, id) => {
+    requireMainWindow(event);
+    const target = requireString(id, "history id");
+    const resolution = resolveHistoryOpenTarget(
+      store.get("history", []),
+      target,
+    );
+    if ("error" in resolution) throw new Error(resolution.error);
     try {
-      await fs.promises.access(absolutePath);
+      await fs.promises.access(resolution.path);
     } catch {
       throw new Error("This file is missing or unavailable.");
     }
     try {
-      await shell.openPath(absolutePath);
+      await shell.openPath(resolution.path);
     } catch (err) {
       console.error("Failed to open file:", err);
     }

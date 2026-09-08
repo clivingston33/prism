@@ -128,7 +128,7 @@ export interface PrismAPI {
     locate(id: string): Promise<string | null>;
     clear(): Promise<void>;
     openFolder(filePath: string): Promise<void>;
-    openFile(filePath: string): Promise<void>;
+    openFile(id: string): Promise<void>;
   };
   download: {
     addToQueue(options: DownloadRequest): Promise<string>;

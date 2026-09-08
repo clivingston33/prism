@@ -63,6 +63,91 @@ export function reconcileStartupHistory(
   });
   return { history: recovered, changed };
 }
+/**
+ * One file-state observation from history reconciliation. `observedStatus`
+ * and `observedPaths` are the record as the scanner saw it; they decide
+ * whether the observation is still safe to commit.
+ */
+export interface FileStateObservation {
+  id: string;
+  observedStatus: string;
+  observedPaths: string[];
+  fileState: NonNullable<HistoryRecord["fileState"]>;
+  missingPaths: string[];
+  missingChecks: number;
+  missingCheckedAt: string;
+}
+
+export interface FileStateMergeResult extends HistoryTransitionResult {
+  removed: HistoryRecord[];
+}
+
+function samePaths(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function recordPaths(item: Pick<HistoryRecord, "filePath" | "filePaths">): string[] {
+  if (item.filePaths?.length) return [...item.filePaths];
+  return item.filePath ? [item.filePath] : [];
+}
+
+/**
+ * Merges reconciliation observations into the *current* history instead of
+ * the snapshot the scan started from. Only reconciliation-owned fields are
+ * written, only into records that still exist with unchanged status/paths.
+ * Records removed mid-scan stay removed; records added mid-scan pass
+ * through untouched.
+ */
+export function mergeFileStateObservations(
+  current: HistoryRecord[],
+  observations: FileStateObservation[],
+  removeMissing: boolean,
+): FileStateMergeResult {
+  const byId = new Map(observations.map((entry) => [entry.id, entry]));
+  let changed = false;
+  const merged = current.map((item) => {
+    const observation = byId.get(item.id);
+    if (!observation) return item;
+    if (
+      item.status !== observation.observedStatus ||
+      !samePaths(recordPaths(item), observation.observedPaths)
+    )
+      return item;
+    if (
+      item.fileState === observation.fileState &&
+      JSON.stringify(item.missingPaths || []) ===
+        JSON.stringify(observation.missingPaths) &&
+      item.missingChecks === observation.missingChecks
+    )
+      return item;
+    changed = true;
+    return {
+      ...item,
+      fileState: observation.fileState,
+      missingPaths: observation.missingPaths,
+      missingChecks: observation.missingChecks,
+      missingCheckedAt: observation.missingCheckedAt,
+    };
+  });
+  const removableIds = removeMissing
+    ? new Set(
+        merged
+          .filter(
+            (item) =>
+              byId.has(item.id) &&
+              (item.fileState === "missing" || item.fileState === "partial") &&
+              (item.missingChecks || 0) >= 2,
+          )
+          .map((item) => item.id),
+      )
+    : new Set<string>();
+  const removed = merged.filter((item) => removableIds.has(item.id));
+  const history =
+    removableIds.size > 0
+      ? merged.filter((item) => !removableIds.has(item.id))
+      : merged;
+  return { history, changed: changed || removed.length > 0, removed };
+}
 
 /**
  * IDs Cancel All must cancel: every record in a nonterminal status plus any

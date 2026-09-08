@@ -6,6 +6,10 @@ import { store } from "../store";
 import type { HistoryRecord } from "../../shared/contracts.ts";
 import { isActiveJobStatus } from "../../shared/jobs.ts";
 import { requireString } from "../../shared/ipc-schemas.ts";
+import {
+  mergeFileStateObservations,
+  type FileStateObservation,
+} from "../download/queue-state.ts";
 
 interface ReconciliationResult {
   history: HistoryRecord[];
@@ -13,15 +17,13 @@ interface ReconciliationResult {
 }
 
 async function scanHistory(): Promise<ReconciliationResult> {
-  const history = store.get("history", []);
-  let changed = false;
-  const next: HistoryRecord[] = [];
-  for (const item of history) {
+  const snapshot = store.get("history", []);
+  const observations: FileStateObservation[] = [];
+  for (const item of snapshot) {
     if (
       item.status !== "completed" ||
       (!item.filePath && !item.filePaths?.length)
     ) {
-      next.push(item);
       continue;
     }
     const paths = item.filePaths?.length
@@ -56,38 +58,31 @@ async function scanHistory(): Promise<ReconciliationResult> {
     );
     const missingChecks =
       fileState === "present" ? 0 : (item.missingChecks || 0) + 1;
-    if (
-      item.fileState !== fileState ||
-      JSON.stringify(item.missingPaths || []) !==
-        JSON.stringify(missingPaths) ||
-      item.missingChecks !== missingChecks
-    )
-      changed = true;
-    next.push({
-      ...item,
+    observations.push({
+      id: item.id,
+      observedStatus: item.status,
+      observedPaths: [...paths],
       fileState,
       missingPaths,
       missingChecks,
       missingCheckedAt: new Date().toISOString(),
     });
   }
+  // Re-read: anything added/removed/updated while stats were pending wins
+  // over this scan. Observations only touch reconciliation-owned fields of
+  // records that still exist with unchanged status/paths.
   const settings = store.get("settings");
-  const autoRemove = settings.missingFileBehavior === "remove";
-  const removable = autoRemove
-    ? next.filter(
-        (item) =>
-          (item.fileState === "missing" || item.fileState === "partial") &&
-          (item.missingChecks || 0) >= 2,
-      )
-    : [];
-  const finalHistory = removable.length
-    ? next.filter((item) => !removable.some((entry) => entry.id === item.id))
-    : next;
-  if (changed || removable.length) {
-    store.set("history", finalHistory);
-    for (const item of removable) cleanupThumbnail(next, item);
+  const result = mergeFileStateObservations(
+    store.get("history", []),
+    observations,
+    settings.missingFileBehavior === "remove",
+  );
+  if (result.changed) {
+    store.set("history", result.history);
+    for (const item of result.removed)
+      cleanupThumbnail(result.history, item);
   }
-  return { history: finalHistory, changed: changed || removable.length > 0 };
+  return { history: result.history, changed: result.changed };
 }
 
 let activeReconciliation: Promise<ReconciliationResult> | null = null;

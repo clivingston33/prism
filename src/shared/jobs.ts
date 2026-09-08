@@ -81,6 +81,22 @@ export function isTerminalJobStatus(status: string | undefined): boolean {
   return TERMINAL_JOB_STATUSES.some((candidate) => candidate === status);
 }
 
+/**
+ * Only download jobs with a reconstructible request can honestly use the
+ * download retry path. Local conversion/transcription/thumbnail jobs carry
+ * no DownloadRequest and must never ride addToQueue: it would silently fail
+ * or re-download instead of repeating the local operation.
+ */
+export function canRetryDownloadJob(item: {
+  jobType?: JobType;
+  request?: unknown;
+  url?: string;
+}): boolean {
+  if ((item.jobType ?? "download") !== "download") return false;
+  if (item.request) return true;
+  return !!item.url && /^https?:\/\//i.test(item.url);
+}
+
 export function clampProgress(value: number | undefined): number | undefined {
   if (value === undefined || !Number.isFinite(value)) return undefined;
   return Math.max(0, Math.min(100, value));

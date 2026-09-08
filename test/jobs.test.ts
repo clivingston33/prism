@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeJobProgress, type JobProgress } from "../src/shared/jobs.ts";
+import {
+  canRetryDownloadJob,
+  mergeJobProgress,
+  type JobProgress,
+} from "../src/shared/jobs.ts";
 
 function progress(overrides: Partial<JobProgress> = {}): JobProgress {
   return {
@@ -92,4 +96,40 @@ test("concurrent jobs remain isolated by job and attempt ID", () => {
 
   assert.equal(mergeJobProgress(first, second).jobId, "job-1");
   assert.equal(mergeJobProgress(undefined, second).overallProgress, 80);
+});
+test("retry is offered only for downloads with a reconstructible request", () => {
+  assert.equal(
+    canRetryDownloadJob({
+      jobType: "download",
+      request: { url: "https://example.com/v" },
+    }),
+    true,
+  );
+  assert.equal(
+    canRetryDownloadJob({
+      jobType: "download",
+      url: "https://example.com/v",
+    }),
+    true,
+  );
+  assert.equal(
+    canRetryDownloadJob({ jobType: "conversion", url: "file:///media/a.mp4" }),
+    false,
+  );
+  assert.equal(
+    canRetryDownloadJob({
+      jobType: "transcription",
+      url: "file:///media/a.mp4",
+    }),
+    false,
+  );
+  assert.equal(
+    canRetryDownloadJob({ jobType: "download", url: "file:///media/a.mp4" }),
+    false,
+  );
+  assert.equal(canRetryDownloadJob({ jobType: "download" }), false);
+  assert.equal(
+    canRetryDownloadJob({ jobType: "thumbnail", url: "https://example.com/i" }),
+    false,
+  );
 });

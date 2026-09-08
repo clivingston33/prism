@@ -10,7 +10,7 @@ import {
   PlayCircle,
 } from "lucide-react";
 import { useAppStore } from "../stores/app-store";
-import { isActiveJobStatus } from "../../shared/jobs.ts";
+import { canRetryDownloadJob, isActiveJobStatus } from "../../shared/jobs.ts";
 import { parseDownloadRequest } from "../../shared/ipc-schemas.ts";
 
 function formatBytes(bytes: number) {
@@ -97,7 +97,7 @@ export function RowCard({
   /** Present only for still-queued items; -1 moves it earlier, 1 later. */
   onMoveInQueue?: (direction: -1 | 1) => void;
 }) {
-  const { setDownloads } = useAppStore();
+  const { setDownloads, pushToast } = useAppStore();
   const isDownloading = isActiveJobStatus(item.status);
 
   const handleCancel = async (e: React.MouseEvent) => {
@@ -107,6 +107,9 @@ export function RowCard({
 
   const handleRetry = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Local jobs have no reconstructible download request; their Retry
+    // control is hidden, and this guard keeps dispatch honest regardless.
+    if (!canRetryDownloadJob(item)) return;
     try {
       const request =
         item.request ??
@@ -127,7 +130,11 @@ export function RowCard({
         });
       await window.prism.download.addToQueue(request);
     } catch (err) {
-      console.error("Retry failed", err);
+      pushToast({
+        tone: "error",
+        title: "Retry failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   };
 
@@ -243,7 +250,8 @@ export function RowCard({
                 <X size={14} strokeWidth={2} />
               </button>
             )}
-            {(item.status === "failed" || item.status === "interrupted") && (
+            {(item.status === "failed" || item.status === "interrupted") &&
+              canRetryDownloadJob(item) && (
               <button
                 onClick={handleRetry}
                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-error transition-[background-color,border-color,transform] hover:border-error/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"

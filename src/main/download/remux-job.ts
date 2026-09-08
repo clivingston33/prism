@@ -20,6 +20,8 @@ import {
   ensureUniquePath,
   getBinPaths,
   isUsableExecutable,
+  releaseDestination,
+  reserveDestination,
   sanitizeFileName,
   describeExecutableProblem,
 } from "./utils";
@@ -150,9 +152,14 @@ async function runRemux(
     throw new JobCancelledError();
   const outputPath = remuxOutputPath(probe, effectiveRequest, ensureUniquePath);
   if (path.resolve(outputPath) === path.resolve(request.filePath)) {
+    releaseDestination(outputPath);
     throw new Error("The output must be different from the source file.");
   }
-  activeOutputs.set(id, outputPath);
+  if (effectiveRequest.overwrite && !reserveDestination(outputPath)) {
+    throw new Error(
+      `Another job is already writing to "${path.basename(outputPath)}". Run the batch without overwrite or rename the output.`,
+    );
+  }
   publishJobProgress(mainWindow, {
     jobId: id,
     attemptId: id,
@@ -232,6 +239,7 @@ async function runRemux(
     filePath: outputPath,
   });
   activeOutputs.delete(id);
+  releaseDestination(outputPath);
   processRegistry.clear(id);
 }
 
@@ -274,8 +282,8 @@ export function startRemuxJob(
       err instanceof JobCancelledError ||
       isJobCancelled(id) ||
       processRegistry.isCancelled(id);
-    const error = errorFor(err, cancelled);
     const outputPath = activeOutputs.get(id);
+    if (outputPath) releaseDestination(outputPath);
     if (
       outputPath &&
       path.resolve(outputPath) !== path.resolve(request.filePath)

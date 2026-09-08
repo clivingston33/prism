@@ -39,7 +39,9 @@ import {
   isAudioFormat,
   isUsableExecutable,
   qualityToHeight,
+  releaseDestination,
   removeDirectorySafe,
+  reserveDestination,
   sanitizeFileName,
   sumFileSizes,
   describeExecutableProblem,
@@ -990,8 +992,12 @@ async function deliverSubtitles(
           `${outputBase}${suffix}`,
           "txt",
         );
-        await fs.promises.writeFile(target, text, "utf8");
-        delivered.push(target);
+        try {
+          await fs.promises.writeFile(target, text, "utf8");
+          delivered.push(target);
+        } finally {
+          releaseDestination(target);
+        }
       } else {
         const ext = path.extname(file).replace(/^\./, "") || requestedFormat;
         const target = ensureUniquePath(
@@ -999,8 +1005,12 @@ async function deliverSubtitles(
           `${outputBase}${suffix}`,
           ext,
         );
-        await moveFileFast(file, target);
-        delivered.push(target);
+        try {
+          await moveFileFast(file, target);
+          delivered.push(target);
+        } finally {
+          releaseDestination(target);
+        }
       }
     } catch (error) {
       console.warn("[subtitles] failed to deliver", error);
@@ -1436,12 +1446,17 @@ async function downloadTikTokImages(
     for (let index = 0; index < staged.length; index += 1) {
       if (processRegistry.isCancelled(item.id)) throw new JobCancelledError();
       const image = staged[index];
-      const finalPath = path.join(
+      const finalPath = ensureUniquePath(
         folder,
-        `${String(index + 1).padStart(2, "0")}.${image.extension}`,
+        String(index + 1).padStart(2, "0"),
+        image.extension,
       );
-      await moveFileFast(image.path, finalPath);
-      savedPaths.push(finalPath);
+      try {
+        await moveFileFast(image.path, finalPath);
+        savedPaths.push(finalPath);
+      } finally {
+        releaseDestination(finalPath);
+      }
     }
 
     await completeDownload(item, folder, savedPaths, mainWindow, {
@@ -1548,8 +1563,11 @@ async function convertToProRes(
           stageProgress: progress,
           processedSeconds: details?.processedSeconds,
           durationSeconds: details?.durationSeconds,
+          speedMultiplier: details?.speed,
         },
       ),
+  }).finally(() => {
+    releaseDestination(outputPath);
   });
   return outputPath;
 }
@@ -1575,15 +1593,36 @@ async function deliverDownloadedFile(
       await fs.promises.rm(sourcePath, { force: true });
       return requestedPath;
     }
-    if (conflictAction === "overwrite")
-      await fs.promises.rm(requestedPath, { force: true });
+    if (conflictAction === "overwrite") {
+      if (!reserveDestination(requestedPath)) {
+        throw new Error(
+          `Another job is already writing to "${path.basename(requestedPath)}".`,
+        );
+      }
+      try {
+        await fs.promises.rm(requestedPath, { force: true });
+        await moveFileFast(sourcePath, requestedPath);
+        return requestedPath;
+      } finally {
+        releaseDestination(requestedPath);
+      }
+    }
   }
   const outputPath =
     conflictAction === "rename"
       ? ensureUniquePath(dest, baseName, extension)
       : requestedPath;
-  await moveFileFast(sourcePath, outputPath);
-  return outputPath;
+  if (conflictAction !== "rename" && !reserveDestination(outputPath)) {
+    throw new Error(
+      `Another job is already writing to "${path.basename(outputPath)}".`,
+    );
+  }
+  try {
+    await moveFileFast(sourcePath, outputPath);
+    return outputPath;
+  } finally {
+    releaseDestination(outputPath);
+  }
 }
 
 async function downloadSingleMedia(
@@ -1724,8 +1763,17 @@ async function downloadSingleMedia(
             tempDir,
             mainWindow,
           );
-          await fs.promises.rm(outputPath, { force: true });
-          await moveFileFast(embeddedPath, outputPath);
+          if (!reserveDestination(outputPath)) {
+            throw new Error(
+              `Another job is already writing to "${path.basename(outputPath)}".`,
+            );
+          }
+          try {
+            await fs.promises.rm(outputPath, { force: true });
+            await moveFileFast(embeddedPath, outputPath);
+          } finally {
+            releaseDestination(outputPath);
+          }
         } catch (error) {
           subtitleEmbedError = error;
         }
@@ -1927,8 +1975,17 @@ async function downloadSplitMedia(
             videoTemp,
             mainWindow,
           );
-          await fs.promises.rm(videoPath, { force: true });
-          await moveFileFast(embeddedPath, videoPath);
+          if (!reserveDestination(videoPath)) {
+            throw new Error(
+              `Another job is already writing to "${path.basename(videoPath)}".`,
+            );
+          }
+          try {
+            await fs.promises.rm(videoPath, { force: true });
+            await moveFileFast(embeddedPath, videoPath);
+          } finally {
+            releaseDestination(videoPath);
+          }
         } catch (error) {
           subtitleEmbedError = error;
         }

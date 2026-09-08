@@ -9,6 +9,7 @@ import {
   ensureUniquePath,
   isUsableExecutable,
   describeExecutableProblem,
+  releaseDestination,
 } from "../download/utils";
 import { estimateEtaSeconds, runFfmpeg } from "../download/converter";
 import {
@@ -382,6 +383,7 @@ export async function transcribeLocalFile(
     }
     throw error;
   } finally {
+    releaseDestination(outputPath);
     if (tempDir)
       await fs.promises.rm(tempDir, { recursive: true, force: true });
     processRegistry.clear(id);

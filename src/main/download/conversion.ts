@@ -21,6 +21,7 @@ import {
   getBinPaths,
   isUsableExecutable,
   outputExtension,
+  releaseDestination,
   sanitizeFileName,
 } from "./utils";
 
@@ -256,6 +257,8 @@ export async function convertHistoryFile(
     }
     processRegistry.clear(id);
     throw err;
+  } finally {
+    releaseDestination(outputPath);
   }
 }
 

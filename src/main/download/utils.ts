@@ -2,6 +2,14 @@ import { app } from "electron";
 import fs from "fs";
 import path from "path";
 import { updatedYtDlpPath } from "./ytdlp-updater";
+import {
+  isDestinationReserved,
+  releaseDestination,
+  reserveDestination,
+  reserveUniquePath,
+} from "./destinations";
+
+export { isDestinationReserved, releaseDestination, reserveDestination };
 
 export type DownloadMode =
   "video_audio" | "video_only" | "audio_only" | "split" | "subtitles_only";
@@ -225,19 +233,7 @@ export function ensureUniquePath(
   baseName: string,
   extension: string,
 ): string {
-  fs.mkdirSync(directory, { recursive: true });
-
-  const safeBase = sanitizeFileName(baseName);
-  const ext = extension.startsWith(".") ? extension : `.${extension}`;
-  let candidate = path.join(directory, `${safeBase}${ext}`);
-  let counter = 1;
-
-  while (fs.existsSync(candidate)) {
-    candidate = path.join(directory, `${safeBase} (${counter})${ext}`);
-    counter += 1;
-  }
-
-  return candidate;
+  return reserveUniquePath(directory, sanitizeFileName(baseName), extension);
 }
 
 export function ensureUniqueDirectory(

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { once } from "events";
+import { pipeline } from "stream/promises";
 import { JobCancelledError } from "./process-registry.ts";
 import { classifyDownloadError } from "./errors.ts";
 
@@ -229,23 +230,42 @@ export async function saveResponse(
     await response.body.cancel();
     throw new Error(`Response exceeded the ${maxBytes}-byte limit.`);
   }
+  if (isCancelled()) {
+    await response.body.cancel().catch(() => undefined);
+    throw new JobCancelledError();
+  }
   const output = fs.createWriteStream(outputPath, { flags: "wx" });
+  // Permanent listener: an async open/write failure must reject through the
+  // pipeline below, never escape as an uncaught EventEmitter error.
+  output.on("error", () => undefined);
+  let owned = false;
+  output.once("open", () => {
+    owned = true;
+  });
   let downloadedBytes = 0;
   try {
-    for await (const chunk of responseChunks(response.body, isCancelled)) {
-      downloadedBytes += chunk.length;
-      if (maxBytes !== undefined && downloadedBytes > maxBytes) {
-        throw new Error(`Response exceeded the ${maxBytes}-byte limit.`);
-      }
-      if (!output.write(chunk)) await once(output, "drain");
-      onProgress?.(downloadedBytes, totalBytes);
-    }
-    if (isCancelled()) throw new JobCancelledError();
-    output.end();
-    await once(output, "finish");
+    await pipeline(
+      (async function* () {
+        for await (const chunk of responseChunks(response.body, isCancelled)) {
+          downloadedBytes += chunk.length;
+          if (maxBytes !== undefined && downloadedBytes > maxBytes) {
+            throw new Error(`Response exceeded the ${maxBytes}-byte limit.`);
+          }
+          onProgress?.(downloadedBytes, totalBytes);
+          yield chunk;
+        }
+        if (isCancelled()) throw new JobCancelledError();
+      })(),
+      output,
+    );
   } catch (error) {
+    // pipeline owns stream teardown, but await closure defensively so a
+    // pending Windows open cannot recreate the file after cleanup.
     output.destroy();
-    await fs.promises.rm(outputPath, { force: true });
+    if (!output.closed) await once(output, "close").catch(() => undefined);
+    // Only remove output this invocation created; a failed "wx" open leaves
+    // a pre-existing destination untouched.
+    if (owned) await fs.promises.rm(outputPath, { force: true });
     throw error;
   }
 }

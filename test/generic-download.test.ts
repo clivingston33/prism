@@ -149,3 +149,31 @@ test("response streaming removes partial files when cancelled", async (t) => {
   );
   assert.ok(!fs.existsSync(outputPath));
 });
+
+test("asynchronous open failure rejects without uncaught errors or clobbering", async (t) => {
+  const outputDirectory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "prism-image-test-"),
+  );
+  t.after(() => fs.rmSync(outputDirectory, { recursive: true, force: true }));
+  const outputPath = path.join(outputDirectory, "image");
+  fs.writeFileSync(outputPath, "pre-existing");
+
+  const failures: unknown[] = [];
+  const onUncaught = (cause: unknown) => {
+    failures.push(cause);
+  };
+  process.once("uncaughtException", onUncaught);
+  t.after(() => process.removeListener("uncaughtException", onUncaught));
+
+  await assert.rejects(
+    saveResponse(new Response(new Uint8Array(6)), outputPath, () => false),
+    /EEXIST/,
+  );
+  // The async "wx" open settles on later ticks; pump the loop so a stray
+  // EventEmitter error would surface through the process handler above.
+  for (let index = 0; index < 20; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(fs.readFileSync(outputPath, "utf-8"), "pre-existing");
+  assert.deepEqual(failures, []);
+});

@@ -13,6 +13,11 @@ import {
   type WhisperModelDescriptor,
   type WhisperModelState,
 } from "../../shared/transcription.ts";
+import {
+  abortAllTransfers,
+  claimTransfer,
+  getTransfer,
+} from "./transfers.ts";
 
 // Model files are pinned by their upstream SHA-1 values. The manifest version
 // is intentionally explicit so changing a URL or checksum is reviewable.
@@ -97,8 +102,6 @@ export const WHISPER_MODELS: readonly WhisperModelDescriptor[] = [
     relativeAccuracy: "highest",
   },
 ];
-
-const activeDownloads = new Map<string, AbortController>();
 
 export function openModelResponse(
   url: string,
@@ -260,9 +263,9 @@ export async function getModelStates(): Promise<WhisperModelState[]> {
   );
   return Promise.all(
     WHISPER_MODELS.map(async (model): Promise<WhisperModelState> => {
+      const running = getTransfer(model.id) !== undefined;
       const target = modelPath(model);
       const part = `${target}.part`;
-      const running = activeDownloads.has(model.id);
       let bytesDownloaded: number | undefined;
       try {
         bytesDownloaded = (await fs.promises.stat(part)).size;
@@ -324,19 +327,16 @@ function emitProgress(
     window.webContents.send("transcription:model-progress", progress);
 }
 
-export async function downloadModel(
-  modelId: string,
+async function runModelDownload(
+  model: WhisperModelDescriptor,
   window: Electron.BrowserWindow,
-) {
-  const model = findWhisperModel(modelId);
-  if (!model) throw new Error("Unknown Whisper model.");
+  controller: AbortController,
+): Promise<WhisperModelState[]> {
   if (await verifyModel(model)) return getModelStates();
   await fs.promises.mkdir(modelDirectory(), { recursive: true });
   const target = modelPath(model);
   const part = `${target}.part`;
   await fs.promises.rm(`${target}.failed`, { force: true });
-  const controller = new AbortController();
-  activeDownloads.set(model.id, controller);
   const startedAt = Date.now();
   try {
     let existing = 0;
@@ -425,24 +425,44 @@ export async function downloadModel(
       );
     }
     throw error;
-  } finally {
-    activeDownloads.delete(model.id);
   }
 }
 
+export async function downloadModel(
+  modelId: string,
+  window: Electron.BrowserWindow,
+) {
+  const model = findWhisperModel(modelId);
+  if (!model) throw new Error("Unknown Whisper model.");
+  // Synchronous claim: a duplicate request shares the in-flight transfer
+  // instead of starting a second writer on the same .part file.
+  return claimTransfer(model.id, (controller) =>
+    runModelDownload(model, window, controller),
+  ).promise;
+}
+
 export function cancelModelDownload(modelId: string) {
-  activeDownloads.get(modelId)?.abort();
+  getTransfer(modelId)?.controller.abort();
 }
 
 /** Abort every in-flight model transfer; used by app shutdown. */
 export function cancelAllModelDownloads() {
-  for (const controller of activeDownloads.values()) controller.abort();
+  abortAllTransfers();
 }
 
 export async function deleteModel(modelId: string) {
   const model = findWhisperModel(modelId);
   if (!model) throw new Error("Unknown Whisper model.");
-  activeDownloads.get(modelId)?.abort();
+  // Wait for the owner's transfer to finish aborting before removing files
+  // it may still own; otherwise deletion races the running download.
+  const running = getTransfer(modelId);
+  if (running) {
+    running.controller.abort();
+    await running.promise.then(
+      () => undefined,
+      () => undefined,
+    );
+  }
   await fs.promises.rm(modelPath(model), { force: true });
   await fs.promises.rm(`${modelPath(model)}.part`, { force: true });
   await fs.promises.rm(`${modelPath(model)}.failed`, { force: true });

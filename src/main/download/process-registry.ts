@@ -34,6 +34,7 @@ export class ProcessRegistry {
   private readonly processes = new Map<string, Set<ChildProcess>>();
   private readonly cancelled = new Set<string>();
   private readonly paused = new Set<string>();
+  private readonly timedOut = new Set<string>();
   private shuttingDown = false;
 
   register(jobId: string, child: ChildProcess) {
@@ -79,6 +80,20 @@ export class ProcessRegistry {
       this.terminate(child);
     }
     return true;
+  }
+
+  /**
+   * Timeout-triggered termination: stops the worker like cancel() but
+   * records an explicit timeout cause so late worker exit cannot be
+   * reclassified as user cancellation. A timeout is not user cancellation.
+   */
+  timeout(jobId: string) {
+    this.timedOut.add(jobId);
+    this.cancel(jobId);
+  }
+
+  isTimedOut(jobId: string) {
+    return this.timedOut.has(jobId);
   }
 
   pause(jobId: string) {
@@ -148,6 +163,7 @@ export class ProcessRegistry {
     this.processes.delete(jobId);
     this.cancelled.delete(jobId);
     this.paused.delete(jobId);
+    this.timedOut.delete(jobId);
   }
 
   isShuttingDown() {

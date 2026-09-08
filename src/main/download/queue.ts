@@ -26,6 +26,7 @@ import {
   reconcileStartupHistory,
   selectCancelTargets,
   selectNextQueued,
+  timeoutJobError,
 } from "./queue-state";
 
 const ACTIVE_DOWNLOADS = new Map<string, { startedAt: number }>();
@@ -109,13 +110,12 @@ class DownloadManager {
     for (const id of timedOut) {
       const item = store.get("history", []).find((entry) => entry.id === id);
       if (!item || !this.mainWindow) continue;
-      processRegistry.cancel(id);
-      const error = errorFor(
-        "DOWNLOAD_TIMEOUT",
-        "The download took too long and was stopped.",
-        `Exceeded ${DOWNLOAD_TIMEOUT_MS}ms`,
+      // Never overwrite a record that already reached a terminal state.
+      if (!isActiveJobStatus(item.status)) continue;
+      processRegistry.timeout(id);
+      const error = timeoutJobError(
         item.stage || "download",
-        true,
+        DOWNLOAD_TIMEOUT_MS,
       );
       publishJobProgress(this.mainWindow, {
         jobId: id,
@@ -263,6 +263,7 @@ class DownloadManager {
       await startDownload({ ...item, status: "preparing" }, mainWindow);
     } catch (err) {
       const cause = classifyTerminalCause(err, {
+        timedOut: processRegistry.isTimedOut(id),
         paused:
           err instanceof JobPausedError || processRegistry.isPaused(id),
         cancelled:
@@ -270,8 +271,29 @@ class DownloadManager {
       });
       const paused = cause === "paused";
       const cancelled = cause === "cancelled";
+      const timedOut = cause === "timeout";
       const current = store.get("history", []).find((entry) => entry.id === id);
-      if (current && paused) {
+      if (current && timedOut) {
+        // The worker exited after timeout termination: re-assert the first
+        // terminal cause instead of letting cancel flags rewrite it.
+        const error = timeoutJobError(
+          current.stage || "download",
+          DOWNLOAD_TIMEOUT_MS,
+        );
+        publishJobProgress(mainWindow, {
+          jobId: id,
+          attemptId: current.attemptId,
+          jobType: "download",
+          status: "failed",
+          stage: current.stage,
+          patch: { error },
+        });
+        updateHistoryItem(
+          id,
+          { status: "failed", error: error.userMessage, jobError: error },
+          mainWindow,
+        );
+      } else if (current && paused) {
         publishJobProgress(mainWindow, {
           jobId: id,
           attemptId: current.attemptId,

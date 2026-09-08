@@ -67,7 +67,7 @@ test("best-effort stages rethrow stop errors but keep ordinary ones", () => {
 });
 
 test("a paused job never settles as cancelled, failed, or completed", () => {
-  const none = { paused: false, cancelled: false };
+  const none = { paused: false, cancelled: false, timedOut: false };
   assert.equal(classifyTerminalCause(new JobPausedError(), none), "paused");
   assert.equal(
     classifyTerminalCause(new Error("ffmpeg died"), { ...none, paused: true }),
@@ -77,6 +77,7 @@ test("a paused job never settles as cancelled, failed, or completed", () => {
     classifyTerminalCause(new Error("ffmpeg died"), {
       paused: true,
       cancelled: true,
+      timedOut: false,
     }),
     "paused",
   );

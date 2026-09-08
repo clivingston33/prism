@@ -41,20 +41,36 @@ export function interruptedError(stage: HistoryRecord["stage"]): JobError {
   };
 }
 
-export type TerminalCause = "paused" | "cancelled" | "failed";
+export type TerminalCause = "paused" | "cancelled" | "timeout" | "failed";
 
 /**
- * First accepted terminal cause wins, with pause distinct from cancel: a
- * paused job must settle as paused, never completed/failed/cancelled.
+ * First accepted terminal cause wins, with pause distinct from cancel and
+ * timeout distinct from both: a timed-out job must settle as failed with
+ * its timeout cause, never as user-cancelled when its worker exits late.
  */
 export function classifyTerminalCause(
   error: unknown,
-  stopIntent: { paused: boolean; cancelled: boolean },
+  stopIntent: { paused: boolean; cancelled: boolean; timedOut: boolean },
 ): TerminalCause {
+  if (stopIntent.timedOut) return "timeout";
   if (error instanceof JobPausedError || stopIntent.paused) return "paused";
   if (error instanceof JobCancelledError || stopIntent.cancelled)
     return "cancelled";
   return "failed";
+}
+
+/** Retryable terminal error for a download that exceeded its time budget. */
+export function timeoutJobError(
+  stage: HistoryRecord["stage"],
+  timeoutMs: number,
+): JobError {
+  return {
+    code: "DOWNLOAD_TIMEOUT",
+    userMessage: "The download took too long and was stopped.",
+    technicalDetails: `Exceeded ${timeoutMs}ms`,
+    stage,
+    retryable: true,
+  };
 }
 
 /**

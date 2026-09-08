@@ -377,7 +377,7 @@ async function runModelDownload(
       const elapsed = Math.max(0.001, (Date.now() - startedAt) / 1000);
       const speed = (downloaded - existing) / elapsed;
       emitProgress(window, {
-        modelId,
+        modelId: model.id,
         status: "downloading",
         bytesDownloaded: downloaded,
         totalBytes: total,
@@ -388,7 +388,7 @@ async function runModelDownload(
     });
     await pipeline(response, stream);
     emitProgress(window, {
-      modelId,
+      modelId: model.id,
       status: "verifying",
       bytesDownloaded: total,
       totalBytes: total,
@@ -414,7 +414,7 @@ async function runModelDownload(
       controller.signal,
     );
     emitProgress(window, {
-      modelId,
+      modelId: model.id,
       status: "installed",
       bytesDownloaded: total,
       totalBytes: total,
@@ -423,7 +423,7 @@ async function runModelDownload(
   } catch (error) {
     const cancelled = controller.signal.aborted;
     emitProgress(window, {
-      modelId,
+      modelId: model.id,
       status: cancelled ? "paused" : "failed",
       bytesDownloaded: 0,
       totalBytes: model.expectedBytes,

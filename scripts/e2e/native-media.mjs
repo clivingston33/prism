@@ -9,6 +9,7 @@ const root = path.resolve(import.meta.dirname, "..", "..");
 const artifacts = path.join(root, ".e2e-artifacts");
 const packagedArg = process.argv.find((arg) => arg.startsWith("--resources="));
 const modelArg = process.argv.find((arg) => arg.startsWith("--whisper-model="));
+const requireWhisper = process.argv.includes("--require-whisper");
 const resourceRoot = packagedArg
   ? path.resolve(packagedArg.slice("--resources=".length))
   : path.join(root, "resources");
@@ -354,11 +355,16 @@ async function testRemux(fixtures) {
 }
 
 async function testWhisper() {
-  if (!modelArg)
+  if (!modelArg) {
+    if (requireWhisper)
+      throw new Error(
+        "Whisper verification is required but --whisper-model was not supplied.",
+      );
     return {
       skipped:
         "pass --whisper-model=<verified ggml model> to run offline transcription",
     };
+  }
   const model = path.resolve(modelArg.slice("--whisper-model=".length));
   assert(fs.existsSync(model), "Whisper model does not exist");
   const speech = path.join(artifacts, "speech.wav");

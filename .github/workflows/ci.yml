@@ -57,7 +57,16 @@ jobs:
         uses: actions/setup-node@v7.0.0
         with:
           node-version: 22
+          cache: npm
 
+      - name: Install npm
+        run: npm install --global npm@11.11.0
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # Skip electron-builder app-deps work; unit tests need no packaging.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       - name: Verify LF checkout on Windows
         shell: pwsh
         run: |
@@ -66,9 +75,13 @@ jobs:
             $crlfFiles | ForEach-Object { Write-Error $_ }
             throw "Tracked text files were checked out with CRLF line endings."
           }
-
       - name: Reject unhydrated or invalid native resources
         run: node scripts/verify-resources.mjs
+
+      # Windows-only failures (e.g. stream cleanup races) survived despite the
+      # Linux suite: the cheap deterministic unit tests must pass here too.
+      - name: Run unit tests
+        run: npm test
 
       - name: Exercise native download and media pipelines
         run: node scripts/e2e/native-media.mjs

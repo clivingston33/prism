@@ -66,8 +66,30 @@ jobs:
       - name: Verify native resources
         run: npm run verify:resources
 
+      # Real offline transcription evidence: a small pinned model, cached
+      # between releases and checksum-verified like the app's own manifest
+      # (WHISPER_MODEL_MANIFEST_VERSION in src/main/transcription/models.ts).
+      - name: Restore pinned Whisper smoke model
+        id: whisper-model
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/prism-e2e-models
+          key: e2e-whisper-tiny-bd577a113a864445d4c299885e0cb97d4ba92b5f
+
+      - name: Download and verify Whisper smoke model
+        if: steps.whisper-model.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          WHISPER_MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+          WHISPER_MODEL_SHA1: bd577a113a864445d4c299885e0cb97d4ba92b5f
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/prism-e2e-models" | Out-Null
+          $model = "$env:RUNNER_TEMP/prism-e2e-models/ggml-tiny.bin"
+          Invoke-WebRequest -Uri $env:WHISPER_MODEL_URL -OutFile $model
+          $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA1).Hash.ToLower()
+          if ($actual -ne $env:WHISPER_MODEL_SHA1) { throw "Whisper model checksum mismatch: $actual" }
       - name: Exercise source native download and media pipelines
-        run: npm run test:e2e:native
+        run: npm run test:e2e:native -- --whisper-model=${{ runner.temp }}/prism-e2e-models/ggml-tiny.bin --require-whisper
 
       - name: Build Windows installer
         run: npm run build:win
@@ -89,7 +111,7 @@ jobs:
           }
 
       - name: Exercise packaged native download and media pipelines
-        run: node scripts/e2e/native-media.mjs --resources=dist/win-unpacked/resources
+        run: node scripts/e2e/native-media.mjs --resources=dist/win-unpacked/resources --whisper-model=${{ runner.temp }}/prism-e2e-models/ggml-tiny.bin --require-whisper
 
       - name: Record signing status
         shell: pwsh

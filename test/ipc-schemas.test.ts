@@ -221,3 +221,22 @@ test("requireString rejects empty and non-string values", () => {
     assert.throws(() => requireString(bad, "id"), IpcValidationError);
   }
 });
+
+test("empty download speed limit persists as the none sentinel", () => {
+  assert.deepEqual(parseSettingsPatch({ downloadSpeedLimit: "5M" }), {
+    downloadSpeedLimit: "5M",
+  });
+  // Clearing a configured limit must persist exactly "", not reject and not
+  // normalize to omitted (which would preserve the old limit on merge).
+  assert.deepEqual(parseSettingsPatch({ downloadSpeedLimit: "" }), {
+    downloadSpeedLimit: "",
+  });
+  assert.throws(
+    () => parseSettingsPatch({ downloadSpeedLimit: "   " }),
+    IpcValidationError,
+  );
+  assert.throws(
+    () => parseSettingsPatch({ downloadLocation: "" }),
+    IpcValidationError,
+  );
+});

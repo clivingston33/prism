@@ -87,7 +87,7 @@ export function SettingsPage() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
   const setUpdateState = useAppStore((state) => state.setUpdate);
-  const [section, setSection] = useState<Section>("Downloads");
+  const pushToast = useAppStore((state) => state.pushToast);
   const [models, setModels] = useState<WhisperModelState[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
@@ -109,8 +109,16 @@ export function SettingsPage() {
     key: Key,
     value: Settings[Key],
   ) => {
-    const next = await window.prism.settings.update({ [key]: value });
-    setSettings(next);
+    try {
+      const next = await window.prism.settings.update({ [key]: value });
+      setSettings(next);
+    } catch (error) {
+      pushToast({
+        tone: "error",
+        title: "Settings update failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   };
   useEffect(() => {
     if (section === "Transcription") {

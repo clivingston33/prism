@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildBaseYtDlpFlags } from "../src/main/download/ytdlp-args.ts";
+import {
+  buildBaseYtDlpFlags,
+  effectiveSpeedLimit,
+} from "../src/main/download/ytdlp-args.ts";
 import {
   PRISM_POSTPROCESS_TEMPLATE,
   PRISM_PROGRESS_TEMPLATE,
@@ -78,6 +81,31 @@ test("no encoder or recode flags ever appear in the base args", () => {
     "prores",
     "--recode-video",
   ]) {
-    assert.ok(!joined.includes(token), `base args must not contain ${token}`);
+    assert.ok(!joined.includes(token));
   }
+});
+
+test("empty speed limit emits no rate cap", () => {
+  assert.equal(
+    effectiveSpeedLimit("", undefined, undefined, undefined),
+    undefined,
+  );
+  assert.equal(
+    effectiveSpeedLimit("5M", undefined, undefined, undefined),
+    "5M",
+  );
+  const args = buildBaseYtDlpFlags({
+    tempDir: "C:\\tmp\\job",
+    concurrentFragments: 8,
+    speedLimit: "",
+  });
+  assert.ok(!args.includes("--limit-rate"));
+  const capped = buildBaseYtDlpFlags({
+    tempDir: "C:\\tmp\\job",
+    concurrentFragments: 8,
+    speedLimit: "5M",
+  });
+  const idx = capped.indexOf("--limit-rate");
+  assert.notEqual(idx, -1);
+  assert.equal(capped[idx + 1], "5M");
 });

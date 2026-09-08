@@ -84,21 +84,40 @@ export class ProcessRegistry {
 
   private terminate(child: ChildProcess) {
     if (!child.pid) return;
-    if (process.platform === "win32") {
-      const killer = spawn(
-        "taskkill",
-        ["/pid", String(child.pid), "/T", "/F"],
-        {
-          windowsHide: true,
-          stdio: "ignore",
-        },
-      );
-      killer.unref();
-      // Directly close the immediate child while taskkill handles descendants.
-      child.kill();
-    } else {
+    if (process.platform !== "win32") {
       child.kill("SIGTERM");
+      return;
     }
+    // taskkill owns tree termination first. Killing the root up front makes
+    // taskkill fail (exit 128, "process not found") and orphans descendants,
+    // so the direct kill is only a bounded fallback for taskkill failure.
+    const killer = spawn(
+      "taskkill",
+      ["/pid", String(child.pid), "/T", "/F"],
+      {
+        windowsHide: true,
+        stdio: "ignore",
+      },
+    );
+    let settled = false;
+    const fallback = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill();
+      } catch {
+        // Already gone; taskkill may also have reported failure for it.
+      }
+    };
+    killer.on("error", fallback);
+    killer.on("exit", (code) => {
+      if (code === 0) {
+        settled = true;
+        return;
+      }
+      fallback();
+    });
+    setTimeout(fallback, 5000).unref();
   }
 
   clear(jobId: string) {

@@ -98,10 +98,13 @@ test("shutdown stops owned output from growing", async (t) => {
   assert.equal(fs.statSync(output).size, sizeAtShutdown);
 });
 test(
-  // P01: the parent-first taskkill race orphans detached grandchildren.
-  // Unskip with the P01 termination fix.
   "shutdown terminates the whole process tree",
-  { skip: true },
+  {
+    skip:
+      process.platform !== "win32"
+        ? "tree kill is Windows taskkill behavior"
+        : false,
+  },
   async (t) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "prism-tree-test-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -144,3 +147,37 @@ test(
     assert.equal(alive(grandchildPid), false);
   },
 );
+
+test("repeated termination requests are safe", async (t) => {
+  const registry = new ProcessRegistry();
+  const child = sleepChild();
+  t.after(() => {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  });
+  registry.register("job-repeat", child);
+  registry.cancel("job-repeat");
+  // Second cancel races taskkill/the exited root; must not throw.
+  registry.cancel("job-repeat");
+  registry.shutdown();
+  await waitForExit(child, 8000);
+});
+
+test("cancelling an already-exited root is safe", async (t) => {
+  const registry = new ProcessRegistry();
+  const child = spawn(process.execPath, ["-e", "process.exit(0);"], {
+    stdio: "ignore",
+  });
+  t.after(() => {
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  });
+  registry.register("job-gone", child);
+  await waitForExit(child, 5000);
+  // taskkill reports failure for the dead root; the fallback kill throws
+  // ESRCH internally and must stay inside termination handling.
+  registry.cancel("job-gone");
+  registry.shutdown();
+});

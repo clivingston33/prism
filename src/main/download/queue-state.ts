@@ -3,6 +3,10 @@ import {
   type JobError,
   type JobStatus,
 } from "../../shared/jobs.ts";
+import {
+  JobCancelledError,
+  JobPausedError,
+} from "./process-registry.ts";
 import type { HistoryRecord } from "../../shared/contracts.ts";
 
 /**
@@ -35,6 +39,22 @@ export function interruptedError(stage: HistoryRecord["stage"]): JobError {
     stage,
     retryable: true,
   };
+}
+
+export type TerminalCause = "paused" | "cancelled" | "failed";
+
+/**
+ * First accepted terminal cause wins, with pause distinct from cancel: a
+ * paused job must settle as paused, never completed/failed/cancelled.
+ */
+export function classifyTerminalCause(
+  error: unknown,
+  stopIntent: { paused: boolean; cancelled: boolean },
+): TerminalCause {
+  if (error instanceof JobPausedError || stopIntent.paused) return "paused";
+  if (error instanceof JobCancelledError || stopIntent.cancelled)
+    return "cancelled";
+  return "failed";
 }
 
 /**

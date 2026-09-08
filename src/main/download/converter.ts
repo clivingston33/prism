@@ -7,7 +7,11 @@ import {
   parseFfmpegProgressLine,
   StreamLineBuffer,
 } from "./progress";
-import { JobCancelledError, processRegistry } from "./process-registry";
+import {
+  JobCancelledError,
+  JobPausedError,
+  processRegistry,
+} from "./process-registry";
 import { getHardwareVideoEncoder, type HardwareEncoder } from "./hwaccel";
 import { trimDurationSeconds } from "../../shared/time.ts";
 
@@ -405,6 +409,10 @@ export function runFfmpeg(
         reject(new JobCancelledError());
         return;
       }
+      if (options.jobId && processRegistry.isPaused(options.jobId)) {
+        reject(new JobPausedError());
+        return;
+      }
       if (code === 0 && (!outputPath || fs.existsSync(outputPath))) {
         onProgress?.(100, {
           progress: 100,
@@ -427,6 +435,10 @@ export function runFfmpeg(
     child.on("error", (err) => {
       if (options.jobId && processRegistry.isCancelled(options.jobId)) {
         reject(new JobCancelledError());
+        return;
+      }
+      if (options.jobId && processRegistry.isPaused(options.jobId)) {
+        reject(new JobPausedError());
         return;
       }
       reject(err);

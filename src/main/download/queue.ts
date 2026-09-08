@@ -20,6 +20,7 @@ import { isActiveJobStatus, type JobError } from "../../shared/jobs.ts";
 import type { DownloadRequest, HistoryRecord } from "../../shared/contracts.ts";
 import {
   applyQueueOrder,
+  classifyTerminalCause,
   findTimedOutJobs,
   nextQueueOrder,
   reconcileStartupHistory,
@@ -261,11 +262,14 @@ class DownloadManager {
       }
       await startDownload({ ...item, status: "preparing" }, mainWindow);
     } catch (err) {
-      const paused =
-        err instanceof JobPausedError || processRegistry.isPaused(id);
-      const cancelled =
-        !paused &&
-        (err instanceof JobCancelledError || processRegistry.isCancelled(id));
+      const cause = classifyTerminalCause(err, {
+        paused:
+          err instanceof JobPausedError || processRegistry.isPaused(id),
+        cancelled:
+          err instanceof JobCancelledError || processRegistry.isCancelled(id),
+      });
+      const paused = cause === "paused";
+      const cancelled = cause === "cancelled";
       const current = store.get("history", []).find((entry) => entry.id === id);
       if (current && paused) {
         publishJobProgress(mainWindow, {

@@ -12,6 +12,7 @@ import {
   JobCancelledError,
   JobPausedError,
   processRegistry,
+  rethrowIfStopped,
 } from "./process-registry";
 import { isJobCancelled, publishJobProgress } from "./job-state";
 import type { JobStage } from "../../shared/jobs.ts";
@@ -1452,7 +1453,7 @@ async function downloadTikTokImages(
     );
     const savedPaths: string[] = [];
     for (let index = 0; index < staged.length; index += 1) {
-      if (processRegistry.isCancelled(item.id)) throw new JobCancelledError();
+      processRegistry.throwIfStopped(item.id);
       const image = staged[index];
       const finalPath = ensureUniquePath(
         folder,
@@ -1487,15 +1488,13 @@ async function completeDownload(
   mainWindow: Electron.BrowserWindow,
   overrides: DownloadCompletionOverrides = {},
 ) {
-  if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
-    throw new JobCancelledError();
-  }
+  processRegistry.throwIfStopped(item.id);
+  if (isJobCancelled(item.id)) throw new JobCancelledError();
 
   // Downloads never auto-transcribe and do not generate thumbnail sidecars.
   // Both are explicit actions so completion is not delayed by decorative work.
-  if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
-    throw new JobCancelledError();
-  }
+  processRegistry.throwIfStopped(item.id);
+  if (isJobCancelled(item.id)) throw new JobCancelledError();
 
   const completed = {
     status: "completed",
@@ -1540,6 +1539,7 @@ async function convertToProRes(
   mainWindow: Electron.BrowserWindow,
   mode: "video_audio" | "video_only",
 ) {
+  processRegistry.throwIfStopped(item.id);
   if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
     throw new JobCancelledError();
   }
@@ -1590,7 +1590,13 @@ async function deliverDownloadedFile(
   dest: string,
   baseName: string,
   conflictAction: "rename" | "overwrite" | "skip" = "rename",
+  jobId?: string,
 ) {
+  // Final delivery is irreversible: a paused/cancelled job must not arrive.
+  if (jobId) {
+    processRegistry.throwIfStopped(jobId);
+    if (isJobCancelled(jobId)) throw new JobCancelledError();
+  }
   const extension = path.extname(sourcePath).replace(/^\./, "") || "mkv";
   const requestedPath = path.join(
     dest,
@@ -1663,9 +1669,11 @@ async function downloadSingleMedia(
         progressEnd: 96,
       });
     } catch (error) {
+      rethrowIfStopped(error);
       if (
         !shouldTryGenericFallback(error) ||
-        processRegistry.isCancelled(item.id)
+        processRegistry.isCancelled(item.id) ||
+        processRegistry.isPaused(item.id)
       ) {
         throw error;
       }
@@ -1747,6 +1755,7 @@ async function downloadSingleMedia(
           mainWindow,
         );
       } catch (error) {
+        rethrowIfStopped(error);
         subtitleEmbedError = error;
       }
     }
@@ -1783,6 +1792,7 @@ async function downloadSingleMedia(
             releaseDestination(outputPath);
           }
         } catch (error) {
+          rethrowIfStopped(error);
           subtitleEmbedError = error;
         }
       }
@@ -1800,6 +1810,7 @@ async function downloadSingleMedia(
         dest,
         item.title || "download",
         item.conflictAction || "rename",
+        item.id,
       );
       containerNote = describeContainerFallback(
         plan.requestedContainer,
@@ -1961,6 +1972,7 @@ async function downloadSplitMedia(
           mainWindow,
         );
       } catch (error) {
+        rethrowIfStopped(error);
         subtitleEmbedError = error;
       }
     }
@@ -1995,6 +2007,7 @@ async function downloadSplitMedia(
             releaseDestination(videoPath);
           }
         } catch (error) {
+          rethrowIfStopped(error);
           subtitleEmbedError = error;
         }
       }
@@ -2004,8 +2017,12 @@ async function downloadSplitMedia(
         dest,
         `${item.title || "download"} video`,
         item.conflictAction || "rename",
+        item.id,
       );
     }
+
+    // Pause between split stages: the audio download must not start.
+    processRegistry.throwIfStopped(item.id);
 
     const audioPlan = buildDownloadPlan({
       mode: "audio_only",
@@ -2033,6 +2050,7 @@ async function downloadSplitMedia(
       dest,
       `${item.title || "download"} audio`,
       item.conflictAction || "rename",
+      item.id,
     );
 
     const subtitleOverrides = wantsSubtitles(item)
@@ -2156,13 +2174,18 @@ export async function startDownload(
     return;
   }
 
+  // Stop intent recorded during metadata resolution must not start downloading.
+  processRegistry.throwIfStopped(item.id);
+
   if (mode === "split") {
     try {
       await downloadSplitMedia(effectiveItem, dest, mainWindow);
     } catch (error) {
+      rethrowIfStopped(error);
       if (
         !shouldTryGenericFallback(error) ||
-        processRegistry.isCancelled(item.id)
+        processRegistry.isCancelled(item.id) ||
+        processRegistry.isPaused(item.id)
       ) {
         throw error;
       }

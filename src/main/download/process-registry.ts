@@ -18,6 +18,18 @@ export class JobPausedError extends Error {
   }
 }
 
+/**
+ * Best-effort stages (subtitle embedding) must not swallow pause/cancel:
+ * rethrows stop-intent failures, passes ordinary errors through.
+ */
+export function rethrowIfStopped(error: unknown): void {
+  if (
+    error instanceof JobPausedError ||
+    error instanceof JobCancelledError
+  )
+    throw error;
+}
+
 export class ProcessRegistry {
   private readonly processes = new Map<string, Set<ChildProcess>>();
   private readonly cancelled = new Set<string>();
@@ -26,7 +38,9 @@ export class ProcessRegistry {
 
   register(jobId: string, child: ChildProcess) {
     if (this.shuttingDown) this.cancelled.add(jobId);
-    if (this.cancelled.has(jobId)) {
+    if (this.cancelled.has(jobId) || this.paused.has(jobId)) {
+      // A child created after pause was requested must not begin normal
+      // work: terminate it so its close handler translates to pause/cancel.
       this.terminate(child);
       return;
     }
@@ -80,6 +94,16 @@ export class ProcessRegistry {
 
   resume(jobId: string) {
     this.paused.delete(jobId);
+  }
+
+  /**
+   * Stage-gate check: throws JobPausedError when pause intent is recorded,
+   * JobCancelledError on cancellation. Call before starting another
+   * expensive stage, delivery, or completion.
+   */
+  throwIfStopped(jobId: string): void {
+    if (this.paused.has(jobId)) throw new JobPausedError();
+    if (this.cancelled.has(jobId)) throw new JobCancelledError();
   }
 
   private terminate(child: ChildProcess) {

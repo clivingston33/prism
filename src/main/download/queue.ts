@@ -14,7 +14,10 @@ import {
 } from "./process-registry";
 import { clearJobProgress, publishJobProgress } from "./job-state";
 import { classifyDownloadError } from "./errors";
-import { cleanupAbandonedTempDirs } from "./temp-dirs";
+import {
+  cleanupAbandonedTempDirs,
+  cleanupAbandonedWhisperDirs,
+} from "./temp-dirs";
 import { app } from "electron";
 import { isActiveJobStatus, type JobError } from "../../shared/jobs.ts";
 import type { DownloadRequest, HistoryRecord } from "../../shared/contracts.ts";
@@ -99,6 +102,9 @@ class DownloadManager {
     const settings = store.get("settings");
     const dest = settings.downloadLocation || app.getPath("downloads");
     void cleanupAbandonedTempDirs(dest, new Set(ACTIVE_DOWNLOADS.keys()));
+    // Crashed Whisper work leaves prism-whisper-* directories outside the
+    // download temp roots; sweep only that prefix, only when stale.
+    void cleanupAbandonedWhisperDirs();
   }
 
   private checkTimeouts() {

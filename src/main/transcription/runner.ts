@@ -12,6 +12,7 @@ import {
   releaseDestination,
 } from "../download/utils";
 import { estimateEtaSeconds, runFfmpeg } from "../download/converter";
+import { commitStagedOutput, stagingPathFor } from "../download/temp-dirs";
 import {
   JobCancelledError,
   processRegistry,
@@ -136,6 +137,12 @@ export async function transcribeLocalFile(
   const id = requestedJobId || makeJobId();
   const now = new Date().toISOString();
   const outputPath = transcriptOutputPath(request, sourcePath);
+  // Whisper writes to Prism-owned staging; the final transcript filename
+  // appears only after successful generation and commit.
+  const stagingPath = stagingPathFor(outputPath, id);
+  const stagingExt = path.extname(stagingPath) || `.${request.format}`;
+  const stagingBase = stagingPath.slice(0, -stagingExt.length);
+  const generatedStaging = `${stagingBase}.${request.format}`;
   const record: HistoryRecord = {
     id,
     url: `file://${sourcePath}`,
@@ -260,7 +267,7 @@ export async function transcribeLocalFile(
       "-f",
       wavPath,
       "-of",
-      outputPath.slice(0, -path.extname(outputPath).length),
+      stagingBase,
       "--print-progress",
     ];
     if (request.format === "txt") args.push("-otxt");
@@ -311,11 +318,11 @@ export async function transcribeLocalFile(
         elapsedSeconds,
       });
     });
-    const generatedOutput = `${outputPath.slice(0, -path.extname(outputPath).length)}.${request.format}`;
-    actualOutput = generatedOutput;
-    if (!fs.existsSync(generatedOutput))
+    actualOutput = generatedStaging;
+    if (!fs.existsSync(generatedStaging))
       throw new Error("Whisper finished without creating a transcript file.");
-    const transcriptText = await fs.promises.readFile(generatedOutput, "utf8");
+    const transcriptText = await fs.promises.readFile(generatedStaging, "utf8");
+    await commitStagedOutput(generatedStaging, outputPath);
     publishJobProgress(window, {
       jobId: id,
       jobType: "transcription",
@@ -324,7 +331,7 @@ export async function transcribeLocalFile(
       patch: {
         overallProgress: 100,
         stageProgress: 100,
-        outputPath: generatedOutput,
+        outputPath,
       },
     });
     const history = store.get("history", []);
@@ -336,8 +343,8 @@ export async function transcribeLocalFile(
               ...item,
               status: "completed",
               progress: 100,
-              filePath: generatedOutput,
-              transcriptPath: generatedOutput,
+              filePath: outputPath,
+              transcriptPath: outputPath,
               transcriptText,
               completedAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -346,7 +353,7 @@ export async function transcribeLocalFile(
       ),
     );
     sendHistory(window);
-    return { id, outputPath: generatedOutput, transcriptText };
+    return { id, outputPath, transcriptText };
   } catch (error) {
     const cancelled =
       error instanceof JobCancelledError ||
@@ -384,6 +391,9 @@ export async function transcribeLocalFile(
     throw error;
   } finally {
     releaseDestination(outputPath);
+    // Staging is owned from job start, so cancel-during-Whisper partials
+    // are removed even though the success path never recorded them.
+    await fs.promises.rm(generatedStaging, { force: true }).catch(() => undefined);
     if (tempDir)
       await fs.promises.rm(tempDir, { recursive: true, force: true });
     processRegistry.clear(id);

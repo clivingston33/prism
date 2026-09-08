@@ -102,3 +102,61 @@ export async function moveFileFast(
     await ops.unlink(inputPath);
   }
 }
+
+/**
+ * Prism-owned staging path beside the reserved final destination: same
+ * volume (rename commit), same extension (FFmpeg muxer detection), unique
+ * per owner, never equal to the final name. Writers must never target the
+ * final filename until commit.
+ */
+export function stagingPathFor(finalPath: string, ownerId: string): string {
+  const directory = path.dirname(finalPath);
+  const ext = path.extname(finalPath);
+  const base = path.basename(finalPath, ext);
+  const owner = String(ownerId).replace(/[^A-Za-z0-9_-]/g, "") || "job";
+  return path.join(directory, `${base}.${owner}.part${ext}`);
+}
+
+/**
+ * Validates staged output exists, then commits it to the final destination.
+ * Returns the committed size. The final filename appears only on success.
+ */
+export async function commitStagedOutput(
+  stagingPath: string,
+  finalPath: string,
+): Promise<number> {
+  const size = (await fs.promises.stat(stagingPath)).size;
+  await moveFileFast(stagingPath, finalPath);
+  return size;
+}
+
+const WHISPER_TEMP_PREFIX = "prism-whisper-";
+
+/**
+ * Removes crashed Whisper working directories. Scoped to Prism's own
+ * prefix under the OS temp root and gated by age, so active work and
+ * unrelated temp data are never touched.
+ */
+export async function cleanupAbandonedWhisperDirs(
+  maxAgeMs = 24 * 60 * 60 * 1000,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.promises.readdir(os.tmpdir(), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(WHISPER_TEMP_PREFIX))
+      continue;
+    try {
+      const full = path.join(os.tmpdir(), entry.name);
+      const stat = await fs.promises.stat(full);
+      if (nowMs - stat.mtimeMs < maxAgeMs) continue;
+      await fs.promises.rm(full, { recursive: true, force: true });
+    } catch {
+      // Locked or already gone; retry next launch.
+    }
+  }
+}

@@ -24,6 +24,7 @@ import {
   releaseDestination,
   sanitizeFileName,
 } from "./utils";
+import { commitStagedOutput, stagingPathFor } from "./temp-dirs";
 
 function sendHistory(mainWindow: Electron.BrowserWindow) {
   mainWindow.webContents.send("history:update", store.get("history", []));
@@ -75,6 +76,9 @@ export async function convertHistoryFile(
     requestedName,
     extension,
   );
+  // Prism-owned staging beside the reserved destination: the final filename
+  // appears only after successful generation, never as a partial file.
+  const stagingPath = stagingPathFor(outputPath, id);
 
   const now = new Date().toISOString();
   const record: HistoryRecord = {
@@ -131,7 +135,7 @@ export async function convertHistoryFile(
     });
     const hardwareAcceleration =
       store.get("settings").hardwareAcceleration === "off" ? "off" : "auto";
-    await convertMedia(ffmpeg, sourcePath, outputPath, options.format, {
+    await convertMedia(ffmpeg, sourcePath, stagingPath, options.format, {
       mode:
         record.mode === "split" || record.mode === "subtitles_only"
           ? "video_audio"
@@ -175,7 +179,7 @@ export async function convertHistoryFile(
       throw new JobCancelledError();
     }
 
-    const size = fs.statSync(outputPath).size;
+    const size = await commitStagedOutput(stagingPath, outputPath);
     publishJobProgress(mainWindow, {
       jobId: id,
       attemptId: id,
@@ -259,6 +263,7 @@ export async function convertHistoryFile(
     throw err;
   } finally {
     releaseDestination(outputPath);
+    await fs.promises.rm(stagingPath, { force: true }).catch(() => undefined);
   }
 }
 

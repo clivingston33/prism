@@ -25,6 +25,7 @@ import {
   sanitizeFileName,
   describeExecutableProblem,
 } from "./utils";
+import { commitStagedOutput, stagingPathFor } from "./temp-dirs";
 
 const activeOutputs = new Map<string, string>();
 
@@ -160,6 +161,10 @@ async function runRemux(
       `Another job is already writing to "${path.basename(outputPath)}". Run the batch without overwrite or rename the output.`,
     );
   }
+  // Prism-owned staging: the final filename appears only after the remux
+  // verifies, never as a partial file. The prior complete file (overwrite
+  // mode) survives until this job's replacement commits.
+  const stagingPath = stagingPathFor(outputPath, id);
   publishJobProgress(mainWindow, {
     jobId: id,
     attemptId: id,
@@ -176,8 +181,8 @@ async function runRemux(
   });
   await runFfmpeg(
     ffmpeg,
-    buildRemuxArgs(probe, effectiveRequest, outputPath),
-    outputPath,
+    buildRemuxArgs(probe, effectiveRequest, stagingPath),
+    stagingPath,
     (progress, details) => {
       publishJobProgress(mainWindow, {
         jobId: id,
@@ -199,7 +204,7 @@ async function runRemux(
   );
 
   // A second probe is the verification gate before an optional source delete.
-  await probeMediaFile(ffprobe, outputPath);
+  await probeMediaFile(ffprobe, stagingPath);
   if (isJobCancelled(id) || processRegistry.isCancelled(id))
     throw new JobCancelledError();
   if (
@@ -209,7 +214,7 @@ async function runRemux(
     fs.rmSync(request.filePath, { force: true });
   if (isJobCancelled(id) || processRegistry.isCancelled(id))
     throw new JobCancelledError();
-  const size = fs.statSync(outputPath).size;
+  const size = await commitStagedOutput(stagingPath, outputPath);
   publishJobProgress(mainWindow, {
     jobId: id,
     attemptId: id,
@@ -285,12 +290,11 @@ export function startRemuxJob(
     const error = errorFor(err, cancelled);
     const outputPath = activeOutputs.get(id);
     if (outputPath) releaseDestination(outputPath);
-    if (
-      outputPath &&
-      path.resolve(outputPath) !== path.resolve(request.filePath)
-    ) {
+    if (outputPath) {
+      // Only Prism-owned staging is removed here. The final destination is
+      // never touched, so a pre-existing overwrite target survives failures.
       try {
-        fs.rmSync(outputPath, { force: true });
+        fs.rmSync(stagingPathFor(outputPath, id), { force: true });
       } catch {}
     }
     activeOutputs.delete(id);

@@ -560,6 +560,7 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
       );
       finish(fallback);
     });
+  });
 }
 
 export interface PlaylistEntry {
@@ -1602,35 +1603,27 @@ async function deliverDownloadedFile(
     dest,
     `${sanitizeFileName(baseName, "download")}.${extension}`,
   );
-  if (fs.existsSync(requestedPath)) {
-    if (conflictAction === "skip") {
-      await fs.promises.rm(sourcePath, { force: true });
+  if (fs.existsSync(requestedPath) && conflictAction === "skip") {
+    await fs.promises.rm(sourcePath, { force: true });
+    return requestedPath;
+  }
+  if (conflictAction === "overwrite") {
+    if (!reserveDestination(requestedPath)) {
+      throw new Error(
+        `Another job is already writing to "${path.basename(requestedPath)}".`,
+      );
+    }
+    try {
+      // The previous complete file stays until the replacement commits.
+      await moveFileFast(sourcePath, requestedPath, fs.promises, {
+        overwrite: true,
+      });
       return requestedPath;
-    }
-    if (conflictAction === "overwrite") {
-      if (!reserveDestination(requestedPath)) {
-        throw new Error(
-          `Another job is already writing to "${path.basename(requestedPath)}".`,
-        );
-      }
-      try {
-        await fs.promises.rm(requestedPath, { force: true });
-        await moveFileFast(sourcePath, requestedPath);
-        return requestedPath;
-      } finally {
-        releaseDestination(requestedPath);
-      }
+    } finally {
+      releaseDestination(requestedPath);
     }
   }
-  const outputPath =
-    conflictAction === "rename"
-      ? ensureUniquePath(dest, baseName, extension)
-      : requestedPath;
-  if (conflictAction !== "rename" && !reserveDestination(outputPath)) {
-    throw new Error(
-      `Another job is already writing to "${path.basename(outputPath)}".`,
-    );
-  }
+  const outputPath = ensureUniquePath(dest, baseName, extension);
   try {
     await moveFileFast(sourcePath, outputPath);
     return outputPath;
@@ -1786,8 +1779,10 @@ async function downloadSingleMedia(
             );
           }
           try {
-            await fs.promises.rm(outputPath, { force: true });
-            await moveFileFast(embeddedPath, outputPath);
+            // The delivered file stays until the embedded replacement commits.
+            await moveFileFast(embeddedPath, outputPath, fs.promises, {
+              overwrite: true,
+            });
           } finally {
             releaseDestination(outputPath);
           }
@@ -2001,8 +1996,10 @@ async function downloadSplitMedia(
             );
           }
           try {
-            await fs.promises.rm(videoPath, { force: true });
-            await moveFileFast(embeddedPath, videoPath);
+            // The delivered file stays until the embedded replacement commits.
+            await moveFileFast(embeddedPath, videoPath, fs.promises, {
+              overwrite: true,
+            });
           } finally {
             releaseDestination(videoPath);
           }

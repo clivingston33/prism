@@ -15,6 +15,7 @@ import {
 import { clearJobProgress, publishJobProgress } from "./job-state";
 import { classifyDownloadError } from "./errors";
 import {
+  cleanupAbandonedDeliveryStaging,
   cleanupAbandonedTempDirs,
   cleanupAbandonedWhisperDirs,
 } from "./temp-dirs";
@@ -97,14 +98,15 @@ class DownloadManager {
     }
 
     // Clean temp directories abandoned by a previous crash. Runs at startup
-    // when nothing is downloading, and only touches Prism's own .prism-tmp
-    // directory — never completed user output.
     const settings = store.get("settings");
     const dest = settings.downloadLocation || app.getPath("downloads");
     void cleanupAbandonedTempDirs(dest, new Set(ACTIVE_DOWNLOADS.keys()));
     // Crashed Whisper work leaves prism-whisper-* directories outside the
     // download temp roots; sweep only that prefix, only when stale.
     void cleanupAbandonedWhisperDirs();
+    // Crashed cross-volume copies leave Prism-owned destination staging;
+    // sweep only that narrow pattern inside the known destination.
+    void cleanupAbandonedDeliveryStaging([dest]);
   }
 
   private checkTimeouts() {

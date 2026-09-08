@@ -10,6 +10,7 @@ import { z } from "zod";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import crypto from "crypto";
 
 const LEGACY_PRISM_TEMP_DIR_NAME = ".prism-tmp";
 
@@ -79,27 +80,127 @@ export async function cleanupAbandonedTempDirs(
   await cleanupTempRoot(prismTempRoot(), activeJobIds);
 }
 
+export interface MoveFileFastOptions {
+  /**
+   * Explicit user-approved replacement of an existing destination (e.g.
+   * overwrite conflict action). Without it, delivery never replaces.
+   */
+  overwrite?: boolean;
+}
+
+type MoveFileOps = Pick<
+  typeof fs.promises,
+  "rename" | "copyFile" | "unlink" | "mkdir" | "stat" | "rm"
+>;
+
+function fsCode(cause: unknown): string | undefined {
+  const parsed = z.object({ code: z.string().optional() }).safeParse(cause);
+  return parsed.success ? parsed.data.code : undefined;
+}
+
+/**
+ * Unique Prism-owned sibling staging file on the destination volume: same
+ * extension, never equal to the final name, identifiable for safe cleanup.
+ */
+export function deliveryStagingPathFor(finalPath: string): string {
+  const directory = path.dirname(finalPath);
+  const ext = path.extname(finalPath);
+  const base = path.basename(finalPath, ext);
+  const nonce = crypto.randomBytes(6).toString("hex");
+  return path.join(directory, `${base}.prism-move-${nonce}.part${ext}`);
+}
+
+/**
+ * Cross-volume/fallback delivery: copy to destination-side staging, verify
+ * sizes, then commit. The final filename appears only at commit; the source
+ * is removed only after the commit succeeds. On failure the source and any
+ * previous complete destination survive; only owned staging is removed.
+ *
+ * POSIX rename already replaces atomically, so overwrite flows use the fast
+ * path there. Windows cannot rename over an existing file: with explicit
+ * overwrite approval the previous complete file is removed only once the
+ * replacement is fully staged, then the staged file is renamed. A crash in
+ * that last window can leave the staged replacement without the old file;
+ * the window holds no partial data, only a missing-then-staged sequence
+ * the platform cannot make atomic with these primitives.
+ */
+async function copyCommitStaged(
+  inputPath: string,
+  outputPath: string,
+  ops: MoveFileOps,
+  overwrite: boolean,
+): Promise<void> {
+  const staging = deliveryStagingPathFor(outputPath);
+  try {
+    await ops.copyFile(inputPath, staging);
+    const [sourceStat, stagedStat] = await Promise.all([
+      ops.stat(inputPath),
+      ops.stat(staging),
+    ]);
+    if (stagedStat.size !== sourceStat.size)
+      throw new Error(`Staged copy of "${inputPath}" failed verification.`);
+    if (!overwrite) {
+      let destExists = true;
+      try {
+        await ops.stat(outputPath);
+      } catch {
+        destExists = false;
+      }
+      if (destExists)
+        throw new Error(`Destination "${outputPath}" already exists.`);
+    }
+    try {
+      await ops.rename(staging, outputPath);
+    } catch (cause) {
+      const code = fsCode(cause);
+      if (
+        !overwrite ||
+        (code !== "EEXIST" && code !== "EPERM" && code !== "EACCES")
+      )
+        throw cause;
+      await ops.rm(outputPath, { force: true });
+      await ops.rename(staging, outputPath);
+    }
+    await ops.unlink(inputPath);
+  } catch (error) {
+    await ops.rm(staging, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 /**
  * Moves a finished file to its destination. Same-filesystem renames are
- * instant; cross-device moves fall back to an async copy + unlink.
+ * instant; genuine cross-device moves (EXDEV) fall back to staged
+ * copy + verified commit. Conflicts and access errors never trigger a
+ * copy over the final name: without explicit overwrite approval they
+ * reject, preserving source and destination.
  */
 export async function moveFileFast(
   inputPath: string,
   outputPath: string,
-  ops: Pick<
-    typeof fs.promises,
-    "rename" | "copyFile" | "unlink" | "mkdir"
-  > = fs.promises,
+  ops: MoveFileOps = fs.promises,
+  options: MoveFileFastOptions = {},
 ): Promise<void> {
   await ops.mkdir(path.dirname(outputPath), { recursive: true });
   try {
     await ops.rename(inputPath, outputPath);
+    return;
   } catch (cause) {
-    const parsed = z.object({ code: z.string().optional() }).safeParse(cause);
-    const code = parsed.success ? parsed.data.code : undefined;
-    if (code !== "EXDEV" && code !== "EPERM" && code !== "EEXIST") throw cause;
-    await ops.copyFile(inputPath, outputPath);
-    await ops.unlink(inputPath);
+    const code = fsCode(cause);
+    if (code === "EXDEV") {
+      await copyCommitStaged(inputPath, outputPath, ops, !!options.overwrite);
+      return;
+    }
+    if (
+      options.overwrite &&
+      (code === "EEXIST" || code === "EPERM" || code === "EACCES")
+    ) {
+      // Windows rename cannot replace an existing file: use the staged
+      // copy + replace-at-commit path instead of deleting first.
+      await copyCommitStaged(inputPath, outputPath, ops, true);
+      return;
+    }
+    throw cause;
   }
 }
 
@@ -124,9 +225,10 @@ export function stagingPathFor(finalPath: string, ownerId: string): string {
 export async function commitStagedOutput(
   stagingPath: string,
   finalPath: string,
+  options: MoveFileFastOptions = {},
 ): Promise<number> {
   const size = (await fs.promises.stat(stagingPath)).size;
-  await moveFileFast(stagingPath, finalPath);
+  await moveFileFast(stagingPath, finalPath, fs.promises, options);
   return size;
 }
 
@@ -157,6 +259,42 @@ export async function cleanupAbandonedWhisperDirs(
       await fs.promises.rm(full, { recursive: true, force: true });
     } catch {
       // Locked or already gone; retry next launch.
+    }
+  }
+}
+
+const DELIVERY_STAGING_PATTERN = /\.prism-move-[0-9a-f]+\.part\.[^.]+$/;
+
+/**
+ * Removes abandoned destination-side delivery staging from a crash that
+ * interrupted a cross-volume copy. Scoped to the narrow Prism-owned staging
+ * pattern inside caller-provided destination directories only, gated by age
+ * so a second live process keeps its fresh staging. Never touches user
+ * files or the final filenames themselves.
+ */
+export async function cleanupAbandonedDeliveryStaging(
+  directories: string[],
+  maxAgeMs = 60 * 60 * 1000,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  for (const directory of directories) {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || !DELIVERY_STAGING_PATTERN.test(entry.name))
+        continue;
+      try {
+        const full = path.join(directory, entry.name);
+        const stat = await fs.promises.stat(full);
+        if (nowMs - stat.mtimeMs < maxAgeMs) continue;
+        await fs.promises.rm(full, { force: true });
+      } catch {
+        // Locked or already gone; retry next launch.
+      }
     }
   }
 }

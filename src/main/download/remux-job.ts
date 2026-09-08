@@ -211,10 +211,11 @@ async function runRemux(
     effectiveRequest.keepOriginal === false &&
     path.resolve(request.filePath) !== path.resolve(outputPath)
   )
-    fs.rmSync(request.filePath, { force: true });
   if (isJobCancelled(id) || processRegistry.isCancelled(id))
     throw new JobCancelledError();
-  const size = await commitStagedOutput(stagingPath, outputPath);
+  const size = await commitStagedOutput(stagingPath, outputPath, {
+    overwrite: effectiveRequest.overwrite === true,
+  });
   publishJobProgress(mainWindow, {
     jobId: id,
     attemptId: id,

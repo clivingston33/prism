@@ -72,7 +72,7 @@ async function createCompatibleAudioPreview(source: string) {
     const generated = await fs.promises.stat(temporary);
     if (!generated.isFile() || generated.size === 0)
       throw new Error("FFmpeg produced an empty audio preview.");
-    await moveFileFast(temporary, output);
+    await moveFileFast(temporary, output, fs.promises, { overwrite: true });
   } finally {
     await fs.promises.rm(temporary, { force: true }).catch(() => undefined);
   }

@@ -175,3 +175,44 @@ export function planBatchFileState(options: {
     trimEnd: ownState ? options.trimEnd : undefined,
   };
 }
+
+export interface ProbeDefaultSelection {
+  video: number[];
+  audio: number[];
+  subtitles: number[];
+  defaultAudio?: number;
+  defaultSubtitle?: number;
+  /** No playable video stream: audio-only defaults apply. */
+  audioOnly: boolean;
+}
+
+/**
+ * Per-file track defaults from a resolved probe. Call only once the probe
+ * is available; a pending probe must not commit empty/audio-only guesses.
+ */
+export function planProbeDefaults(
+  probe: Pick<MediaProbe, "streams">,
+): ProbeDefaultSelection {
+  const video = probe.streams
+    .filter((stream) => stream.type === "video" && !stream.attachedPicture)
+    .map((stream) => stream.index);
+  const audio = probe.streams
+    .filter((stream) => stream.type === "audio")
+    .map((stream) => stream.index);
+  const subtitles = probe.streams
+    .filter((stream) => stream.type === "subtitle")
+    .map((stream) => stream.index);
+  return {
+    video,
+    audio,
+    subtitles,
+    defaultAudio:
+      probe.streams.find((stream) => stream.type === "audio" && stream.default)
+        ?.index ?? audio[0],
+    defaultSubtitle:
+      probe.streams.find(
+        (stream) => stream.type === "subtitle" && stream.default,
+      )?.index ?? subtitles[0],
+    audioOnly: video.length === 0,
+  };
+}

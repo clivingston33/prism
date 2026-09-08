@@ -22,6 +22,7 @@ import type { MediaProbe, RemuxContainer } from "../../shared/media-tools.ts";
 import {
   batchExplicitNameError,
   planBatchFileState,
+  planProbeDefaults,
 } from "../../shared/media-tools.ts";
 import { Waveform, secondsToTimestamp } from "../components/waveform";
 
@@ -293,6 +294,7 @@ export function MediaToolsPage() {
   const cancelAllRef = useRef(false);
   const nameEdited = useRef(false);
   const dirEdited = useRef(false);
+  const probeInitialized = useRef<string | null>(null);
   const activeJob = useRef<string | null>(null);
   const waiters = useRef(
     new Map<string, (result: "completed" | "failed" | "cancelled") => void>(),
@@ -453,36 +455,26 @@ export function MediaToolsPage() {
     // the output name and folder. Only preserve values the user typed by hand.
     if (!dirEdited.current) setOutputDirectory(directoryName(selected.path));
     if (!nameEdited.current) setOutputName(baseName(selected.path));
-    const video =
-      selected.probe?.streams
-        .filter((stream) => stream.type === "video" && !stream.attachedPicture)
-        .map((stream) => stream.index) || [];
-    const audio =
-      selected.probe?.streams
-        .filter((stream) => stream.type === "audio")
-        .map((stream) => stream.index) || [];
-    const subtitles =
-      selected.probe?.streams
-        .filter((stream) => stream.type === "subtitle")
-        .map((stream) => stream.index) || [];
-    setSelectedVideo(video);
-    setSelectedAudio(audio);
-    setSelectedSubtitle(subtitles);
-    if (!video.length) {
+  }, [selected?.id]);
+
+  // Probe-dependent defaults initialize once the probe for the selected item
+  // arrives — never from a pending probe — and never again for that item, so
+  // later user edits and rerenders cannot overwrite intentional choices.
+  useEffect(() => {
+    if (!selected?.probe) return;
+    if (probeInitialized.current === selected.id) return;
+    probeInitialized.current = selected.id;
+    const defaults = planProbeDefaults(selected.probe);
+    setSelectedVideo(defaults.video);
+    setSelectedAudio(defaults.audio);
+    setSelectedSubtitle(defaults.subtitles);
+    if (defaults.audioOnly) {
       setPresetId("mp3");
       setAudioCodec("mp3");
     }
-    setDefaultAudio(
-      selected.probe?.streams.find(
-        (stream) => stream.type === "audio" && stream.default,
-      )?.index ?? audio[0],
-    );
-    setDefaultSubtitle(
-      selected.probe?.streams.find(
-        (stream) => stream.type === "subtitle" && stream.default,
-      )?.index ?? subtitles[0],
-    );
-  }, [selected?.id]);
+    setDefaultAudio(defaults.defaultAudio);
+    setDefaultSubtitle(defaults.defaultSubtitle);
+  }, [selected?.id, selected?.probe]);
 
   const addFiles = async () =>
     addPaths(await window.prism.download.selectMediaFiles());
@@ -511,6 +503,7 @@ export function MediaToolsPage() {
     if (remaining.length === 0) {
       nameEdited.current = false;
       dirEdited.current = false;
+      probeInitialized.current = null;
     }
   };
   const moveItem = (id: string, direction: -1 | 1) =>

@@ -12,6 +12,7 @@ import {
 import {
   batchExplicitNameError,
   planBatchFileState,
+  planProbeDefaults,
 } from "../src/shared/media-tools.ts";
 import { parseRemuxRequest } from "../src/shared/ipc-schemas.ts";
 
@@ -321,4 +322,43 @@ test("single-file runs preserve explicit names and selections", () => {
   assert.deepEqual(plan.trackSelection, { video: [0], audio: [1] });
   assert.equal(plan.trimStart, "00:00:01");
   assert.equal(plan.trimEnd, "00:00:05");
+});
+
+test("probe defaults initialize per file only from resolved probes", () => {
+  const video = planProbeDefaults({
+    streams: [
+      { index: 0, type: "video", codecName: "h264" },
+      { index: 1, type: "audio", codecName: "aac", default: true },
+      { index: 2, type: "audio", codecName: "aac" },
+      { index: 3, type: "subtitle", codecName: "mov_text" },
+      { index: 4, type: "video", attachedPicture: true },
+    ],
+  });
+  assert.deepEqual(video.video, [0]);
+  assert.deepEqual(video.audio, [1, 2]);
+  assert.deepEqual(video.subtitles, [3]);
+  assert.equal(video.defaultAudio, 1);
+  assert.equal(video.defaultSubtitle, 3);
+  assert.equal(video.audioOnly, false);
+
+  const audioOnly = planProbeDefaults({
+    streams: [{ index: 0, type: "audio", codecName: "mp3" }],
+  });
+  assert.deepEqual(audioOnly.video, []);
+  assert.deepEqual(audioOnly.audio, [0]);
+  assert.equal(audioOnly.defaultAudio, 0);
+  assert.equal(audioOnly.audioOnly, true);
+
+  // A second file derives from its own probe: nothing leaks across files.
+  const other = planProbeDefaults({
+    streams: [
+      { index: 0, type: "video", codecName: "hevc" },
+      { index: 5, type: "subtitle", codecName: "mov_text", default: true },
+    ],
+  });
+  assert.deepEqual(other.video, [0]);
+  assert.deepEqual(other.audio, []);
+  assert.equal(other.defaultAudio, undefined);
+  assert.equal(other.defaultSubtitle, 5);
+  assert.equal(other.audioOnly, false);
 });

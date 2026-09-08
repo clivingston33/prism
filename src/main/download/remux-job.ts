@@ -282,6 +282,7 @@ export function startRemuxJob(
       err instanceof JobCancelledError ||
       isJobCancelled(id) ||
       processRegistry.isCancelled(id);
+    const error = errorFor(err, cancelled);
     const outputPath = activeOutputs.get(id);
     if (outputPath) releaseDestination(outputPath);
     if (

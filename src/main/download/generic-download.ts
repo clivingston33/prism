@@ -219,6 +219,7 @@ export async function saveResponse(
   maxBytes?: number,
 ) {
   if (!response.body) throw new Error("The media response had no content.");
+  const body = response.body;
   const totalHeader = Number(response.headers.get("content-length"));
   const totalBytes =
     Number.isFinite(totalHeader) && totalHeader > 0 ? totalHeader : undefined;
@@ -246,7 +247,7 @@ export async function saveResponse(
   try {
     await pipeline(
       (async function* () {
-        for await (const chunk of responseChunks(response.body, isCancelled)) {
+        for await (const chunk of responseChunks(body, isCancelled)) {
           downloadedBytes += chunk.length;
           if (maxBytes !== undefined && downloadedBytes > maxBytes) {
             throw new Error(`Response exceeded the ${maxBytes}-byte limit.`);

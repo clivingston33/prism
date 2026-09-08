@@ -1,5 +1,6 @@
 import fs from "fs";
 import { spawn } from "child_process";
+import { processRegistry } from "./process-registry";
 import {
   getBinPaths,
   isUsableExecutable,
@@ -25,8 +26,13 @@ function probeDuration(ffprobe: string, filePath: string): Promise<number> {
     );
     let output = "";
     child.stdout.on("data", (data) => (output += data.toString()));
-    child.on("error", reject);
+    processRegistry.register("aux:waveform", child);
+    child.on("error", (cause) => {
+      processRegistry.unregister("aux:waveform", child);
+      reject(cause);
+    });
     child.on("close", (code) => {
+      processRegistry.unregister("aux:waveform", child);
       const duration = Number(output.trim());
       if (code === 0 && Number.isFinite(duration) && duration > 0) {
         resolve(duration);
@@ -70,6 +76,7 @@ export async function generateWaveform(filePath: string, peakCount = 1000) {
       ],
       { windowsHide: true },
     );
+    processRegistry.register("aux:waveform", child);
     let sampleIndex = 0;
     let remainder: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let stderr = "";
@@ -92,12 +99,16 @@ export async function generateWaveform(filePath: string, peakCount = 1000) {
       remainder =
         usable === buffer.length ? Buffer.alloc(0) : buffer.subarray(usable);
     });
-    child.on("error", reject);
-    child.on("close", (code) =>
+    child.on("error", (cause) => {
+      processRegistry.unregister("aux:waveform", child);
+      reject(cause);
+    });
+    child.on("close", (code) => {
+      processRegistry.unregister("aux:waveform", child);
       code === 0
         ? resolve()
-        : reject(new Error(stderr.trim() || `FFmpeg exited with code ${code}`)),
-    );
+        : reject(new Error(stderr.trim() || `FFmpeg exited with code ${code}`));
+    });
   });
 
   return {

@@ -12,6 +12,8 @@ import { store } from "./store";
 import { queueManager } from "./download/queue";
 import { setupTranscriptionIPC } from "./ipc/transcription";
 import { maybeAutoUpdateYtDlp } from "./download/ytdlp-updater";
+import { cancelAllModelDownloads } from "./transcription/models";
+import { cancelGpuRuntimeInstall } from "./transcription/gpu-runtime";
 import { resolveMediaPreview } from "./media-preview";
 
 function serveAudioPreview(filePath: string, request: Request) {
@@ -233,4 +235,6 @@ app.on("window-all-closed", () => {
 // process exits so downloads cannot outlive the app (RES-001).
 app.on("before-quit", () => {
   queueManager.shutdown();
+  cancelAllModelDownloads();
+  cancelGpuRuntimeInstall();
 });

@@ -16,6 +16,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { processRegistry } from "../download/process-registry";
 import { openModelResponse } from "./models";
 import type { ModelDownloadProgress } from "../../shared/transcription.ts";
 import type { AppSettings } from "../../shared/contracts.ts";
@@ -145,14 +146,19 @@ function expandArchive(zipPath: string, destination: string) {
     child.stderr?.on("data", (data) => {
       if (stderr.length < 8000) stderr += data.toString();
     });
-    child.on("error", reject);
-    child.on("close", (code) =>
+    processRegistry.register("aux:gpu-runtime", child);
+    child.on("error", (cause) => {
+      processRegistry.unregister("aux:gpu-runtime", child);
+      reject(cause);
+    });
+    child.on("close", (code) => {
+      processRegistry.unregister("aux:gpu-runtime", child);
       code === 0
         ? resolve()
         : reject(
             new Error(stderr.trim() || `Archive extraction failed (${code}).`),
-          ),
-    );
+          );
+    });
   });
 }
 
@@ -173,11 +179,14 @@ function smokeTest(binary: string) {
       }
       resolve(false);
     }, 15_000);
+    processRegistry.register("aux:gpu-runtime", child);
     child.on("error", () => {
+      processRegistry.unregister("aux:gpu-runtime", child);
       clearTimeout(timer);
       resolve(false);
     });
     child.on("close", (code) => {
+      processRegistry.unregister("aux:gpu-runtime", child);
       clearTimeout(timer);
       resolve(code === 0);
     });

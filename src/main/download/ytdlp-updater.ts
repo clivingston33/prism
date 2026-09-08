@@ -4,6 +4,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
+import { processRegistry } from "./process-registry";
 import { app } from "electron";
 import { store } from "../store";
 import { checksumForFile } from "../../shared/runtime-manifest.ts";
@@ -93,11 +94,16 @@ function bundledYtDlpPath() {
 function runVersion(executable: string): Promise<string> {
   const { promise, resolve, reject } = Promise.withResolvers<string>();
   const child = spawn(executable, ["--version"], { windowsHide: true });
+  processRegistry.register("aux:ytdlp", child);
   let output = "";
   const timeout = setTimeout(() => child.kill(), 15_000);
   child.stdout.on("data", (data) => (output += data.toString()));
-  child.on("error", reject);
+  child.on("error", (cause) => {
+    processRegistry.unregister("aux:ytdlp", child);
+    reject(cause);
+  });
   child.on("close", (code) => {
+    processRegistry.unregister("aux:ytdlp", child);
     clearTimeout(timeout);
     if (code === 0 && output.trim()) {
       resolve(output.trim().split(/\s+/)[0]);

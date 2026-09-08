@@ -22,8 +22,10 @@ export class ProcessRegistry {
   private readonly processes = new Map<string, Set<ChildProcess>>();
   private readonly cancelled = new Set<string>();
   private readonly paused = new Set<string>();
+  private shuttingDown = false;
 
   register(jobId: string, child: ChildProcess) {
+    if (this.shuttingDown) this.cancelled.add(jobId);
     if (this.cancelled.has(jobId)) {
       this.terminate(child);
       return;
@@ -103,6 +105,28 @@ export class ProcessRegistry {
     this.processes.delete(jobId);
     this.cancelled.delete(jobId);
     this.paused.delete(jobId);
+  }
+
+  isShuttingDown() {
+    return this.shuttingDown;
+  }
+
+  /** Live tracked owners; used to verify shutdown released everything. */
+  trackedOwnerCount() {
+    return this.processes.size;
+  }
+
+  /**
+   * Terminal app shutdown: terminate every tracked child, including
+   * auxiliary workers with no download job, and refuse further work.
+   * Synchronous like cancel(); child-close handlers settle cleanup.
+   */
+  shutdown() {
+    this.shuttingDown = true;
+    for (const jobId of [...this.processes.keys()]) this.cancel(jobId);
+    this.processes.clear();
+    this.paused.clear();
+    // Keep `cancelled` so work registered during shutdown dies immediately.
   }
 }
 

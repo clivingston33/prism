@@ -8,6 +8,7 @@
  */
 import os from "os";
 import { spawn } from "child_process";
+import { processRegistry } from "./download/process-registry";
 
 export type GpuVendor = "nvidia" | "amd" | "intel" | "unknown";
 
@@ -51,6 +52,7 @@ function detectGpusWindows(): Promise<GpuInfo[]> {
       return;
     }
     let stdout = "";
+    processRegistry.register("aux:hardware", child);
     const timer = setTimeout(() => {
       try {
         child.kill();
@@ -63,10 +65,12 @@ function detectGpusWindows(): Promise<GpuInfo[]> {
       stdout += data.toString();
     });
     child.on("error", () => {
+      processRegistry.unregister("aux:hardware", child);
       clearTimeout(timer);
       resolve([]);
     });
     child.on("close", () => {
+      processRegistry.unregister("aux:hardware", child);
       clearTimeout(timer);
       resolve(
         stdout

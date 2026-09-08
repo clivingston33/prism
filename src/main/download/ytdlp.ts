@@ -426,12 +426,14 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
       } catch {}
       finish(fallback);
     }, METADATA_TIMEOUT_MS);
+    processRegistry.register("aux:metadata", child);
 
     child.stdout?.on("data", (data) => {
       output += data.toString();
     });
 
     child.on("close", (code) => {
+      processRegistry.unregister("aux:metadata", child);
       if (code !== 0) {
         finish(fallback);
         return;
@@ -550,13 +552,13 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
     });
 
     child.on("error", (err) => {
+      processRegistry.unregister("aux:metadata", child);
       console.warn(
         `[yt-dlp] metadata process error: ${describeExecutableProblem("yt-dlp", ytdlp)}`,
         err,
       );
       finish(fallback);
     });
-  });
 }
 
 export interface PlaylistEntry {
@@ -599,14 +601,17 @@ export async function getPlaylistInfo(
         child.kill();
       } catch {}
     }, METADATA_TIMEOUT_MS);
+    processRegistry.register("aux:metadata", child);
     child.stdout?.on("data", (data) => {
       output += data.toString();
     });
     child.on("error", () => {
+      processRegistry.unregister("aux:metadata", child);
       clearTimeout(timeout);
       resolve(null);
     });
     child.on("close", (code) => {
+      processRegistry.unregister("aux:metadata", child);
       clearTimeout(timeout);
       if (code !== 0) return resolve(null);
       try {
@@ -728,8 +733,10 @@ export async function getTranscript(
     child.stderr?.on("data", (data) => {
       stderr += data.toString();
     });
+    processRegistry.register("aux:subtitles", child);
 
     child.on("close", () => {
+      processRegistry.unregister("aux:subtitles", child);
       try {
         const files = fs
           .readdirSync(tmpDir)
@@ -760,6 +767,7 @@ export async function getTranscript(
     });
 
     child.on("error", () => {
+      processRegistry.unregister("aux:subtitles", child);
       removeDirectorySafe(tmpDir);
       resolve("Could not retrieve transcript.");
     });

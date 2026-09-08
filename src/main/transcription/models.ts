@@ -434,6 +434,11 @@ export function cancelModelDownload(modelId: string) {
   activeDownloads.get(modelId)?.abort();
 }
 
+/** Abort every in-flight model transfer; used by app shutdown. */
+export function cancelAllModelDownloads() {
+  for (const controller of activeDownloads.values()) controller.abort();
+}
+
 export async function deleteModel(modelId: string) {
   const model = findWhisperModel(modelId);
   if (!model) throw new Error("Unknown Whisper model.");

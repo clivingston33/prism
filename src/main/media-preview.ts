@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { spawn } from "child_process";
+import { processRegistry } from "./download/process-registry";
 import {
   getBinPaths,
   isUsableExecutable,
@@ -54,14 +55,19 @@ async function createCompatibleAudioPreview(source: string) {
       child.stderr.on("data", (chunk) => {
         if (stderr.length < 4000) stderr += chunk.toString();
       });
-      child.on("error", reject);
-      child.on("close", (code) =>
+      processRegistry.register("aux:preview", child);
+      child.on("error", (cause) => {
+        processRegistry.unregister("aux:preview", child);
+        reject(cause);
+      });
+      child.on("close", (code) => {
+        processRegistry.unregister("aux:preview", child);
         code === 0
           ? resolve()
           : reject(
               new Error(stderr.trim() || "Audio preview generation failed."),
-            ),
-      );
+            );
+      });
     });
     const generated = await fs.promises.stat(temporary);
     if (!generated.isFile() || generated.size === 0)

@@ -424,6 +424,7 @@ class DownloadManager {
 
   shutdown() {
     for (const id of ACTIVE_DOWNLOADS.keys()) processRegistry.cancel(id);
+    processRegistry.shutdown();
     clearInterval(this.timeoutHandle);
   }
 }

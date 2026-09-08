@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { spawn } from "child_process";
+import { processRegistry } from "./process-registry.ts";
 import type {
   MediaProbe,
   MediaStreamInfo,
@@ -46,12 +47,17 @@ export async function createThumbnail(
     } catch {
       return resolve(undefined);
     }
-    child.on("error", () => tryAttempt(index + 1));
-    child.on("close", (code) =>
+    processRegistry.register("aux:thumbnail", child);
+    child.on("error", () => {
+      processRegistry.unregister("aux:thumbnail", child);
+      tryAttempt(index + 1);
+    });
+    child.on("close", (code) => {
+      processRegistry.unregister("aux:thumbnail", child);
       code === 0 && fs.existsSync(output)
         ? resolve(output)
-        : tryAttempt(index + 1),
-    );
+        : tryAttempt(index + 1);
+    });
   };
   tryAttempt(0);
   return promise;
@@ -241,16 +247,18 @@ export async function probeMediaFile(
       reject(error);
       return;
     }
+    processRegistry.register("aux:probe", child);
     let stdout = "";
     let stderr = "";
     child.stdout?.on("data", (data) => {
       stdout += data.toString();
     });
-    child.stderr?.on("data", (data) => {
-      if (stderr.length < 32_000) stderr += data.toString();
+    child.on("error", (cause) => {
+      processRegistry.unregister("aux:probe", child);
+      reject(cause);
     });
-    child.on("error", reject);
     child.on("close", async (code) => {
+      processRegistry.unregister("aux:probe", child);
       if (code !== 0) {
         reject(new Error(stderr.trim() || `FFprobe exited with code ${code}`));
         return;

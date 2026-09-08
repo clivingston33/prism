@@ -71,11 +71,13 @@ export function probeMediaFile(
       reject(error);
       return;
     }
+    processRegistry.register("aux:probe", child);
     let stderr = "";
     child.stderr?.on("data", (data) => {
       if (stderr.length < 128_000) stderr += data.toString();
     });
     child.on("close", () => {
+      processRegistry.unregister("aux:probe", child);
       const durationMatch = stderr.match(
         /Duration:\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/i,
       );
@@ -112,7 +114,10 @@ export function probeMediaFile(
         streams,
       });
     });
-    child.on("error", reject);
+    child.on("error", (cause) => {
+      processRegistry.unregister("aux:probe", child);
+      reject(cause);
+    });
   });
 }
 

@@ -12,6 +12,7 @@
  * process lifetime.
  */
 import { spawn } from "child_process";
+import { processRegistry } from "./process-registry";
 
 export type CodecFamily = "h264" | "h265";
 
@@ -126,11 +127,14 @@ function testEncode(ffmpeg: string, encoder: string): Promise<boolean> {
       }
       resolve(false);
     }, 8000);
+    processRegistry.register("aux:hwaccel", child);
     child.on("error", () => {
+      processRegistry.unregister("aux:hwaccel", child);
       clearTimeout(timer);
       resolve(false);
     });
     child.on("close", (code) => {
+      processRegistry.unregister("aux:hwaccel", child);
       clearTimeout(timer);
       resolve(code === 0);
     });

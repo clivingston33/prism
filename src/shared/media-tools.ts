@@ -117,3 +117,61 @@ export function displayStreamLabel(stream: MediaStreamInfo) {
           : "Track";
   return `${track} ${stream.index}${stream.language ? ` · ${stream.language}` : ""}${stream.title ? ` · ${stream.title}` : ""}`;
 }
+
+export interface BatchFilePlan {
+  outputFileName: string | undefined;
+  trackSelection: TrackSelection | undefined;
+  trimStart: string | undefined;
+  trimEnd: string | undefined;
+}
+
+/**
+ * Rejects a batch whose single explicit output name would make every member
+ * overwrite the same destination. Call before starting any batch member.
+ */
+export function batchExplicitNameError(options: {
+  batchSize: number;
+  outputName: string;
+  outputNameEdited: boolean;
+  overwrite: boolean;
+}): string | undefined {
+  if (
+    options.batchSize > 1 &&
+    options.outputNameEdited &&
+    options.outputName.trim() &&
+    options.overwrite
+  )
+    return `The output name "${options.outputName.trim()}" would make ${options.batchSize} files overwrite each other. Clear the name for per-file defaults or turn off overwrite.`;
+  return undefined;
+}
+/**
+ * Source-specific request state for one batch member. Defaults derive
+ * per file (main names each output from its own input); the selected file's
+ * track/trim choices apply only to itself, never to other batch members.
+ * Single-file runs keep today's behavior exactly.
+ */
+export function planBatchFileState(options: {
+  itemId: string;
+  batchSize: number;
+  selectedId: string | null;
+  outputName: string;
+  outputNameEdited: boolean;
+  trackSelection?: TrackSelection;
+  trimStart?: string;
+  trimEnd?: string;
+}): BatchFilePlan {
+  const single = options.batchSize <= 1;
+  const ownState = single || options.itemId === options.selectedId;
+  // Single runs keep today's behavior exactly. In a batch, an auto-followed
+  // name belongs to the selected file, so other members fall back to
+  // per-file defaults; an explicit name still applies (overwrite collisions
+  // are rejected by batchExplicitNameError before starting).
+  const explicit = options.outputName.trim() ? options.outputName : undefined;
+  return {
+    outputFileName:
+      single || options.outputNameEdited ? explicit : undefined,
+    trackSelection: ownState ? options.trackSelection : undefined,
+    trimStart: ownState ? options.trimStart : undefined,
+    trimEnd: ownState ? options.trimEnd : undefined,
+  };
+}

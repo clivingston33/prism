@@ -19,8 +19,11 @@ import {
 import { useAppStore } from "../stores/app-store";
 import type { ConversionFormat } from "../../shared/contracts.ts";
 import type { MediaProbe, RemuxContainer } from "../../shared/media-tools.ts";
+import {
+  batchExplicitNameError,
+  planBatchFileState,
+} from "../../shared/media-tools.ts";
 import { Waveform, secondsToTimestamp } from "../components/waveform";
-import { useExitPresence } from "../hooks/use-exit-presence";
 
 type Mode = "remux" | "convert";
 type ItemStatus =
@@ -519,9 +522,9 @@ export function MediaToolsPage() {
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
-
   const startOne = async (
     item: QueueItem,
+    batchSize: number,
   ): Promise<"completed" | "failed" | "cancelled"> => {
     if (!item.probe) return "failed";
     setItems((current) =>
@@ -531,45 +534,58 @@ export function MediaToolsPage() {
           : entry,
       ),
     );
+    // Source-specific state stays source-specific: default names derive from
+    // each input, and the selected file's track/trim choices apply only to
+    // itself. Shared container/directory/overwrite settings still apply.
+    const perFile = planBatchFileState({
+      itemId: item.id,
+      batchSize,
+      selectedId: selected?.id ?? null,
+      outputName,
+      outputNameEdited: nameEdited.current,
+      trackSelection: advancedOpen
+        ? {
+            video: selectedVideo,
+            audio: selectedAudio,
+            subtitle: selectedSubtitle,
+            defaultAudio,
+            defaultSubtitle,
+          }
+        : undefined,
+      trimStart: trimEnabled
+        ? secondsToTimestamp(trimRange.start)
+        : undefined,
+      trimEnd: trimEnabled ? secondsToTimestamp(trimRange.end) : undefined,
+    });
     let jobId: string;
     if (mode === "remux") {
       jobId = await window.prism.download.startRemux({
         filePath: item.path,
         container,
         outputDirectory,
-        outputFileName: outputName || undefined,
+        outputFileName: perFile.outputFileName,
         overwrite,
         keepOriginal,
         preserveChapters,
         preserveMetadata,
         preserveAttachments,
         compatibilityAction: remuxAction,
-        trackSelection: advancedOpen
-          ? {
-              video: selectedVideo,
-              audio: selectedAudio,
-              subtitle: selectedSubtitle,
-              defaultAudio,
-              defaultSubtitle,
-            }
-          : undefined,
+        trackSelection: perFile.trackSelection,
       });
     } else {
       jobId = await window.prism.download.startConversion({
         filePath: item.path,
         format: convertPreset.format,
         outputDirectory,
-        outputFileName: outputName || undefined,
+        outputFileName: perFile.outputFileName,
         videoCodec,
         audioCodec,
         videoHeight: resolution === "source" ? null : Number(resolution),
         fps,
         crf: Number(crf),
         audioBitrate,
-        trimStart: trimEnabled
-          ? secondsToTimestamp(trimRange.start)
-          : undefined,
-        trimEnd: trimEnabled ? secondsToTimestamp(trimRange.end) : undefined,
+        trimStart: perFile.trimStart,
+        trimEnd: perFile.trimEnd,
       });
     }
     activeJob.current = jobId;
@@ -590,10 +606,30 @@ export function MediaToolsPage() {
         (!onlyId || item.id === onlyId) &&
         ["ready", "failed", "cancelled"].includes(item.status),
     );
+    // An explicit single output name across an overwrite batch would make
+    // every member replace the same destination: reject before starting.
+    const collision = batchExplicitNameError({
+      batchSize: batch.length,
+      outputName,
+      outputNameEdited: nameEdited.current,
+      overwrite,
+    });
+    if (collision) {
+      const ids = new Set(batch.map((item) => item.id));
+      setItems((current) =>
+        current.map((entry) =>
+          ids.has(entry.id)
+            ? { ...entry, status: "failed" as const, error: collision }
+            : entry,
+        ),
+      );
+      setIsProcessing(false);
+      return;
+    }
     for (const item of batch) {
       if (cancelAllRef.current) break;
       try {
-        await startOne(item);
+        await startOne(item, batch.length);
       } catch (error) {
         setItems((current) =>
           current.map((entry) =>

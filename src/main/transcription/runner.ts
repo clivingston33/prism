@@ -322,7 +322,26 @@ export async function transcribeLocalFile(
     if (!fs.existsSync(generatedStaging))
       throw new Error("Whisper finished without creating a transcript file.");
     const transcriptText = await fs.promises.readFile(generatedStaging, "utf8");
+    // Late cancellation lands during the read above: recheck before the
+    // commit so a cancelled job never publishes or persists completed.
+    // Shutdown is terminal too: with no live child registered, only the
+    // global shutdown flag records it.
+    if (
+      isJobCancelled(id) ||
+      processRegistry.isCancelled(id) ||
+      processRegistry.isShuttingDown()
+    )
+      throw new JobCancelledError();
     await commitStagedOutput(generatedStaging, outputPath);
+    // Another await elapsed during commit; recheck before the synchronous
+    // completion writes. A committed complete file stays on disk (same as
+    // conversion), but status remains cancelled, never completed.
+    if (
+      isJobCancelled(id) ||
+      processRegistry.isCancelled(id) ||
+      processRegistry.isShuttingDown()
+    )
+      throw new JobCancelledError();
     publishJobProgress(window, {
       jobId: id,
       jobType: "transcription",

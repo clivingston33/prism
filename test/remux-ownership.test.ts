@@ -189,6 +189,55 @@ test("an active remux destination cannot be stolen; cancel releases it", async (
   }
 });
 
+test("rejected self-output never releases a live owner's reservation", async () => {
+  const { dest, source } = setup("hang");
+  try {
+    const output = path.join(dest, "result.mkv");
+    fs.writeFileSync(output, "previous-complete");
+    const owner = startRemuxJob(
+      {
+        filePath: source,
+        container: "mkv",
+        outputDirectory: dest,
+        outputFileName: "result",
+        overwrite: true,
+      },
+      fakeWindow(),
+    );
+    await waitForFile(stagingPathFor(output, owner));
+    assert.equal(isDestinationReserved(output), true);
+    // A second request whose output resolves to its own source is rejected…
+    const rejected = startRemuxJob(
+      {
+        filePath: output,
+        container: "mkv",
+        outputDirectory: dest,
+        outputFileName: "result",
+        overwrite: true,
+      },
+      fakeWindow(),
+    );
+    const rejectedRecord = await waitForSettled(rejected);
+    assert.equal(rejectedRecord.status, "failed");
+    // …but must not free the live owner's reservation…
+    assert.equal(isDestinationReserved(output), true);
+    // …so a competitor cannot claim the path while the owner is live.
+    assert.equal(reserveDestination(output), false);
+    assert.ok(!fs.existsSync(stagingPathFor(output, rejected)));
+    assert.equal(fs.readFileSync(output, "utf-8"), "previous-complete");
+    processRegistry.cancel(owner);
+    const ownerRecord = await waitForSettled(owner);
+    assert.equal(ownerRecord.status, "cancelled");
+    // Once the true owner terminates, the destination becomes claimable.
+    assert.equal(isDestinationReserved(output), false);
+    assert.equal(reserveDestination(output), true);
+    releaseDestination(output);
+  } finally {
+    teardown(dest);
+  }
+});
+
+// The shutdown test latches global shutdown state and must stay last.
 test("shutdown during remux releases the reservation and staging", async () => {
   const { dest, source } = setup("hang");
   try {

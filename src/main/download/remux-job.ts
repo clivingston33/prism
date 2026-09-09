@@ -153,7 +153,12 @@ async function runRemux(
     throw new JobCancelledError();
   const outputPath = remuxOutputPath(probe, effectiveRequest, ensureUniquePath);
   if (path.resolve(outputPath) === path.resolve(request.filePath)) {
-    releaseDestination(outputPath);
+    // Release only a reservation this invocation actually owns. The
+    // non-overwrite path above reserves via ensureUniquePath, so its
+    // rejection must clean up after itself; the explicit-overwrite path
+    // reserves nothing yet, so releasing here would free a still-live
+    // job's claim and let a competitor clobber its output (C11).
+    if (!effectiveRequest.overwrite) releaseDestination(outputPath);
     throw new Error("The output must be different from the source file.");
   }
   if (effectiveRequest.overwrite && !reserveDestination(outputPath)) {

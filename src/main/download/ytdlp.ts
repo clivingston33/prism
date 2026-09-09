@@ -170,6 +170,7 @@ function setProgress(
     processedSeconds?: number;
     durationSeconds?: number;
     speedBytesPerSecond?: number;
+    speedMultiplier?: number;
   } = {},
 ) {
   const item = store.get("history", []).find((entry) => entry.id === itemId);
@@ -185,6 +186,7 @@ function setProgress(
       processedSeconds: details.processedSeconds,
       durationSeconds: details.durationSeconds,
       speedBytesPerSecond: details.speedBytesPerSecond,
+      speedMultiplier: details.speedMultiplier,
     },
   });
 }

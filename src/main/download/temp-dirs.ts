@@ -111,18 +111,34 @@ export function deliveryStagingPathFor(finalPath: string): string {
 }
 
 /**
+ * Unique Prism-owned backup for the previous complete destination during an
+ * explicit overwrite. Same volume, same extension, never equal to the final
+ * name. Deliberately a different pattern from delivery staging: a backup can
+ * hold the last complete bytes, so startup sweeps must never delete it as
+ * if it were a partial copy.
+ */
+export function deliveryBackupPathFor(finalPath: string): string {
+  const directory = path.dirname(finalPath);
+  const ext = path.extname(finalPath);
+  const base = path.basename(finalPath, ext);
+  const nonce = crypto.randomBytes(6).toString("hex");
+  return path.join(directory, `${base}.prism-backup-${nonce}.part${ext}`);
+}
+
+/**
  * Cross-volume/fallback delivery: copy to destination-side staging, verify
  * sizes, then commit. The final filename appears only at commit; the source
  * is removed only after the commit succeeds. On failure the source and any
  * previous complete destination survive; only owned staging is removed.
  *
- * POSIX rename already replaces atomically, so overwrite flows use the fast
- * path there. Windows cannot rename over an existing file: with explicit
- * overwrite approval the previous complete file is removed only once the
- * replacement is fully staged, then the staged file is renamed. A crash in
- * that last window can leave the staged replacement without the old file;
- * the window holds no partial data, only a missing-then-staged sequence
- * the platform cannot make atomic with these primitives.
+ * Explicit overwrite never deletes the previous destination first. It moves
+ * the previous file to a Prism-owned backup, commits the staged replacement,
+ * and only then removes the backup and the source. A failed commit restores
+ * the backup, so the last complete file survives ordinary replacement
+ * errors. A crash between the backup move and the commit can leave the
+ * backup and staging beside a missing final; both are Prism-owned and retain
+ * their bytes, but only staging is swept at startup — backup recovery across
+ * restarts is intentionally deferred.
  */
 async function copyCommitStaged(
   inputPath: string,
@@ -148,24 +164,59 @@ async function copyCommitStaged(
       }
       if (destExists)
         throw new Error(`Destination "${outputPath}" already exists.`);
-    }
-    try {
       await ops.rename(staging, outputPath);
-    } catch (cause) {
-      const code = fsCode(cause);
-      if (
-        !overwrite ||
-        (code !== "EEXIST" && code !== "EPERM" && code !== "EACCES")
-      )
-        throw cause;
-      await ops.rm(outputPath, { force: true });
-      await ops.rename(staging, outputPath);
+    } else {
+      await replaceWithRollback(staging, outputPath, ops);
     }
     await ops.unlink(inputPath);
   } catch (error) {
     await ops.rm(staging, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+/**
+ * Commits a verified staged replacement over an existing destination without
+ * losing the previous complete file. The previous file is moved to a unique
+ * Prism-owned backup first; if the commit fails the backup is restored.
+ * The backup is removed only after the new final is confirmed, and the
+ * source is removed only after that by the caller.
+ */
+async function replaceWithRollback(
+  staging: string,
+  outputPath: string,
+  ops: MoveFileOps,
+): Promise<void> {
+  let destExists = true;
+  try {
+    await ops.stat(outputPath);
+  } catch {
+    destExists = false;
+  }
+  if (!destExists) {
+    // The earlier rename failed for a reason other than a conflicting
+    // destination (locked staging, transient error). There is nothing to
+    // replace, so report the original failure instead of inventing work.
+    await ops.rename(staging, outputPath);
+    return;
+  }
+  const backup = deliveryBackupPathFor(outputPath);
+  await ops.rename(outputPath, backup);
+  try {
+    await ops.rename(staging, outputPath);
+  } catch (cause) {
+    try {
+      await ops.rename(backup, outputPath);
+    } catch {
+      throw new Error(
+        `Replacement of "${outputPath}" failed and the previous file could not be restored; it is preserved at "${backup}".`,
+      );
+    }
+    throw cause;
+  }
+  // The new final is confirmed: backup cleanup must never roll back a good
+  // commit, so its failure is ignored rather than reported as a move error.
+  await ops.rm(backup, { force: true }).catch(() => undefined);
 }
 
 /**
@@ -182,6 +233,20 @@ export async function moveFileFast(
   options: MoveFileFastOptions = {},
 ): Promise<void> {
   await ops.mkdir(path.dirname(outputPath), { recursive: true });
+  if (!options.overwrite) {
+    // No-clobber must be enforced before the rename: on Windows a rename
+    // replaces an existing destination instead of failing, and the
+    // process-local reservation cannot stop another application from
+    // creating the path after allocation. Fail here with both files intact.
+    let destExists = true;
+    try {
+      await ops.stat(outputPath);
+    } catch {
+      destExists = false;
+    }
+    if (destExists)
+      throw new Error(`Destination "${outputPath}" already exists.`);
+  }
   try {
     await ops.rename(inputPath, outputPath);
     return;
@@ -195,8 +260,8 @@ export async function moveFileFast(
       options.overwrite &&
       (code === "EEXIST" || code === "EPERM" || code === "EACCES")
     ) {
-      // Windows rename cannot replace an existing file: use the staged
-      // copy + replace-at-commit path instead of deleting first.
+      // The fast rename cannot replace the existing file: use the staged
+      // copy + backup/rollback replacement path instead of deleting first.
       await copyCommitStaged(inputPath, outputPath, ops, true);
       return;
     }

@@ -7,6 +7,7 @@ import {
   cleanupAbandonedDeliveryStaging,
   cleanupAbandonedTempDirs,
   createJobTempDir,
+  deliveryBackupPathFor,
   deliveryStagingPathFor,
   moveFileFast,
   prismTempRoot,
@@ -304,7 +305,7 @@ test("permission errors never trigger copy fallback", async () => {
       unlink: async () => assert.fail("must not unlink on EPERM"),
     });
     await assert.rejects(moveFileFast(source, target, ops), /access denied/);
-    assert.deepEqual(calls, ["mkdir", "rename"]);
+    assert.deepEqual(calls, ["mkdir", "stat", "rename"]);
     assert.ok(!fs.existsSync(target));
     assert.equal(fs.readFileSync(source, "utf-8"), "bytes");
   } finally {
@@ -351,8 +352,9 @@ test("conflict without approval rejects instead of replacing", async () => {
         throw Object.assign(new Error("file exists"), { code: "EEXIST" });
       },
     });
-    await assert.rejects(moveFileFast(source, target, ops), /file exists/);
+    await assert.rejects(moveFileFast(source, target, ops), /already exists/);
     assert.equal(fs.readFileSync(target, "utf-8"), "previous-complete");
+    assert.equal(fs.readFileSync(source, "utf-8"), "new-bytes");
   } finally {
     fs.rmSync(dest, { recursive: true, force: true });
   }
@@ -393,4 +395,152 @@ test("abandoned delivery staging is swept; live and unrelated survive", async ()
   } finally {
     fs.rmSync(dest, { recursive: true, force: true });
   }
+});
+
+function ownedLeftovers(dest: string): string[] {
+  return fs
+    .readdirSync(dest)
+    .filter(
+      (name) => name.includes(".prism-move-") || name.includes(".prism-backup-"),
+    );
+}
+
+test("same-volume no-overwrite move never replaces an existing destination", async () => {
+  const dest = makeDest();
+  try {
+    const source = path.join(dest, "new.bin");
+    const target = path.join(dest, "out.bin");
+    fs.writeFileSync(source, "NEW");
+    fs.writeFileSync(target, "OLD");
+    await assert.rejects(moveFileFast(source, target), /already exists/);
+    assert.equal(fs.readFileSync(target, "utf-8"), "OLD");
+    assert.equal(fs.readFileSync(source, "utf-8"), "NEW");
+    assert.deepEqual(fs.readdirSync(dest).sort(), ["new.bin", "out.bin"]);
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("failed replacement restores the previous destination", async () => {
+  const dest = makeDest();
+  try {
+    const source = path.join(dest, "in.bin");
+    const target = path.join(dest, "out.bin");
+    fs.writeFileSync(source, "replacement-bytes");
+    fs.writeFileSync(target, "previous-complete");
+    let commitAttempts = 0;
+    const ops = exdevOps([], {
+      rename: async (from: fs.PathLike, to: fs.PathLike) => {
+        const f = String(from);
+        const t = String(to);
+        if (f.endsWith("in.bin")) {
+          throw Object.assign(new Error("cross-device link"), {
+            code: "EXDEV",
+          });
+        }
+        if (f.includes(".prism-move-") && t.endsWith("out.bin")) {
+          commitAttempts += 1;
+          if (commitAttempts === 1) {
+            throw Object.assign(new Error("commit interrupted"), {
+              code: "EIO",
+            });
+          }
+        }
+        await fs.promises.rename(from, to);
+      },
+    });
+    await assert.rejects(
+      moveFileFast(source, target, ops, { overwrite: true }),
+      /commit interrupted/,
+    );
+    assert.equal(commitAttempts, 1);
+    assert.equal(fs.readFileSync(target, "utf-8"), "previous-complete");
+    assert.equal(fs.readFileSync(source, "utf-8"), "replacement-bytes");
+    assert.deepEqual(ownedLeftovers(dest), []);
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("unrestorable replacement preserves the backup and reports it", async () => {
+  const dest = makeDest();
+  try {
+    const source = path.join(dest, "in.bin");
+    const target = path.join(dest, "out.bin");
+    fs.writeFileSync(source, "replacement-bytes");
+    fs.writeFileSync(target, "previous-complete");
+    const ops = exdevOps([], {
+      rename: async (from: fs.PathLike, to: fs.PathLike) => {
+        const f = String(from);
+        const t = String(to);
+        if (f.endsWith("in.bin")) {
+          throw Object.assign(new Error("cross-device link"), {
+            code: "EXDEV",
+          });
+        }
+        // The backup move itself succeeds; every commit/restore rename fails.
+        if (t.endsWith("out.bin")) {
+          throw Object.assign(new Error("storage fault"), { code: "EIO" });
+        }
+        await fs.promises.rename(from, to);
+      },
+    });
+    await assert.rejects(
+      moveFileFast(source, target, ops, { overwrite: true }),
+      /could not be restored/,
+    );
+    const leftovers = ownedLeftovers(dest);
+    assert.equal(leftovers.length, 1);
+    assert.match(leftovers[0], /\.prism-backup-[0-9a-f]+\.part\.bin$/);
+    assert.equal(
+      fs.readFileSync(path.join(dest, leftovers[0]), "utf-8"),
+      "previous-complete",
+    );
+    assert.equal(fs.readFileSync(source, "utf-8"), "replacement-bytes");
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("backup cleanup failure after a good commit keeps the new final", async () => {
+  const dest = makeDest();
+  try {
+    const source = path.join(dest, "in.bin");
+    const target = path.join(dest, "out.bin");
+    fs.writeFileSync(source, "replacement-bytes");
+    fs.writeFileSync(target, "previous-complete");
+    const ops = exdevOps([], {
+      rename: async (from: fs.PathLike, to: fs.PathLike) => {
+        if (String(from).endsWith("in.bin")) {
+          throw Object.assign(new Error("cross-device link"), {
+            code: "EXDEV",
+          });
+        }
+        await fs.promises.rename(from, to);
+      },
+      rm: async (file: fs.PathLike, options?: object) => {
+        if (String(file).includes(".prism-backup-")) {
+          throw new Error("backup locked");
+        }
+        await fs.promises.rm(file, options as { force?: boolean });
+      },
+    });
+    await moveFileFast(source, target, ops, { overwrite: true });
+    assert.equal(fs.readFileSync(target, "utf-8"), "replacement-bytes");
+    assert.ok(!fs.existsSync(source));
+  } finally {
+    fs.rmSync(dest, { recursive: true, force: true });
+  }
+});
+
+test("delivery backup names are unique, owned, and extension-preserving", () => {
+  const final = path.join(os.tmpdir(), "clip MKV.mkv");
+  const first = deliveryBackupPathFor(final);
+  const second = deliveryBackupPathFor(final);
+  assert.notEqual(first, second);
+  assert.notEqual(first, final);
+  assert.equal(path.dirname(first), path.dirname(final));
+  assert.equal(path.extname(first), ".mkv");
+  assert.match(path.basename(first), /\.prism-backup-[0-9a-f]+\.part\.mkv$/);
+  assert.doesNotMatch(path.basename(first), /\.prism-move-/);
 });

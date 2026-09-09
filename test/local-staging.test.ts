@@ -70,7 +70,7 @@ test("overwrite replacement lands only at commit time", async (t) => {
   const staging = stagingPathFor(final, "job-1");
   fs.writeFileSync(staging, "replacement-bytes");
   assert.equal(fs.readFileSync(final, "utf-8"), "previous-complete");
-  await moveFileFast(staging, final);
+  await moveFileFast(staging, final, fs.promises, { overwrite: true });
   assert.equal(fs.readFileSync(final, "utf-8"), "replacement-bytes");
 });
 

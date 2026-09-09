@@ -165,6 +165,9 @@ async function runRemux(
   // verifies, never as a partial file. The prior complete file (overwrite
   // mode) survives until this job's replacement commits.
   const stagingPath = stagingPathFor(outputPath, id);
+  // Owner identity for the failure path below: without this entry a failed
+  // or cancelled job can never release its reservation or staging output.
+  activeOutputs.set(id, outputPath);
   publishJobProgress(mainWindow, {
     jobId: id,
     attemptId: id,

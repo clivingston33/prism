@@ -19,6 +19,8 @@ import {
   cleanupAbandonedTempDirs,
   cleanupAbandonedWhisperDirs,
 } from "./temp-dirs";
+import { sweepPreviewCache } from "../media-preview";
+import { pruneThumbnailCache } from "../thumbnails";
 import { app } from "electron";
 import { isActiveJobStatus, type JobError } from "../../shared/jobs.ts";
 import type { DownloadRequest, HistoryRecord } from "../../shared/contracts.ts";
@@ -97,7 +99,6 @@ class DownloadManager {
       sendHistory(mainWindow, recovered);
     }
 
-    // Clean temp directories abandoned by a previous crash. Runs at startup
     const settings = store.get("settings");
     const dest = settings.downloadLocation || app.getPath("downloads");
     void cleanupAbandonedTempDirs(dest, new Set(ACTIVE_DOWNLOADS.keys()));
@@ -107,6 +108,10 @@ class DownloadManager {
     // Crashed cross-volume copies leave Prism-owned destination staging;
     // sweep only that narrow pattern inside the known destination.
     void cleanupAbandonedDeliveryStaging([dest]);
+    // Generated preview caches are bounded by policy, not by restarts:
+    // evict stale previews and wired-but-unused thumbnail maintenance.
+    void sweepPreviewCache();
+    void pruneThumbnailCache();
   }
 
   private checkTimeouts() {

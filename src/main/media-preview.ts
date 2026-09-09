@@ -1,7 +1,7 @@
-import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import crypto from "crypto";
 import { spawn } from "child_process";
 import { processRegistry } from "./download/process-registry";
 import {
@@ -10,17 +10,22 @@ import {
   describeExecutableProblem,
 } from "./download/utils";
 import { moveFileFast } from "./download/temp-dirs";
+import { PreviewCache, previewKeyFor } from "./preview-cache";
 
-const previews = new Map<string, { filePath: string; expiresAt: number }>();
 const previewRoot = path.join(os.tmpdir(), "prism-audio-previews");
+const previewCache = new PreviewCache(previewRoot);
+
+/** Rate-limited eviction; also runs at startup. Never rejects. */
+export function sweepPreviewCache(force = false): Promise<void> {
+  return previewCache.sweep(force).then(
+    () => undefined,
+    () => undefined,
+  );
+}
 
 async function createCompatibleAudioPreview(source: string) {
   const stat = await fs.promises.stat(source);
-  const key = crypto
-    .createHash("sha256")
-    .update(`${source}:${stat.size}:${stat.mtimeMs}`)
-    .digest("hex")
-    .slice(0, 24);
+  const key = previewKeyFor(source, stat.size, stat.mtimeMs);
   const output = path.join(previewRoot, `${key}.mp3`);
   if (fs.existsSync(output) && fs.statSync(output).size > 0) return output;
   await fs.promises.mkdir(previewRoot, { recursive: true });
@@ -78,6 +83,7 @@ async function createCompatibleAudioPreview(source: string) {
   }
   if (!fs.existsSync(output) || fs.statSync(output).size === 0)
     throw new Error("The audio preview could not be finalized.");
+  void sweepPreviewCache();
   return output;
 }
 
@@ -86,19 +92,12 @@ export async function createMediaPreviewUrl(filePath: string) {
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile())
     throw new Error("The selected media file no longer exists.");
   const compatible = await createCompatibleAudioPreview(resolved);
-  const token = crypto.randomBytes(24).toString("hex");
-  previews.set(token, {
-    filePath: compatible,
-    expiresAt: Date.now() + 60 * 60 * 1000,
-  });
+  const token = previewCache.createToken(compatible);
+  void sweepPreviewCache();
   return `prism-media://${token}`;
 }
 
 export function resolveMediaPreview(token: string) {
-  const preview = previews.get(token);
-  if (!preview || preview.expiresAt < Date.now()) {
-    previews.delete(token);
-    return null;
-  }
-  return preview.filePath;
+  return previewCache.resolve(token);
 }
+

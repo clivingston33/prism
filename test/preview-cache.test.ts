@@ -11,7 +11,9 @@ import {
 
 const HOUR = 60 * 60 * 1000;
 
-function policy(overrides: Partial<PreviewCachePolicy> = {}): PreviewCachePolicy {
+function policy(
+  overrides: Partial<PreviewCachePolicy> = {},
+): PreviewCachePolicy {
   return {
     tokenTtlMs: HOUR,
     maxAgeMs: 24 * HOUR,
@@ -28,7 +30,11 @@ function setup(
 ) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "prism-cache-test-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const cache = new PreviewCache(root, policy(policyOverrides), () => clock.now);
+  const cache = new PreviewCache(
+    root,
+    policy(policyOverrides),
+    () => clock.now,
+  );
   return { root, cache };
 }
 
@@ -132,7 +138,9 @@ test("unrelated files inside and outside the root are untouched", async (t) => {
 
 test("rate limiting avoids a directory scan on every request", async (t) => {
   const clock = { now: Date.now() };
-  const { root, cache } = setup(t, clock, { minSweepIntervalMs: 5 * 60 * 1000 });
+  const { root, cache } = setup(t, clock, {
+    minSweepIntervalMs: 5 * 60 * 1000,
+  });
   const first = write(root, "first.mp3", "x", clock.now - 25 * HOUR);
   await cache.sweep();
   assert.ok(!fs.existsSync(first));
@@ -143,4 +151,3 @@ test("rate limiting avoids a directory scan on every request", async (t) => {
   await cache.sweep(true);
   assert.ok(!fs.existsSync(skipped));
 });
-

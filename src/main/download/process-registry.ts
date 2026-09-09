@@ -23,10 +23,7 @@ export class JobPausedError extends Error {
  * rethrows stop-intent failures, passes ordinary errors through.
  */
 export function rethrowIfStopped(error: unknown): void {
-  if (
-    error instanceof JobPausedError ||
-    error instanceof JobCancelledError
-  )
+  if (error instanceof JobPausedError || error instanceof JobCancelledError)
     throw error;
 }
 
@@ -130,14 +127,10 @@ export class ProcessRegistry {
     // taskkill owns tree termination first. Killing the root up front makes
     // taskkill fail (exit 128, "process not found") and orphans descendants,
     // so the direct kill is only a bounded fallback for taskkill failure.
-    const killer = spawn(
-      "taskkill",
-      ["/pid", String(child.pid), "/T", "/F"],
-      {
-        windowsHide: true,
-        stdio: "ignore",
-      },
-    );
+    const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
     let settled = false;
     const fallback = () => {
       if (settled) return;

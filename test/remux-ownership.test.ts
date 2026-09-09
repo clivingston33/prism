@@ -23,14 +23,10 @@ globalThis.__dirname = path.dirname(
 
 const { startRemuxJob } = await import("../src/main/download/remux-job.ts");
 const { store } = await import("../src/main/store.ts");
-const {
-  isDestinationReserved,
-  releaseDestination,
-  reserveDestination,
-} = await import("../src/main/download/destinations.ts");
-const { processRegistry } = await import(
-  "../src/main/download/process-registry.ts"
-);
+const { isDestinationReserved, releaseDestination, reserveDestination } =
+  await import("../src/main/download/destinations.ts");
+const { processRegistry } =
+  await import("../src/main/download/process-registry.ts");
 const { stagingPathFor } = await import("../src/main/download/temp-dirs.ts");
 
 function fakeWindow() {
@@ -95,7 +91,12 @@ test("failed remux releases its reservation and removes owned staging", async ()
   try {
     const output = path.join(dest, "result.mkv");
     const id = startRemuxJob(
-      { filePath: source, container: "mkv", outputDirectory: dest, outputFileName: "result" },
+      {
+        filePath: source,
+        container: "mkv",
+        outputDirectory: dest,
+        outputFileName: "result",
+      },
       fakeWindow(),
     );
     const record = await waitForSettled(id);
@@ -142,7 +143,12 @@ test("successful remux commits output and leaves no ownership residue", async ()
   try {
     const output = path.join(dest, "result.mkv");
     const id = startRemuxJob(
-      { filePath: source, container: "mkv", outputDirectory: dest, outputFileName: "result" },
+      {
+        filePath: source,
+        container: "mkv",
+        outputDirectory: dest,
+        outputFileName: "result",
+      },
       fakeWindow(),
     );
     const record = await waitForSettled(id);
@@ -150,10 +156,7 @@ test("successful remux commits output and leaves no ownership residue", async ()
     assert.equal(fs.readFileSync(output, "utf-8"), "complete-bytes");
     assert.ok(!fs.existsSync(stagingPathFor(output, id)));
     assert.equal(isDestinationReserved(output), false);
-    assert.deepEqual(
-      fs.readdirSync(dest).sort(),
-      ["result.mkv", "source.mp4"],
-    );
+    assert.deepEqual(fs.readdirSync(dest).sort(), ["result.mkv", "source.mp4"]);
   } finally {
     teardown(dest);
   }
@@ -164,7 +167,12 @@ test("an active remux destination cannot be stolen; cancel releases it", async (
   try {
     const output = path.join(dest, "result.mkv");
     const id = startRemuxJob(
-      { filePath: source, container: "mkv", outputDirectory: dest, outputFileName: "result" },
+      {
+        filePath: source,
+        container: "mkv",
+        outputDirectory: dest,
+        outputFileName: "result",
+      },
       fakeWindow(),
     );
     await waitForFile(stagingPathFor(output, id));
@@ -186,7 +194,12 @@ test("shutdown during remux releases the reservation and staging", async () => {
   try {
     const output = path.join(dest, "result.mkv");
     const id = startRemuxJob(
-      { filePath: source, container: "mkv", outputDirectory: dest, outputFileName: "result" },
+      {
+        filePath: source,
+        container: "mkv",
+        outputDirectory: dest,
+        outputFileName: "result",
+      },
       fakeWindow(),
     );
     await waitForFile(stagingPathFor(output, id));

@@ -34,7 +34,10 @@ export class ThumbnailAccess {
   private readonly tokens: PreviewCache;
   private readonly root: string;
 
-  constructor(root: string, policy?: PreviewCachePolicy) {
+  constructor(
+    root: string,
+    policy: PreviewCachePolicy = THUMBNAIL_TOKEN_POLICY,
+  ) {
     this.root = root;
     this.tokens = new PreviewCache(root, policy);
   }

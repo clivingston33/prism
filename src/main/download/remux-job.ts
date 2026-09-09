@@ -214,8 +214,8 @@ async function runRemux(
     effectiveRequest.keepOriginal === false &&
     path.resolve(request.filePath) !== path.resolve(outputPath)
   )
-  if (isJobCancelled(id) || processRegistry.isCancelled(id))
-    throw new JobCancelledError();
+    if (isJobCancelled(id) || processRegistry.isCancelled(id))
+      throw new JobCancelledError();
   const size = await commitStagedOutput(stagingPath, outputPath, {
     overwrite: effectiveRequest.overwrite === true,
   });

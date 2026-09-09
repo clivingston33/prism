@@ -14,7 +14,8 @@ function sleepChild(): ChildProcess {
 }
 
 function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  if (child.exitCode !== null || child.signalCode !== null)
+    return Promise.resolve();
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const timer = setTimeout(() => {
     reject(new Error(`child ${child.pid} still alive after ${timeoutMs}ms`));

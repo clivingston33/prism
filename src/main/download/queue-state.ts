@@ -3,10 +3,7 @@ import {
   type JobError,
   type JobStatus,
 } from "../../shared/jobs.ts";
-import {
-  JobCancelledError,
-  JobPausedError,
-} from "./process-registry.ts";
+import { JobCancelledError, JobPausedError } from "./process-registry.ts";
 import type { HistoryRecord } from "../../shared/contracts.ts";
 
 /**
@@ -122,7 +119,9 @@ function samePaths(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function recordPaths(item: Pick<HistoryRecord, "filePath" | "filePaths">): string[] {
+function recordPaths(
+  item: Pick<HistoryRecord, "filePath" | "filePaths">,
+): string[] {
   if (item.filePaths?.length) return [...item.filePaths];
   return item.filePath ? [item.filePath] : [];
 }

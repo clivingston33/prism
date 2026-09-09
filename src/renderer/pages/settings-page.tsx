@@ -87,6 +87,7 @@ export function SettingsPage() {
   const settings = useAppStore((state) => state.settings);
   const setSettings = useAppStore((state) => state.setSettings);
   const setUpdateState = useAppStore((state) => state.setUpdate);
+  const [section, setSection] = useState<Section>("Downloads");
   const pushToast = useAppStore((state) => state.pushToast);
   const [models, setModels] = useState<WhisperModelState[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);

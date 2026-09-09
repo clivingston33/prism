@@ -170,8 +170,7 @@ export function planBatchFileState(options: {
   // are rejected by batchExplicitNameError before starting).
   const explicit = options.outputName.trim() ? options.outputName : undefined;
   return {
-    outputFileName:
-      single || options.outputNameEdited ? explicit : undefined,
+    outputFileName: single || options.outputNameEdited ? explicit : undefined,
     trackSelection: ownState ? options.trackSelection : undefined,
     trimStart: ownState ? options.trimStart : undefined,
     trimEnd: ownState ? options.trimEnd : undefined,

@@ -71,8 +71,7 @@ test("timeout terminal state survives the worker's late exit", () => {
     timedOut: registry.isTimedOut("job-1"),
     paused: registry.isPaused("job-1"),
     cancelled:
-      workerError instanceof JobCancelledError ||
-      registry.isCancelled("job-1"),
+      workerError instanceof JobCancelledError || registry.isCancelled("job-1"),
   });
   assert.equal(cause, "timeout");
   // 5. Re-asserting the first cause keeps failed/DOWNLOAD_TIMEOUT.

@@ -6,7 +6,9 @@ import {
 } from "../src/main/download/queue-state.ts";
 import type { HistoryRecord } from "../src/shared/contracts.ts";
 
-function record(overrides: Partial<HistoryRecord> & { id: string }): HistoryRecord {
+function record(
+  overrides: Partial<HistoryRecord> & { id: string },
+): HistoryRecord {
   return {
     url: "https://example.com/video",
     platform: "Local",
@@ -75,7 +77,9 @@ test("concurrent additions, updates, and removals survive reconciliation", async
     const observations: FileStateObservation[] = [];
     for (const item of snapshot) {
       await gate;
-      observations.push(observe(item, "missing", (item.missingChecks || 0) + 1));
+      observations.push(
+        observe(item, "missing", (item.missingChecks || 0) + 1),
+      );
     }
     return observations;
   })();
@@ -89,7 +93,11 @@ test("concurrent additions, updates, and removals survive reconciliation", async
     missingChecks: 0,
   });
   const added = record({ id: "b", status: "downloading", progress: 12 });
-  const requeued = record({ id: "d", filePath: "/media/d.mp4", status: "queued" });
+  const requeued = record({
+    id: "d",
+    filePath: "/media/d.mp4",
+    status: "queued",
+  });
   const current = [relocated, added, requeued];
   release();
   const observations = await scanning;

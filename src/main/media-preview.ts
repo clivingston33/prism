@@ -100,4 +100,3 @@ export async function createMediaPreviewUrl(filePath: string) {
 export function resolveMediaPreview(token: string) {
   return previewCache.resolve(token);
 }
-

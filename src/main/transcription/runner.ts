@@ -412,7 +412,9 @@ export async function transcribeLocalFile(
     releaseDestination(outputPath);
     // Staging is owned from job start, so cancel-during-Whisper partials
     // are removed even though the success path never recorded them.
-    await fs.promises.rm(generatedStaging, { force: true }).catch(() => undefined);
+    await fs.promises
+      .rm(generatedStaging, { force: true })
+      .catch(() => undefined);
     if (tempDir)
       await fs.promises.rm(tempDir, { recursive: true, force: true });
     processRegistry.clear(id);

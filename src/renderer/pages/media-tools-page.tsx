@@ -24,6 +24,7 @@ import {
   planBatchFileState,
   planProbeDefaults,
 } from "../../shared/media-tools.ts";
+import { useExitPresence } from "../hooks/use-exit-presence";
 import { Waveform, secondsToTimestamp } from "../components/waveform";
 
 type Mode = "remux" | "convert";
@@ -545,9 +546,7 @@ export function MediaToolsPage() {
             defaultSubtitle,
           }
         : undefined,
-      trimStart: trimEnabled
-        ? secondsToTimestamp(trimRange.start)
-        : undefined,
+      trimStart: trimEnabled ? secondsToTimestamp(trimRange.start) : undefined,
       trimEnd: trimEnabled ? secondsToTimestamp(trimRange.end) : undefined,
     });
     let jobId: string;

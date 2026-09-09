@@ -252,15 +252,15 @@ export function RowCard({
             )}
             {(item.status === "failed" || item.status === "interrupted") &&
               canRetryDownloadJob(item) && (
-              <button
-                onClick={handleRetry}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-error transition-[background-color,border-color,transform] hover:border-error/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
-                title="Retry"
-                aria-label={`Retry ${item.title || "job"}`}
-              >
-                <RotateCw size={14} strokeWidth={2} />
-              </button>
-            )}
+                <button
+                  onClick={handleRetry}
+                  className="flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-error transition-[background-color,border-color,transform] hover:border-error/20 hover:bg-bg focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.96]"
+                  title="Retry"
+                  aria-label={`Retry ${item.title || "job"}`}
+                >
+                  <RotateCw size={14} strokeWidth={2} />
+                </button>
+              )}
             {item.status === "completed" && item.filePath && (
               <>
                 <button

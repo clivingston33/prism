@@ -41,7 +41,9 @@ test("commit publishes the final name only on success", async (t) => {
 test("missing staging fails commit without touching the final name", async (t) => {
   const dir = makeDir(t, "prism-stage-test-");
   const final = path.join(dir, "clip.mp4");
-  await assert.rejects(commitStagedOutput(path.join(dir, "ghost.part.mp4"), final));
+  await assert.rejects(
+    commitStagedOutput(path.join(dir, "ghost.part.mp4"), final),
+  );
   assert.ok(!fs.existsSync(final));
 });
 
@@ -82,14 +84,20 @@ test("abandoned Whisper dirs are cleaned; fresh and unrelated survive", async (t
   const otherFile = path.join(root, `prism-whisper-${process.pid}.txt`);
   t.after(async () => {
     for (const target of [stale, fresh, otherDir]) {
-      await fs.promises.rm(target, { recursive: true, force: true }).catch(() => undefined);
+      await fs.promises
+        .rm(target, { recursive: true, force: true })
+        .catch(() => undefined);
     }
     await fs.promises.rm(otherFile, { force: true }).catch(() => undefined);
   });
   fs.writeFileSync(path.join(stale, "audio.wav"), "x");
   const now = Date.now();
   const hour = 60 * 60 * 1000;
-  await fs.promises.utimes(stale, new Date(now - 25 * hour), new Date(now - 25 * hour));
+  await fs.promises.utimes(
+    stale,
+    new Date(now - 25 * hour),
+    new Date(now - 25 * hour),
+  );
   await fs.promises.writeFile(otherFile, "x");
 
   await cleanupAbandonedWhisperDirs(24 * hour, now);

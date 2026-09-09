@@ -278,8 +278,7 @@ class DownloadManager {
     } catch (err) {
       const cause = classifyTerminalCause(err, {
         timedOut: processRegistry.isTimedOut(id),
-        paused:
-          err instanceof JobPausedError || processRegistry.isPaused(id),
+        paused: err instanceof JobPausedError || processRegistry.isPaused(id),
         cancelled:
           err instanceof JobCancelledError || processRegistry.isCancelled(id),
       });

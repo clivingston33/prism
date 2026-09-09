@@ -111,10 +111,11 @@ const requiredString = z.string().refine((value) => value.trim().length > 0, {
 // Empty means "none" for the global download speed limit: clearing a
 // configured rate must persist exactly "", not reject or preserve the old
 // value. Nonempty values keep the non-blank rule.
-const emptySpeedLimit = z.string().refine(
-  (value) => value === "" || value.trim().length > 0,
-  { message: "must be empty or a non-empty string." },
-);
+const emptySpeedLimit = z
+  .string()
+  .refine((value) => value === "" || value.trim().length > 0, {
+    message: "must be empty or a non-empty string.",
+  });
 const emptyToUndefined = (value: unknown) =>
   value === undefined || value === null || value === "" ? undefined : value;
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());

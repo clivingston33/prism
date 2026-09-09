@@ -67,7 +67,8 @@ function serveThumbnail(filePath: string, request: Request) {
     "Content-Length": String(stat.size),
     "Cache-Control": "private, max-age=3600",
   });
-  if (request.method === "HEAD") return new Response(null, { status: 200, headers });
+  if (request.method === "HEAD")
+    return new Response(null, { status: 200, headers });
   const stream = Readable.toWeb(fs.createReadStream(filePath));
   // SAFETY: Node's web ReadableStream is runtime-compatible with the Fetch BodyInit contract.
   return new Response(stream as BodyInit, { status: 200, headers });

@@ -10,10 +10,7 @@ function record(id: string, filePath?: string) {
 }
 
 test("a valid history ID resolves to its stored media path", () => {
-  const history = [
-    record("a", "/media/a.mp4"),
-    record("b", "/media/b.mkv"),
-  ];
+  const history = [record("a", "/media/a.mp4"), record("b", "/media/b.mkv")];
   assert.deepEqual(resolveHistoryOpenTarget(history, "b"), {
     path: "/media/b.mkv",
   });
@@ -60,7 +57,11 @@ test("executable and script targets are rejected", () => {
     "jar",
   ]) {
     assert.equal(isShellOpenBlocked(`/media/evil.${ext}`), true, ext);
-    assert.equal(isShellOpenBlocked(`C:\\media\\EVIL.${ext.toUpperCase()}`), true, ext);
+    assert.equal(
+      isShellOpenBlocked(`C:\\media\\EVIL.${ext.toUpperCase()}`),
+      true,
+      ext,
+    );
     assert.deepEqual(
       resolveHistoryOpenTarget([record("x", `/media/evil.${ext}`)], "x"),
       { error: "This file type cannot be opened directly." },

@@ -92,8 +92,7 @@ async function scanHistory(): Promise<ReconciliationResult> {
   );
   if (result.changed) {
     store.set("history", result.history);
-    for (const item of result.removed)
-      cleanupThumbnail(result.history, item);
+    for (const item of result.removed) cleanupThumbnail(result.history, item);
   }
   return { history: result.history, changed: result.changed };
 }

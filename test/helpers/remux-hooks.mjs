@@ -23,7 +23,9 @@ export async function resolve(specifier, context, nextResolve) {
     context.parentURL?.endsWith("/src/main/download/remux-job.ts")
   ) {
     const fake =
-      specifier === "./converter" ? "fake-converter.mjs" : "fake-media-probe.mjs";
+      specifier === "./converter"
+        ? "fake-converter.mjs"
+        : "fake-media-probe.mjs";
     return { url: urlFor("fakes", fake), shortCircuit: true };
   }
   // Production code uses extensionless relative imports (resolved by the

@@ -158,7 +158,9 @@ test("moveFileFast surfaces real failures instead of masking them", async () => 
 
 function exdevOps(
   calls: string[],
-  overrides: Partial<Record<string, (...args: never[]) => Promise<unknown>>> = {},
+  overrides: Partial<
+    Record<string, (...args: never[]) => Promise<unknown>>
+  > = {},
 ) {
   return {
     mkdir: async (...args: [string, object]) => {
@@ -326,7 +328,10 @@ test("Windows-style replace conflict uses staged copy with approval", async () =
         calls.push("rename");
         // Same-volume fast path first (no staging yet), Windows replace
         // conflict at commit (staging exists).
-        if (String(to).endsWith("out.bin") && !String(from).includes(".prism-move-")) {
+        if (
+          String(to).endsWith("out.bin") &&
+          !String(from).includes(".prism-move-")
+        ) {
           throw Object.assign(new Error("file exists"), { code: "EEXIST" });
         }
         await fs.promises.rename(from, to);
@@ -384,7 +389,11 @@ test("abandoned delivery staging is swept; live and unrelated survive", async ()
     fs.writeFileSync(final, "complete");
     const now = Date.now();
     const hour = 60 * 60 * 1000;
-    await fs.promises.utimes(stale, new Date(now - 2 * hour), new Date(now - 2 * hour));
+    await fs.promises.utimes(
+      stale,
+      new Date(now - 2 * hour),
+      new Date(now - 2 * hour),
+    );
 
     await cleanupAbandonedDeliveryStaging([dest], hour, now);
 
@@ -401,7 +410,8 @@ function ownedLeftovers(dest: string): string[] {
   return fs
     .readdirSync(dest)
     .filter(
-      (name) => name.includes(".prism-move-") || name.includes(".prism-backup-"),
+      (name) =>
+        name.includes(".prism-move-") || name.includes(".prism-backup-"),
     );
 }
 

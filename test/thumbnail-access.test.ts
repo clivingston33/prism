@@ -23,7 +23,9 @@ test("a generated thumbnail resolves and authorizes", async (t) => {
   const token = access.mint(file);
   assert.ok(token);
   assert.equal(access.resolve(token as string), file);
-  assert.equal(await access.authorize(token as string), file);
+  // authorize() returns the canonical realpath; hosted Windows temp roots
+  // may use 8.3 short names, so normalize the expectation the same way.
+  assert.equal(await access.authorize(token as string), await fs.promises.realpath(file));
 });
 
 test("paths outside the root never mint", (t) => {

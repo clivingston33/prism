@@ -26,9 +26,13 @@ function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
 test("a child registered after pause is terminated, not started", async (t) => {
   const registry = new ProcessRegistry();
   registry.pause("job-late");
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
-    stdio: "ignore",
-  });
+  const child = spawn(
+    process.execPath,
+    ["-e", "setInterval(() => {}, 1000);"],
+    {
+      stdio: "ignore",
+    },
+  );
   t.after(() => {
     try {
       child.kill("SIGKILL");
@@ -92,8 +96,5 @@ test("a paused job never settles as cancelled, failed, or completed", () => {
     }),
     "cancelled",
   );
-  assert.equal(
-    classifyTerminalCause(new Error("ffmpeg died"), none),
-    "failed",
-  );
+  assert.equal(classifyTerminalCause(new Error("ffmpeg died"), none), "failed");
 });

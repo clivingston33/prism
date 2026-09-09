@@ -5,7 +5,10 @@
 // - "hang": write a partial file and wait for registry cancellation, then
 //   throw JobCancelledError like the real runner's stop translation.
 import fs from "node:fs";
-import { JobCancelledError, processRegistry } from "../../../src/main/download/process-registry.ts";
+import {
+  JobCancelledError,
+  processRegistry,
+} from "../../../src/main/download/process-registry.ts";
 
 export async function runFfmpeg(ffmpeg, args, stagingPath, onProgress, opts) {
   const mode = globalThis.__remuxFake?.mode ?? "fail";
@@ -16,7 +19,10 @@ export async function runFfmpeg(ffmpeg, args, stagingPath, onProgress, opts) {
   fs.writeFileSync(stagingPath, "partial-bytes");
   if (mode === "hang") {
     const jobId = opts?.jobId ?? "";
-    while (!processRegistry.isCancelled(jobId) && !processRegistry.isShuttingDown()) {
+    while (
+      !processRegistry.isCancelled(jobId) &&
+      !processRegistry.isShuttingDown()
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     throw new JobCancelledError();

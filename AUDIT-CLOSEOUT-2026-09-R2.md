@@ -1,0 +1,145 @@
+# Prism September 2026 Audit Closeout — R2
+
+## Verdict
+
+**NOT READY FOR NEXT ALPHA**
+
+Evidence: remediation closed C01–C04's original invariants (verified below), but the cumulative remediation diff introduces a new build-blocking regression (C10: `npm run build` fails under locked dependencies — 1 node + 13 web source errors, 0 at baseline), and remux destination ownership has a new foreign-release defect (C11/A03 HIGH: a rejected self-output request releases another live job's reservation, enabling two concurrent overwrite remuxes to report and write the same final path). Either alone stops an alpha; together they require a fix pass and a re-verification, not a release tag. No production code was changed during this audit.
+
+## Repository State
+
+- branch: `main`
+- HEAD: `32857a5d2027149eeeb540dc0d474068fe65ba6a`
+- remote: `origin`, `https://github.com/clivingston33/prism`
+- upstream state at audit start: `main` in sync with `origin/main`
+- working tree at audit start: clean (`git status --branch`: "nothing to commit, working tree clean")
+- Git safety: no stash, reset, amend, rebase, force-push, or production edit. The only intended persistent change is this document. Temporary harnesses lived outside the repo (`%TEMP%/prism-r2-*`) or in `/tmp`-style scratch and were removed or left outside the tree; the isolated locked-dependency checkout used for exact compilation lived outside the repo.
+
+## Verification Summary
+
+| Check | Result |
+| --- | --- |
+| `npm test` (local, this Windows host) | **199/199 pass, 0 fail.** |
+| Focused ownership (`remux-ownership`, `temp-dirs`, `destinations`, `local-staging`) | **35/35 pass**, incl. real remux failure/cancel/shutdown/success, same-volume no-overwrite OLD/NEW, EXDEV sims, backup rollback/restore-failure paths. |
+| Focused lifecycle (`timeout-terminal`, `pause-lifecycle`, `transcription-lifecycle`, `model-transfers`, `history-reconcile`, `shutdown`) | **32/32 pass**, incl. real process-tree termination and output-growth halt. |
+| Focused authority (`history-open`, `thumbnail-access`, `preview-cache`, `generic-download`, `media-tools`, `conversion`) | **36/36 pass.** |
+| `npm run typecheck` (repo-local tooling, Electron missing) | Exit 2, **170 diagnostics in 25 files**. Controlled source-swap comparison vs first-closeout HEAD: exactly **one removal (C01 TS2353), zero additions** — the reported `171 → 170` is confirmed, and all 170 remaining local diagnostics are environment-cascade/systemic (see classification). |
+| Exact compilation (isolated `npm ci --ignore-scripts` checkout + `npm run build`) | **FAILS — C10.** Node: `TS6133 thumbnail-access.ts(11,7)` unused `THUMBNAIL_TOKEN_POLICY`. Web: **13 errors** (`media-tools-page.tsx:288` missing `useExitPresence`; `settings-page.tsx` unused `Section` + 11 missing `section`/`setSection` refs). Same locked host vs `866bca7` baseline: **0 node / 0 web**. All 14 are remediation-introduced. |
+| `npm run lint` | Exit 1: `'eslint' is not recognized`. Tooling gap (unchanged from both prior audits), not a product finding. |
+| `npm run verify:resources` (win32/x64) | Pass: 16 entries, pinned hashes/sizes/PE. yt-dlp 2026.07.04, FFmpeg/FFprobe 8.0.1, Whisper 1.9.1. |
+| Native smoke (`scripts/e2e/native-media.mjs`, isolated artifacts, real hash-verified model) | **Pass**: download `requestCount: 4, rangeRequests: 1`; remux `streams: 4, chapters: 2`; Whisper 4 outputs (txt/srt/vtt/json), offline. Model `ggml-base.en.bin` SHA1 `137c4040…3390c` matches `models.ts` base-en manifest entry. (Release pins tiny; this proves the pipeline, not the pinned tiny bytes.) |
+| Hosted CI at HEAD (`gh run 34300616145`) | **Red.** Linux: `format:check` fails (26 files). Windows: **198/199** — sole failure `thumbnail-access.test.ts:26`, a test-env 8.3 short-path (`RUNNER~1`) vs canonical realpath (`runneradmin`) string comparison, not a containment bypass. Native smoke never ran there (blocked by the unit failure). |
+| Release workflow (source inspection) | C09 persists: `release.yml:79-90` downloads + verifies SHA1 only on cache miss; cache-hit path skips verification and both smoke steps consume the model without a hash check. |
+| Packaging/installer/GUI/updater smoke | Not observed (no green build exists at HEAD to package). Not claimed. |
+
+### Diagnostic classification (current tree)
+
+- **Class A (environment/missing tooling): 157 of local 170.** TS2307/TS2503/TS7006 cascades from uninstalled `electron`, `@electron-toolkit/*`, `electron-vite`, and a missing inherited tsconfig (`TS6053`), plus TS6-vs-locked-TS5 skew in this checkout (global TS 6.0.3 vs locked 5.9.3). All 157 vanish under the isolated locked install with the inherited config present.
+- **Class B (pre-existing systemic baseline): 13 of local 170.** Zod v4-vs-declared-type drift in `ipc-schemas.ts` (6× TS2322), `resourcesPath` on `Process` (4× TS2339, Electron types absent), string-index maps (3× TS7053). Present at baseline under identical tooling; untouched by C01–C04 remediation.
+- **Class C (real current production-source errors): 0 in the broken local env, 14 under exact locked compilation — all remediation-introduced (C10).** Listed above; baseline 0/0 under the same host. These block `npm run build` (typecheck is a prerequisite, `package.json:28-31`, plus the release `Type-check` gate).
+
+## C01–C04 Reverification
+
+| Finding | Status | Evidence |
+| ------- | ------ | -------- |
+| C01 | Closed | `2d27358` adds `speedMultiplier` to the local `setProgress` details (`ytdlp.ts:163-174`) and forwards it into the progress patch (`:189`); the shared contract already contains it (`contracts.ts:158`, `jobs.ts:49,166,200`). No casts/widening. Other `setProgress` call sites pass no unknown props. Controlled comparison: TS2353 present at `81f0ad9`, absent at HEAD, zero added diagnostics. |
+| C02 | Closed | `2c93999` restores `activeOutputs.set(id, outputPath)` (`remux-job.ts:170`) before fallible work; the catch path releases the reservation and removes only owned staging (`:295-304`), never the final. All 5 real-orchestration `remux-ownership` tests pass (fail/cancel/shutdown/success/commit-failure): reservation free, staging gone, source + prior final preserved, second owner claims immediately, `activeOutputs` empty. Adjacent new defect tracked separately as C11 (A03). |
+| C03 | Closed | `32857a5` enforces no-clobber stat pre-checks on both fast and EXDEV paths (`temp-dirs.ts:236-249`, `:158-167`); EPERM/EEXIST/EACCES without overwrite reject instead of copy-fallback (`:259-268`). Real Windows run: OLD/NEW both preserved, `/already exists/` returned, no litter (`same-volume no-overwrite` test). EXDEV no-overwrite equivalent also rejects with both files intact. Residual: stat→rename TOCTOU remains (see Known Non-Blocking); not a release blocker per the cross-process-race rule — in-Prism contention is covered by synchronous reservations. |
+| C04 | Closed | `32857a5` stages EXDEV copies beside the destination with size verification, moves the prior destination to a uniquely owned `.prism-backup-<nonce>.part<ext>` backup before commit, restores on commit failure, and removes backup/source only after confirmed commit (`:143-220`). Tests pass: failed replacement restores previous bytes with source intact and zero owned leftovers; unrestorable replacement preserves the backup bytes and reports its path; post-commit backup-cleanup failure keeps the new final. Backup pattern is deliberately distinct from staging so the startup sweep (`:319-365`, `.prism-move-` only) can never delete a backup. Residual: crash-window backup recovery across restarts is deferred by design (comment `:141`) — LOW. |
+
+## Original Audit A01–A18
+
+| Finding | R2 Status | Evidence |
+| ------- | --------- | -------- |
+| A01 | Closed | `history-reconcile` 4/4 pass (concurrent add/update/remove survive; observations invalidated on change). No new stale whole-array write found across queue/timeout/cancel/retry/conversion/remux/transcription/locate/requeue/recovery writers (fresh-read + synchronous map/write). |
+| A02 | Closed | `generic-download` 3/3 pass (pipeline-owned errors, `wx`-only removal, async-open rejection without clobber). |
+| A03 | **Reopened — HIGH** | Synchronous canonical reservations + second-owner rejection verified (`destinations` 3/3, incl. "explicit overwrite cannot claim another in-flight job's output"). But C11: `remux-job.ts:155-156` releases unconditionally on the self-output guard while the overwrite branch (`remux.ts:231-237`) reserves nothing — a rejected request frees a live job's claim (demonstrated against the production reservation primitive: A holds → guard-equivalent release → reservation free → C claims while A live). |
+| A04 | **Reopened — MEDIUM** | Registry now covers download/conversion/transcription/auxiliary/extraction/smoke; late registration dies; real tree termination + output-growth halt pass (`shutdown` 6/6). Residual original gap: `before-quit` (`index.ts:273-277`) is synchronous and awaits nothing; `shutdown()` clears tracking immediately after issuing cancel (`process-registry.ts:183-189`). Termination verified; bounded settlement/persistence drain is not. No orphan reproduced — hence MEDIUM, not BLOCKER. |
+| A05 | Closed | ID-resolved open + executable/script backstop verified (`history-open` 5/5: arbitrary paths unsteerable, exe/script rejected, ordinary media openable). Original arbitrary-launch invariant no longer violated. Residual hardening (sender-frame identity, main-approved selection grants on raw-path media IPC) recorded as LOW. |
+| A06 | Closed | Per-file batch planning + overwrite-collision rejection verified (`media-tools` batch tests pass). Batch source-naming invariant holds at the helper layer. (Page runtime itself is broken by C10 — tracked there, not here.) |
+| A07 | Closed | Pause enforced at registration, stage gates, and subtitle error translation (`pause-lifecycle` 4/4: late child terminated, paused never mis-settles). Pause→shutdown reclassification is C05's scope, and quit-cancel-wins is accepted precedence. |
+| A08 | Closed | Single-flight claim/share, stale-owner-safe cleanup, abort-all verified (`model-transfers` transfer-level 5/5). |
+| A09 | Closed | Timeout cause preserved over late worker cancellation (`timeout-terminal` 8/8). |
+| A10 | Closed | Conversion/transcription/remux stage owner-specific siblings and clean owned partials (`local-staging` 7/7; remux failure tests). Crashed-sibling/Whisper-scratch litter outside sweep scope is LOW residual, not the original exposed-partial-final invariant. |
+| A11 | **Reopened — MEDIUM** | Bounded age/size eviction + proactive sweeps verified (`preview-cache` 8/8 for ordinary pressure). C06 persists: `sweep()` (`preview-cache.ts:146-154`) evicts by mtime/size with no active-reader exclusion, and `resolve()` touching is async fire-and-forget (`:93-95`); a single preview over the cap is evicted even right after resolution. No source-media corruption; serving-availability defect only. |
+| A12 | Closed | Probe-gated defaults verified (`probe defaults initialize per file only from resolved probes` passes). (Page runtime broken by C10 — tracked there.) |
+| A13 | Closed | Abort gates between phases + registered extraction/smoke cancellation verified (`cancelled activation runs no further phases`, `aborting extraction terminates the registered extractor child`). |
+| A14 | Closed | Transcription rechecks after read and after commit verified (`cancel during transcript read never becomes completed`, `cancel immediately before commit still wins`, shutdown-cancel variant). Conversion/remux post-commit gap is C05's scope. |
+| A15 | Closed | Destination-side staged copy + verified commit + backup/rollback verified (`temp-dirs` cross-drive/Windows-conflict tests 9/9). No partial exposed under the final name; prior complete file survives ordinary failures. Crash-window backup recovery deferred — LOW. |
+| A16 | Closed | Shared retry predicate excludes local jobs and preserves download requests (full-suite green; no contrary path found on recheck). |
+| A17 | Closed | Empty-string sentinel survives schema + settings merge with empty rate cap omitted from yt-dlp args (full-suite green). (Settings page runtime broken by C10 — tracked there.) |
+| A18 | **Reopened — LOW** | Token mint/realpath containment/junction-escape/expiry verified (`thumbnail-access` 5/5). But C07 persists: `renderer/index.html:8` `img-src` still omits `prism-thumb:`, so generated thumbnails remain browser-blocked despite valid authorization. Delivery failure, not a confinement weakness. |
+
+- **I01 — Incomplete.** Windows unit + native smoke are now blocking CI steps and release runs source + packaged Whisper with `--require-whisper`, but: C09 cache-hit checksum bypass persists; HEAD CI is red (format gate + thumbnail test-env path assertion); no hosted green run or packagedno smoke was observed in this pass.
+- **I02 — Not actioned; no profiling evidence requiring remediation.** No renderer performance measurement was collected; nothing in this pass justifies optimization work. Does not affect the verdict.
+
+**First-closeout 8 reopened → R2: 4 remain genuinely open (A03 HIGH, A04 MEDIUM, A11 MEDIUM, A18 LOW); 4 closed on recheck (A05, A07, A10, A15)**, each with the original failure invariant verified fixed and residuals either absorbed into standing C-findings (C05–C07) or graded LOW below.
+
+## Cross-Fix Interaction Review
+
+- **Filesystem/output ownership (A03+A10+A15+C02+C03+C04).** Reservation→staging→backup→commit→release ordering verified across conversion (finally-release + staging rm), transcription (finally-release + staging rm + tempdir rm), download delivery (`moveFileFast` no-clobber + staged EXDEV + backup rollback), and remux (owner-map release on failure/cancel/shutdown/success paths). Invariants hold: no reservation leaks on terminal paths, no unrelated-path deletion (owner-scoped patterns only; backup pattern excluded from sweep), source removed only after confirmed commit, no partial under the final name, no double release on owned paths. Two exceptions: **C11** (foreign release via the remux self-output guard — the one path that releases without owning) and the accepted external-race TOCTOU note under C03. `keepOriginal: false` still performs no source unlink (C08) — safe direction (no deletion) but dropped behavior.
+- **Terminal lifecycle (A04+A07+A09+A13+A14+C05).** Timeout beats late cancellation; pause beats ordinary error while retained; transcription rechecks after both post-Whisper awaits; model activation gated per phase. Remaining: conversion (`conversion.ts:182-204`) and remux (`remux-job.ts:219-245`) publish completed unconditionally after the commit await — a cancel landing during commit still flips to completed (C05, reproduced in R1, code path unchanged). Shutdown-cancel-wins over pause is accepted precedence, not a defect.
+- **Model/runtime ownership (A04+A08+A13).** One owner per model ID with shared duplicate work, identity-checked cleanup, delete awaiting the captured owner, abort-all reaching in-flight owners, registered extractor/smoke children terminated, per-phase activation gates. Verified at transfer/helper level; full install-path integration untested but no concrete hazard found.
+- **History concurrency (A01 + writers).** Reconciliation merges into freshly read state; all other final writes follow read-current + synchronous replace. No second A01-style stale-array hazard confirmed. C05 is terminal-field precedence, not array concurrency.
+- **Renderer filesystem authority (A05+A18).** `local:` still confined to the download root with lexical + realpath checks (unchanged); `prism-thumb:` mint→authorize→serve chain contains correctly (adjacent userData, raw paths, expired/removed tokens, junction escapes all fail). History open is ID-bound with an extension backstop. Residuals: no sender-frame identity check, no selection-grant model on raw-path media IPC (LOW); CSP omits `prism-thumb:` (C07/LOW-functional).
+- **Generated cache/protocol lifecycle (A11+A18).** Preview tokens bounded by TTL with proactive sweeps; cache bounded by age/size; thumbnail files owned by prune path, never by the token cache (hence the orphaned `THUMBNAIL_TOKEN_POLICY` behind C10). Eviction confined to fixed roots with generation-temp handling; no arbitrary traversal found. Residual: no active-reader lease (C06).
+
+## Remaining Release-Significant Findings
+
+### C10 — BLOCKER — Remediation-introduced edits break the release build and both affected pages at runtime
+
+- **Code paths:** `src/main/thumbnail-access.ts:11` (declared-never-read `THUMBNAIL_TOKEN_POLICY` under inherited `noUnusedLocals`); `src/renderer/pages/media-tools-page.tsx:288` (`useExitPresence` called, import removed in the A06/A12 rework diff); `src/renderer/pages/settings-page.tsx:90` (`section`/`setSection` state declaration replaced by `pushToast`, 11 live references remain).
+- **Reproduction:** isolated `npm ci --ignore-scripts` checkout at HEAD → `npm run build`: node gate fails `TS6133 thumbnail-access.ts(11,7)`; `npm run typecheck:web` alone reports 13 errors (10× TS2552 + 2× TS2304 + 1× TS6196). Baseline `866bca7` under the identical locked host: 0 node / 0 web. Renderer runtime (real `renderToString` over transpiled HEAD modules): `MediaToolsPage → ReferenceError: useExitPresence is not defined`; `SettingsPage → ReferenceError: section is not defined` — both fail before content, so the A06/A12/A17 fixes behind them are currently unreachable in the app.
+- **Expected:** clean typecheck/build; both pages render.
+- **Actual:** no installer can be produced through the declared pipeline; Media Tools and Settings pages crash unconditionally.
+- **User impact:** total — no alpha artifacts, and two core surfaces dead even in dev.
+- **Smallest safe fix direction:** thread the existing `THUMBNAIL_TOKEN_POLICY` into the `ThumbnailAccess` construction (or remove the dead declaration if the infinite-lifetime default is intentional); restore the `useExitPresence` import; restore `section`/`setSection` state. No dependency, config, or gate changes.
+- **Regression test needed:** the existing release gates already catch this (typecheck + build) once the working tree compiles — no new framework; do not add source-text assertions.
+
+### C11 — HIGH — Remux self-output guard releases another live job's destination reservation
+
+- **Code path:** `src/main/download/remux-job.ts:154-163` with `src/main/download/remux.ts:231-237`. The overwrite branch computes the destination path directly **without reserving**; the self-output guard then calls `releaseDestination(outputPath)` **unconditionally** before the overwrite claim at `:159`.
+- **Reproduction:** live overwrite remux A holds `result.mkv` (its `:159` claim). Request B has `filePath == computed output` (source remuxed onto itself with overwrite): `remuxOutputPath` returns the same path with no reservation, the `:155` guard fires, and `:156` frees A's claim. A third overwrite request C then claims `result.mkv` while A is still running. Demonstrated against the production `destinations` primitive following the exact statement order (A reserved → guard-equivalent release → reservation free → C claims while A live). End state if both finish: A and C report the same final path; the later commit replaces the earlier result.
+- **Expected:** a rejected request never mutates ownership it does not hold; only the claiming owner (or its own failure path via `activeOutputs`) releases.
+- **Actual:** one rejected self-output request disarms an unrelated live job's reservation, defeating the A03 mutual-exclusion the overwrite claim relies on.
+- **User impact:** silent output clobber between two concurrent overwrite remuxes plus a misleading "already writing" protection that a stray request can lift.
+- **Smallest safe fix direction:** release in the guard only a reservation this invocation actually owns (track claim success locally; never release on a path computed but not claimed). Do not weaken the self-output rejection itself.
+- **Regression test needed:** live overwrite remux A + rejected self-output B targeting the same path + competing overwrite C: assert A stays reserved after B's rejection, C's claim fails, and both A/C never report one path. (Existing `remux-ownership` tests cover owned-path release; this covers foreign-path non-release.)
+
+No other BLOCKER or HIGH findings remain. C05/C06/C08/C09 persist as MEDIUM; they are real but neither destroys user data silently in ordinary flows (C08 deletes nothing; C06 serves 404 rather than corrupt bytes; C05 mislabels status after bytes are safely committed; C09 weakens release-model evidence, not installed bytes) nor blocks the build.
+
+## Known Non-Blocking Issues
+
+- C05 MEDIUM (unchanged): conversion/remux lack a post-commit cancellation recheck — status may read completed after a cancel landing during commit. Bytes are safe; status is wrong.
+- C06 MEDIUM (unchanged): preview sweep evicts by mtime/size with no active-reader lease; a single over-cap preview can be evicted right after resolution (404 at serve).
+- C08 MEDIUM (unchanged): `keepOriginal: false` performs no source unlink after successful remux (`remux-job.ts:213-218` dangling guard) — dropped behavior, safe direction.
+- C09 MEDIUM (unchanged): release cache-hit Whisper path skips SHA1 verification; smoke steps never check the hash. Make verification unconditional; only downloading conditional.
+- A04 MEDIUM (residual): `before-quit` does not await bounded settlement; tracking clears right after cancel is issued. Termination itself verified; drain barrier missing.
+- C03 residual LOW: stat→rename TOCTOU in `moveFileFast`COPY-COMMIT paths. In-Prism contention is reservation-covered; only a precisely timed external creator hits it. No atomic same-volume no-clobber primitive was adopted; do not over-rotate — note and move on.
+- C04 residual LOW: crash between backup-move and commit leaves backup + staging beside a missing final; bytes preserved, only staging auto-swept. Backup recovery across restarts deferred by design.
+- A05 residual LOW: no `senderFrame`/main-window-identity check; no selection-grant model on raw-path probe/preview/conversion/transcription IPC. Shape validation + download-root/protocol confinement hold; no arbitrary-launch path found.
+- Windows CI test-env LOW: `thumbnail-access.test.ts:26` compares against a non-normalized temp path; normalize both sides with `realpath` (8.3 short names on hosted runners).
+- Process hygiene (not product): `format:check` fails on 26 files at HEAD — run the formatter before the next gate; `eslint` still not installed locally.
+
+## Rejected / Closed-on-Recheck Concerns
+
+- **A05/A07/A10/A15 reopened→Closed.** Each original invariant re-verified fixed (table evidence); residuals are LOW or absorbed into standing C-findings. Imperfection alone did not keep them open.
+- **C03 as a cross-process TOCTOU blocker — rejected.** The ordinary-path invariant (the R1 reproduction) is fixed and regression-tested on real Windows semantics. The residual race needs a precisely timed external creator and Prism-side reservations already cover competing Prism jobs. Per the audit's race rule, this stays LOW.
+- **"Every helper test is worthless" — rejected again.** The focused suites caught exactly what they cover (35/35 ownership, 32/32 lifecycle, 36/36 authority); C10/C11 live outside helper-covered paths (build wiring, foreign-owner release), which is a coverage-scoping note, not a dismissal.
+- **"Missing local Electron/ESLint proves dependency breakage" — rejected.** The locked-install comparison proves the dependency declarations resolve; the 14 exact-compile errors are source-introduced, enumerated individually.
+- **P01/P02/I02 — unchanged from R1.** No orphan reproduced (real tree termination passes); no Electron waiter-ordering hang reproduced; no renderer profiling evidence collected.
+
+## Alpha Release Recommendation
+
+Do not tag. Fix C10 + C11 (smallest directions above), run the formatter, normalize the thumbnail test path comparison, then re-run this gate:
+
+1. `npm ci` (locked) → `npm run build` clean; observe Windows CI green at the candidate commit.
+2. Clean-install the packaged Windows candidate; verify notices/native resources.
+3. Download real media; pause/resume/cancel; no-overwrite vs overwrite against an existing destination.
+4. Convert + remux two files each; failure/cancel/overwrite/`keepOriginal` both values; concurrent overwrite remuxes incl. a rejected self-output request.
+5. Real Whisper transcription with the checksum-verified pinned model (source + packaged smoke).
+6. Media Tools thumbnails + audio previews visibly load; history open behaves.
+7. Quit during native work and model activation; process trees exit, ownership settles.
+8. Confirm updater/release metadata, signing status, and checksums before publishing the draft alpha.
+
+No production remediation was performed in this pass.

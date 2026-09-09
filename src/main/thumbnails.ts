@@ -13,6 +13,12 @@ import path from "path";
 import { store } from "./store";
 import { ThumbnailAccess } from "./thumbnail-access.ts";
 
+const MAX_CACHE_BYTES = 500 * 1024 * 1024;
+
+export function thumbnailDirectory() {
+  return path.join(app.getPath("userData"), "thumbnails");
+}
+
 let thumbnailAccess: ThumbnailAccess | null = null;
 
 function thumbnails(): ThumbnailAccess {

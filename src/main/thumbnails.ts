@@ -11,11 +11,41 @@ import { app } from "electron";
 import fs from "fs";
 import path from "path";
 import { store } from "./store";
+import { ThumbnailAccess } from "./thumbnail-access.ts";
 
-const MAX_CACHE_BYTES = 500 * 1024 * 1024;
+let thumbnailAccess: ThumbnailAccess | null = null;
 
-export function thumbnailDirectory() {
-  return path.join(app.getPath("userData"), "thumbnails");
+function thumbnails(): ThumbnailAccess {
+  thumbnailAccess ??= new ThumbnailAccess(thumbnailDirectory());
+  return thumbnailAccess;
+}
+
+/** Token for a main-generated thumbnail file. Null when not servable. */
+export function mintThumbnailToken(filePath: string): string | null {
+  try {
+    return thumbnails().mint(filePath);
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a token mint-by-main to its file. Null means 404. */
+export function resolveThumbnailToken(token: string): string | null {
+  try {
+    return thumbnails().resolve(token);
+  } catch {
+    return null;
+  }
+}
+
+/** Serve-time authorization with realpath containment. Null means 404. */
+export function authorizeThumbnail(token: string): Promise<string | null> {
+  return thumbnails().authorize(token);
+}
+
+/** Expire thumbnail tokens; file lifetime stays with pruneThumbnailCache. */
+export function sweepThumbnailTokens(force = false): Promise<void> {
+  return thumbnails().sweep(force);
 }
 
 export interface ThumbnailCacheInfo {

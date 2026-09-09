@@ -275,6 +275,16 @@ export async function probeMediaFile(
           )
         ) {
           result.thumbnailPath = await createThumbnail(ffmpeg, inputPath);
+          if (result.thumbnailPath) {
+            try {
+              // Electron stays lazy so parser-only Node tests do not load it.
+              const { mintThumbnailToken } = await import("../thumbnails.ts");
+              result.thumbnailToken =
+                mintThumbnailToken(result.thumbnailPath) || undefined;
+            } catch {
+              // A token failure must never fail the probe itself.
+            }
+          }
         }
         resolve(result);
       } catch (error) {

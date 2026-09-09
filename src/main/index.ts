@@ -15,6 +15,7 @@ import { maybeAutoUpdateYtDlp } from "./download/ytdlp-updater";
 import { cancelAllModelDownloads } from "./transcription/models";
 import { cancelGpuRuntimeInstall } from "./transcription/gpu-runtime";
 import { resolveMediaPreview } from "./media-preview";
+import { authorizeThumbnail } from "./thumbnails";
 
 function serveAudioPreview(filePath: string, request: Request) {
   const stat = fs.statSync(filePath);
@@ -52,10 +53,24 @@ function serveAudioPreview(filePath: string, request: Request) {
   });
   if (status === 206)
     headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
-  if (request.method === "HEAD") return new Response(null, { status, headers });
   const stream = Readable.toWeb(fs.createReadStream(filePath, { start, end }));
   // SAFETY: Node's web ReadableStream is runtime-compatible with the Fetch BodyInit contract.
   return new Response(stream as BodyInit, { status, headers });
+}
+
+function serveThumbnail(filePath: string, request: Request) {
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile() || stat.size === 0)
+    return new Response("Not found", { status: 404 });
+  const headers = new Headers({
+    "Content-Type": "image/jpeg",
+    "Content-Length": String(stat.size),
+    "Cache-Control": "private, max-age=3600",
+  });
+  if (request.method === "HEAD") return new Response(null, { status: 200, headers });
+  const stream = Readable.toWeb(fs.createReadStream(filePath));
+  // SAFETY: Node's web ReadableStream is runtime-compatible with the Fetch BodyInit contract.
+  return new Response(stream as BodyInit, { status: 200, headers });
 }
 
 // Register custom protocol scheme
@@ -76,6 +91,15 @@ protocol.registerSchemesAsPrivileged([
       standard: true,
       stream: true,
       supportFetchAPI: true,
+    },
+  },
+  {
+    scheme: "prism-thumb",
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      bypassCSP: false,
     },
   },
 ]);
@@ -207,6 +231,19 @@ app.whenReady().then(() => {
     if (!filePath) return new Response("Not found", { status: 404 });
     try {
       return serveAudioPreview(filePath, request);
+    } catch {
+      return new Response("Not found", { status: 404 });
+    }
+  });
+  // Generated thumbnails only: token-minted by main, realpath-contained to
+  // the thumbnail cache. Adjacent userData files can never resolve here,
+  // and the download-root-only `local:` protocol is untouched.
+  protocol.handle("prism-thumb", async (request) => {
+    const token = new URL(request.url).hostname;
+    const filePath = await authorizeThumbnail(token);
+    if (!filePath) return new Response("Not found", { status: 404 });
+    try {
+      return serveThumbnail(filePath, request);
     } catch {
       return new Response("Not found", { status: 404 });
     }

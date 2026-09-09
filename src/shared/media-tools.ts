@@ -36,6 +36,8 @@ export interface MediaProbe {
   audioTrackCount: number;
   subtitleTrackCount: number;
   thumbnailPath?: string;
+  /** Main-minted token for fetching the generated thumbnail; paths are never authority. */
+  thumbnailToken?: string;
   streams: MediaStreamInfo[];
 }
 

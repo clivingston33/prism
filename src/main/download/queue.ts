@@ -20,7 +20,7 @@ import {
   cleanupAbandonedWhisperDirs,
 } from "./temp-dirs";
 import { sweepPreviewCache } from "../media-preview";
-import { pruneThumbnailCache } from "../thumbnails";
+import { pruneThumbnailCache, sweepThumbnailTokens } from "../thumbnails";
 import { app } from "electron";
 import { isActiveJobStatus, type JobError } from "../../shared/jobs.ts";
 import type { DownloadRequest, HistoryRecord } from "../../shared/contracts.ts";
@@ -111,6 +111,7 @@ class DownloadManager {
     // Generated preview caches are bounded by policy, not by restarts:
     // evict stale previews and wired-but-unused thumbnail maintenance.
     void sweepPreviewCache();
+    void sweepThumbnailTokens();
     void pruneThumbnailCache();
   }
 

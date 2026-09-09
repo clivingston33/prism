@@ -838,7 +838,13 @@ export function MediaToolsPage() {
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
                   <div className="flex min-h-[150px] items-center justify-center overflow-hidden rounded-xl bg-bg text-text-tertiary">
-                    {selected.probe?.thumbnailPath ? (
+                    {selected.probe?.thumbnailToken ? (
+                      <img
+                        src={`prism-thumb://${selected.probe.thumbnailToken}`}
+                        alt="Media preview"
+                        className="h-full max-h-[190px] w-full -outline-offset-1 object-contain outline outline-1 outline-black/10 dark:outline-white/10"
+                      />
+                    ) : selected.probe?.thumbnailPath ? (
                       <img
                         src={`local://${encodeURIComponent(selected.probe.thumbnailPath)}`}
                         alt="Media preview"

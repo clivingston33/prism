@@ -17,13 +17,13 @@ The full live updater path (installed alpha.5 → published alpha.6) was exercis
 
 Starting point was the genuine published alpha.5 installer (SHA256 matched its published checksums file), installed silently over a clean slate with an isolated profile.
 
-| Step              | Result | Evidence                                                              |
-| ----------------- | ------ | --------------------------------------------------------------------- |
-| starting version  | PASS   | runtime reported `0.1.0-alpha.5`                                      |
-| discovered        | PASS   | `update:available` → `0.1.0-alpha.6` (prerelease not ignored)         |
-| download          | PASS   | `update:downloaded` → `0.1.0-alpha.6`; full installer in updater cache |
-| install           | PASS   | assisted NSIS wizard (one user confirmation, by design); exit clean   |
-| relaunch          | PASS   | auto-relaunch observed; controlled instance reports `0.1.0-alpha.6`   |
+| Step              | Result | Evidence                                                                |
+| ----------------- | ------ | ----------------------------------------------------------------------- |
+| starting version  | PASS   | runtime reported `0.1.0-alpha.5`                                        |
+| discovered        | PASS   | `update:available` → `0.1.0-alpha.6` (prerelease not ignored)           |
+| download          | PASS   | `update:downloaded` → `0.1.0-alpha.6`; full installer in updater cache  |
+| install           | PASS   | assisted NSIS wizard (one user confirmation, by design); exit clean     |
+| relaunch          | PASS   | auto-relaunch observed; controlled instance reports `0.1.0-alpha.6`     |
 | resulting version | PASS   | bridge version + installed `Prism.exe` FileVersion both `0.1.0-alpha.6` |
 
 ## State Preservation

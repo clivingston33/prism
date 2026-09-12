@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import {
   PreviewCache,
-  previewKeyFor,
   type PreviewCachePolicy,
 } from "../src/main/preview-cache.ts";
 

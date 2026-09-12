@@ -253,6 +253,9 @@ export async function probeMediaFile(
     child.stdout?.on("data", (data) => {
       stdout += data.toString();
     });
+    child.stderr?.on("data", (data) => {
+      if (stderr.length < 32_000) stderr += data.toString();
+    });
     child.on("error", (cause) => {
       processRegistry.unregister("aux:probe", child);
       reject(cause);

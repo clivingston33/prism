@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { sanitizeFileName } from "./naming";
 import fs from "fs";
 import path from "path";
 import { updatedYtDlpPath } from "./ytdlp-updater";
@@ -209,25 +210,6 @@ export function qualityToHeight(quality?: string): number | null {
   const match = quality.match(/^(\d+)p$/i);
   return match ? Number(match[1]) : null;
 }
-
-export function sanitizeFileName(
-  name: string | undefined,
-  fallback = "download",
-) {
-  const base = (name || fallback)
-    .replace(/[<>:"/\\|?*\p{Cc}]/gu, " ")
-    .replace(/[.\s]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const safe = base || fallback;
-  const reserved = /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(safe)
-    ? `${safe}-file`
-    : safe;
-
-  return reserved.slice(0, 160);
-}
-
 export function ensureUniquePath(
   directory: string,
   baseName: string,

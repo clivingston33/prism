@@ -22,9 +22,9 @@ import {
   isUsableExecutable,
   outputExtension,
   releaseDestination,
-  sanitizeFileName,
 } from "./utils";
 import { commitStagedOutput, stagingPathFor } from "./temp-dirs";
+import { sanitizeFileName } from "./naming";
 
 function sendHistory(mainWindow: Electron.BrowserWindow) {
   mainWindow.webContents.send("history:update", store.get("history", []));

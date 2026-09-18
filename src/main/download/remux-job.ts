@@ -22,10 +22,10 @@ import {
   isUsableExecutable,
   releaseDestination,
   reserveDestination,
-  sanitizeFileName,
   describeExecutableProblem,
 } from "./utils";
 import { commitStagedOutput, stagingPathFor } from "./temp-dirs";
+import { sanitizeFileName } from "./naming";
 
 const activeOutputs = new Map<string, string>();
 

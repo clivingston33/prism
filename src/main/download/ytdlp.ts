@@ -43,11 +43,19 @@ import {
   releaseDestination,
   removeDirectorySafe,
   reserveDestination,
-  sanitizeFileName,
   sumFileSizes,
   describeExecutableProblem,
   type DownloadMode,
 } from "./utils";
+import {
+  detectPlatform,
+  genericFallbackTitle,
+  producedBaseName,
+  resolveDownloadBaseName,
+  sanitizeFileName,
+  withoutTrailingExtension,
+} from "./naming";
+import { stripNullValues } from "./metadata-json";
 type DownloadCompletionOverrides = Partial<
   Pick<
     HistoryRecord,
@@ -76,27 +84,6 @@ function getJsRuntimeArg(): string | null {
     return `--js-runtimes=deno:${deno}`;
   }
   return null;
-}
-
-function detectPlatform(url: string) {
-  let hostname = "Unknown Source";
-  let platform = "Unknown";
-
-  try {
-    const parsed = new URL(url);
-    hostname = parsed.hostname.replace("www.", "");
-    if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) {
-      platform = "YouTube";
-    } else if (hostname.includes("tiktok.com")) {
-      platform = "TikTok";
-    } else if (hostname.includes("twitter.com") || hostname.includes("x.com")) {
-      platform = "Twitter";
-    } else if (hostname.includes("instagram.com")) {
-      platform = "Instagram";
-    }
-  } catch {}
-
-  return { hostname, platform };
 }
 
 function normalizeMode(item: HistoryRecord): DownloadMode {
@@ -366,9 +353,9 @@ function collectImagePostUrls(parsed: YtDlpMetadata): string[] {
 }
 
 function fallbackMetadata(url: string): ResolvedMetadata {
-  const { hostname, platform } = detectPlatform(url);
+  const { platform } = detectPlatform(url);
   return {
-    title: `Video from ${hostname}`,
+    title: genericFallbackTitle(url),
     platform,
     formats: ["mp4", "webm", "mov", "mp3", "prores"],
     // Do not advertise guessed resolutions. The UI must only offer streams
@@ -443,7 +430,9 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
       }
 
       try {
-        const parsed = YTDLP_METADATA_SCHEMA.parse(JSON.parse(output));
+        const parsed = YTDLP_METADATA_SCHEMA.parse(
+          stripNullValues(JSON.parse(output)),
+        );
         const parsedFormats = parsed.formats;
         const qualities = extractQualities(parsedFormats);
         const containers = extractContainers(parsedFormats);
@@ -1541,6 +1530,7 @@ async function convertToProRes(
   dest: string,
   mainWindow: Electron.BrowserWindow,
   mode: "video_audio" | "video_only",
+  baseName?: string,
 ) {
   processRegistry.throwIfStopped(item.id);
   if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
@@ -1549,7 +1539,7 @@ async function convertToProRes(
   const { ffmpeg } = getBinPaths();
   const outputPath = ensureUniquePath(
     dest,
-    `${item.title || "download"} ProRes`,
+    `${baseName || item.title || "download"} ProRes`,
     "mov",
   );
   publishJobProgress(mainWindow, {
@@ -1601,10 +1591,13 @@ async function deliverDownloadedFile(
     if (isJobCancelled(jobId)) throw new JobCancelledError();
   }
   const extension = path.extname(sourcePath).replace(/^\./, "") || "mkv";
-  const requestedPath = path.join(
-    dest,
-    `${sanitizeFileName(baseName, "download")}.${extension}`,
+  // A title that already ends in the delivered extension ("video.mp4") must
+  // not yield "video.mp4.mp4"; strip one trailing match before composing.
+  const safeBase = withoutTrailingExtension(
+    sanitizeFileName(baseName, "download"),
+    extension,
   );
+  const requestedPath = path.join(dest, `${safeBase}.${extension}`);
   if (fs.existsSync(requestedPath) && conflictAction === "skip") {
     await fs.promises.rm(sourcePath, { force: true });
     return requestedPath;
@@ -1638,6 +1631,7 @@ async function downloadSingleMedia(
   item: HistoryRecord,
   dest: string,
   mainWindow: Electron.BrowserWindow,
+  metadata: ResolvedMetadata | null,
 ) {
   const mode = normalizeMode(item);
   const plan: DownloadPlan = buildDownloadPlan({
@@ -1652,7 +1646,10 @@ async function downloadSingleMedia(
     heightForQuality: qualityToHeight(item.quality),
   });
   const tempDir = createJobTempDir(item.id);
-
+  // A failed metadata probe leaves only a generic placeholder title; the
+  // extractor-produced temp filename is then the real title source.
+  const probeIsFallback = !metadata || metadata.fromFallback;
+  let producedByYtDlp = false;
   try {
     const args = baseYtDlpArgs(tempDir, item);
     args.push(...plan.extraArgs, item.url);
@@ -1663,6 +1660,7 @@ async function downloadSingleMedia(
         progressStart: 0,
         progressEnd: 96,
       });
+      producedByYtDlp = true;
     } catch (error) {
       rethrowIfStopped(error);
       if (
@@ -1736,6 +1734,11 @@ async function downloadSingleMedia(
     if (!sourcePath) {
       throw new Error("yt-dlp completed but no media file was produced.");
     }
+    const baseName = resolveDownloadBaseName({
+      probeTitle: item.title || "download",
+      probeIsFallback: probeIsFallback && producedByYtDlp,
+      producedPath: sourcePath,
+    });
 
     const subtitleFiles = wantsSubtitles(item) ? subtitleFilesIn(tempDir) : [];
     let preparedSourcePath = sourcePath;
@@ -1754,7 +1757,6 @@ async function downloadSingleMedia(
         subtitleEmbedError = error;
       }
     }
-
     const selectedHeight = qualityToHeight(item.quality);
     let outputPath: string;
     let containerNote: string | null = null;
@@ -1765,6 +1767,7 @@ async function downloadSingleMedia(
         dest,
         mainWindow,
         mode === "video_only" ? "video_only" : "video_audio",
+        baseName,
       );
       if (subtitleFiles.length) {
         try {
@@ -1805,7 +1808,7 @@ async function downloadSingleMedia(
       outputPath = await deliverDownloadedFile(
         preparedSourcePath,
         dest,
-        item.title || "download",
+        baseName,
         item.conflictAction || "rename",
         item.id,
       );
@@ -1877,6 +1880,7 @@ async function downloadSubtitlesOnly(
   item: HistoryRecord,
   dest: string,
   mainWindow: Electron.BrowserWindow,
+  metadata: ResolvedMetadata | null,
 ) {
   const tempDir = createJobTempDir(item.id);
   try {
@@ -1903,7 +1907,21 @@ async function downloadSubtitlesOnly(
     if (processRegistry.isPaused(item.id)) throw new JobPausedError();
 
     const requestedFormat = normalizeTranscriptFormat(item.transcriptFormat);
-    const targetBase = path.join(dest, item.title || "subtitles");
+    // Without a resolved probe title the placeholder name must not be stamped
+    // onto the sidecar; yt-dlp's own subtitle filename carries the real title
+    // ("<title>.<lang>.<ext>").
+    let targetTitle = item.title || "subtitles";
+    if (!metadata || metadata.fromFallback) {
+      const produced = subtitleFilesIn(tempDir)[0];
+      if (produced) {
+        const stripped = producedBaseName(produced).replace(
+          /\.[A-Za-z0-9-]{2,10}$/,
+          "",
+        );
+        if (stripped.trim()) targetTitle = stripped;
+      }
+    }
+    const targetBase = path.join(dest, targetTitle);
     const delivered = await deliverSubtitles(
       tempDir,
       targetBase,
@@ -1926,6 +1944,7 @@ async function downloadSplitMedia(
   item: HistoryRecord,
   dest: string,
   mainWindow: Electron.BrowserWindow,
+  metadata: ResolvedMetadata | null,
 ) {
   const tempDir = createJobTempDir(item.id);
   const videoTemp = path.join(tempDir, "video");
@@ -1953,6 +1972,11 @@ async function downloadSplitMedia(
 
     const videoSource = mediaFilesIn(videoTemp, "video")[0];
     if (!videoSource) throw new Error("No video-only stream was produced.");
+    const videoBase = resolveDownloadBaseName({
+      probeTitle: item.title || "download",
+      probeIsFallback: !metadata || metadata.fromFallback,
+      producedPath: videoSource,
+    });
 
     const subtitleFiles = wantsSubtitles(item)
       ? subtitleFilesIn(videoTemp)
@@ -1982,6 +2006,7 @@ async function downloadSplitMedia(
         dest,
         mainWindow,
         "video_only",
+        videoBase,
       );
       if (subtitleFiles.length) {
         try {
@@ -2014,7 +2039,7 @@ async function downloadSplitMedia(
       videoPath = await deliverDownloadedFile(
         preparedVideoSource,
         dest,
-        `${item.title || "download"} video`,
+        `${videoBase} video`,
         item.conflictAction || "rename",
         item.id,
       );
@@ -2043,11 +2068,16 @@ async function downloadSplitMedia(
 
     const audioSource = mediaFilesIn(audioTemp, "audio")[0];
     if (!audioSource) throw new Error("No audio-only stream was produced.");
+    const audioBase = resolveDownloadBaseName({
+      probeTitle: item.title || "download",
+      probeIsFallback: !metadata || metadata.fromFallback,
+      producedPath: audioSource,
+    });
 
     const audioPath = await deliverDownloadedFile(
       audioSource,
       dest,
-      `${item.title || "download"} audio`,
+      `${audioBase} audio`,
       item.conflictAction || "rename",
       item.id,
     );
@@ -2169,7 +2199,7 @@ export async function startDownload(
   }
 
   if (mode === "subtitles_only") {
-    await downloadSubtitlesOnly(effectiveItem, dest, mainWindow);
+    await downloadSubtitlesOnly(effectiveItem, dest, mainWindow, metadata);
     return;
   }
 
@@ -2178,7 +2208,7 @@ export async function startDownload(
 
   if (mode === "split") {
     try {
-      await downloadSplitMedia(effectiveItem, dest, mainWindow);
+      await downloadSplitMedia(effectiveItem, dest, mainWindow, metadata);
     } catch (error) {
       rethrowIfStopped(error);
       if (
@@ -2195,6 +2225,6 @@ export async function startDownload(
       );
     }
   } else {
-    await downloadSingleMedia(effectiveItem, dest, mainWindow);
+    await downloadSingleMedia(effectiveItem, dest, mainWindow, metadata);
   }
 }

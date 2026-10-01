@@ -71,7 +71,7 @@ jobs:
       # (WHISPER_MODEL_MANIFEST_VERSION in src/main/transcription/models.ts).
       - name: Restore pinned Whisper smoke model
         id: whisper-model
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/prism-e2e-models
           key: e2e-whisper-tiny-bd577a113a864445d4c299885e0cb97d4ba92b5f

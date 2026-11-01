@@ -132,7 +132,7 @@ jobs:
         run: Get-ChildItem dist -Filter *.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Set-Content dist/SHA256SUMS-windows.txt
 
       - name: Upload release candidate
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: prism-windows-installer
           path: |

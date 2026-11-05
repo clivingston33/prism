@@ -1,22 +1,12 @@
-import { X, Download, RefreshCw } from "lucide-react";
+import { X, RefreshCw } from "lucide-react";
 
 interface UpdateCardProps {
   version: string;
-  onDownload: () => void;
   onClose: () => void;
   onInstall: () => void;
-  isDownloading?: boolean;
-  isDownloaded?: boolean;
 }
 
-export function UpdateCard({
-  version,
-  onDownload,
-  onClose,
-  onInstall,
-  isDownloading,
-  isDownloaded,
-}: UpdateCardProps) {
+export function UpdateCard({ version, onClose, onInstall }: UpdateCardProps) {
   return (
     <div
       className="prism-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -41,10 +31,11 @@ export function UpdateCard({
           </div>
           <div>
             <h3 className="text-sm font-semibold text-text-primary [text-wrap:balance]">
-              Update available
+              New update ready
             </h3>
             <p className="mt-0.5 text-xs text-text-secondary [text-wrap:pretty]">
-              Prism v{version} is ready to install
+              Prism v{version} is downloaded. Restart now, or it installs the
+              next time you close Prism.
             </p>
           </div>
         </div>
@@ -57,40 +48,14 @@ export function UpdateCard({
           >
             Later
           </button>
-          {isDownloaded ? (
-            <button
-              type="button"
-              onClick={onInstall}
-              className="flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-accent-fg transition-[background-color,transform] hover:bg-accent/90 active:scale-[0.96]"
-            >
-              <Download size={12} />
-              Install & Restart
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onDownload}
-              disabled={isDownloading}
-              className="flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-accent-fg transition-[background-color,opacity,transform] hover:bg-accent/90 active:scale-[0.96] disabled:opacity-50"
-            >
-              <span className="relative h-3 w-3" aria-hidden="true">
-                <span
-                  className={`absolute inset-0 transition-[filter,opacity,transform] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${isDownloading ? "scale-[0.25] opacity-0 blur-[4px]" : "scale-100 opacity-100 blur-0"}`}
-                >
-                  <Download size={12} />
-                </span>
-                <span
-                  className={`absolute inset-0 transition-[filter,opacity,transform] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${isDownloading ? "scale-100 opacity-100 blur-0" : "scale-[0.25] opacity-0 blur-[4px]"}`}
-                >
-                  <RefreshCw
-                    size={12}
-                    className={isDownloading ? "animate-spin" : undefined}
-                  />
-                </span>
-              </span>
-              {isDownloading ? "Downloading..." : "Download & Install"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onInstall}
+            className="flex min-h-10 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-accent-fg transition-[background-color,transform] hover:bg-accent/90 active:scale-[0.96]"
+          >
+            <RefreshCw size={12} />
+            Restart now
+          </button>
         </div>
       </div>
     </div>

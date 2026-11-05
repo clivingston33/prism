@@ -16,8 +16,12 @@ function sendUpdateEvent(channel: string, payload: UpdateEventPayload) {
   }
 }
 
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
 export function setupUpdater() {
-  autoUpdater.autoDownload = false;
+  // Download in the background; the renderer only prompts "Restart now"
+  // once the update is ready. Unapplied updates install on next quit.
+  autoUpdater.autoDownload = true;
   // Keep alpha-to-alpha updates visible instead of filtering prereleases.
   autoUpdater.allowPrerelease = true;
 
@@ -46,10 +50,16 @@ export function setupUpdater() {
     sendUpdateEvent("update:downloaded", { version: info.version });
   });
 
+  // Background checks/downloads retry on the next interval; a toast every
+  // few hours while offline is noise. Manual checks report errors in Settings.
   autoUpdater.on("error", (error) => {
     console.error("[updater] Update error:", error.message);
-    sendUpdateEvent("update:error", { message: error.message });
   });
+
+  // The renderer checks once at launch; long-running sessions re-check here.
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, UPDATE_CHECK_INTERVAL_MS).unref();
 }
 
 export function setUpdaterMainWindow(window: BrowserWindow) {

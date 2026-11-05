@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { store } from "../store";
-import { convertMedia, runFfmpeg } from "./converter";
+import { runFfmpeg } from "./converter";
 import { probeMediaFile } from "./media-probe";
 import { StreamLineBuffer } from "./progress";
 import {
@@ -32,6 +32,7 @@ import {
   saveResponse,
   shouldTryGenericFallback,
 } from "./generic-download";
+import { downloadFile } from "./segmented-download";
 import { createJobTempDir, moveFileFast } from "./temp-dirs";
 import {
   ensureUniqueDirectory,
@@ -71,6 +72,7 @@ type DownloadCompletionOverrides = Partial<
     | "transcriptError"
     | "transcriptPath"
     | "transcriptText"
+    | "title"
   >
 >;
 
@@ -78,12 +80,17 @@ interface MetadataLifecycle {
   timeout?: NodeJS.Timeout;
 }
 
-function getJsRuntimeArg(): string | null {
+/** Args every yt-dlp extraction needs: the JS runtime and login cookies. */
+function extractorArgs(): string[] {
+  const args: string[] = [];
   const { deno } = getBinPaths();
-  if (isUsableExecutable(deno)) {
-    return `--js-runtimes=deno:${deno}`;
-  }
-  return null;
+  if (isUsableExecutable(deno)) args.push(`--js-runtimes=deno:${deno}`);
+  const { cookieSource, cookieFile } = store.get("settings");
+  if (cookieSource === "firefox")
+    args.push("--cookies-from-browser", "firefox");
+  else if (cookieSource === "file" && cookieFile)
+    args.push("--cookies", cookieFile);
+  return args;
 }
 
 function normalizeMode(item: HistoryRecord): DownloadMode {
@@ -189,18 +196,6 @@ function extractQualities(formats: YtDlpFormat[]): string[] {
   return [...heights].sort((a, b) => b - a).map((height) => `${height}p`);
 }
 
-function extractContainers(formats: YtDlpFormat[]): string[] {
-  const containers = new Set<string>();
-  for (const format of formats) {
-    const ext = z.string().safeParse(format?.ext);
-    if (ext.success) containers.add(ext.data.toLowerCase());
-  }
-
-  return [...containers].filter((format) =>
-    ["mp4", "mov", "webm", "mkv", "mp3", "wav", "aac", "flac"].includes(format),
-  );
-}
-
 const YTDLP_VALUE_SCHEMA = z.unknown();
 const HTTP_URL_SCHEMA = z.string().regex(/^https?:\/\//i);
 const URL_COLLECTION_SCHEMA = z.union([
@@ -280,6 +275,13 @@ const YTDLP_METADATA_SCHEMA = z.object({
   filesize: z.number().optional(),
   filesize_approx: z.number().optional(),
   direct: z.boolean().optional(),
+  // A single (non-merged) HTTP format: the whole item is one plain file.
+  url: z.string().optional(),
+  protocol: z.string().optional(),
+  ext: z.string().optional(),
+  http_headers: z.record(z.string(), z.string()).optional().catch(undefined),
+  cookies: z.string().optional(),
+  requested_formats: z.array(z.unknown()).optional(),
   formats: z.array(YTDLP_FORMAT_SCHEMA).optional().default([]),
   subtitles: z.record(z.string(), z.unknown()).optional().default({}),
   automatic_captions: z.record(z.string(), z.unknown()).optional().default({}),
@@ -300,7 +302,6 @@ interface ResolvedMetadata {
   platform: string;
   duration?: number;
   thumbnail?: string;
-  formats: string[];
   qualities: string[];
   height?: string;
   resolution?: string;
@@ -311,6 +312,8 @@ interface ResolvedMetadata {
   audioTracks: { id: string; language?: string; label: string }[];
   subtitleTracks: { language: string; label: string; automatic: boolean }[];
   directMedia: boolean;
+  /** Set when the selected format is one plain HTTP file without cookies. */
+  directFile?: { url: string; ext: string; headers: Record<string, string> };
   fromFallback?: boolean;
 }
 
@@ -357,7 +360,6 @@ function fallbackMetadata(url: string): ResolvedMetadata {
   return {
     title: genericFallbackTitle(url),
     platform,
-    formats: ["mp4", "webm", "mov", "mp3", "prores"],
     // Do not advertise guessed resolutions. The UI must only offer streams
     // yt-dlp actually reported as downloadable.
     qualities: [],
@@ -384,10 +386,13 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
       return;
     }
 
-    const args = ["--dump-single-json", "--no-warnings", "--no-playlist"];
-    const jsRuntime = getJsRuntimeArg();
-    if (jsRuntime) args.push(jsRuntime);
-    args.push(url);
+    const args = [
+      "--dump-single-json",
+      "--no-warnings",
+      "--no-playlist",
+      ...extractorArgs(),
+      url,
+    ];
 
     let child: ReturnType<typeof spawn>;
     const lifecycle: MetadataLifecycle = {};
@@ -435,7 +440,6 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
         );
         const parsedFormats = parsed.formats;
         const qualities = extractQualities(parsedFormats);
-        const containers = extractContainers(parsedFormats);
         const imageUrls = collectImagePostUrls(parsed);
         const platform = parsed.extractor_key || fallback.platform;
         const hasVideo = parsedFormats.some(
@@ -510,20 +514,6 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
           platform,
           duration: parsed.duration,
           thumbnail: parsed.thumbnail,
-          formats: Array.from(
-            new Set([
-              ...containers,
-              "mp4",
-              "mov",
-              "webm",
-              "mkv",
-              "mp3",
-              "wav",
-              "aac",
-              "flac",
-              "prores",
-            ]),
-          ),
           qualities: qualities.length ? qualities : fallback.qualities,
           height: parsed.height ? `${parsed.height}p` : undefined,
           resolution: parsed.resolution || undefined,
@@ -537,9 +527,31 @@ async function fetchMetadata(url: string): Promise<ResolvedMetadata> {
           audioTracks,
           subtitleTracks,
           directMedia: Boolean(parsed.direct),
+          directFile:
+            parsed.url &&
+            parsed.ext &&
+            /^https?$/.test(parsed.protocol ?? "") &&
+            !parsed.requested_formats &&
+            !parsed.cookies
+              ? {
+                  url: parsed.url,
+                  ext: parsed.ext,
+                  headers: parsed.http_headers ?? {},
+                }
+              : undefined,
         });
-      } catch {
-        finish(fallback);
+      } catch (error) {
+        // One unexpected field type must not cost the real title.
+        console.warn("[yt-dlp] metadata did not match schema", error);
+        let title: unknown;
+        try {
+          title = JSON.parse(output).title;
+        } catch {}
+        finish(
+          typeof title === "string" && title.trim()
+            ? { ...fallback, title }
+            : fallback,
+        );
       }
     });
 
@@ -580,6 +592,7 @@ export async function getPlaylistInfo(
       "--flat-playlist",
       "--dump-single-json",
       "--no-warnings",
+      ...extractorArgs(),
       url,
     ];
     let child: ReturnType<typeof spawn>;
@@ -707,6 +720,7 @@ export async function getTranscript(
       "--no-playlist",
       "-o",
       outTemplate,
+      ...extractorArgs(),
       url,
     ];
 
@@ -884,8 +898,7 @@ function baseYtDlpArgs(tempDir: string, item: HistoryRecord) {
       : undefined,
   });
 
-  const jsRuntime = getJsRuntimeArg();
-  if (jsRuntime) args.push(jsRuntime);
+  args.push(...extractorArgs());
   if (isUsableExecutable(ffmpeg)) args.push("--ffmpeg-location", ffmpeg);
 
   return args;
@@ -1521,59 +1534,6 @@ async function completeDownload(
 }
 
 /**
- * Runs the explicit ProRes conversion. This is the only download path allowed
- * to re-encode — the user asked for ProRes by name.
- */
-async function convertToProRes(
-  item: HistoryRecord,
-  sourcePath: string,
-  dest: string,
-  mainWindow: Electron.BrowserWindow,
-  mode: "video_audio" | "video_only",
-  baseName?: string,
-) {
-  processRegistry.throwIfStopped(item.id);
-  if (isJobCancelled(item.id) || processRegistry.isCancelled(item.id)) {
-    throw new JobCancelledError();
-  }
-  const { ffmpeg } = getBinPaths();
-  const outputPath = ensureUniquePath(
-    dest,
-    `${baseName || item.title || "download"} ProRes`,
-    "mov",
-  );
-  publishJobProgress(mainWindow, {
-    jobId: item.id,
-    attemptId: item.attemptId || item.id,
-    jobType: "download",
-    status: "processing",
-    stage: "transcode",
-    patch: { overallProgress: 96, stageProgress: 0 },
-  });
-  await convertMedia(ffmpeg, sourcePath, outputPath, "prores", {
-    mode,
-    durationSeconds: item.duration,
-    jobId: item.id,
-    onProgress: (progress, details) =>
-      setProgress(
-        item.id,
-        progress === undefined ? undefined : 96 + progress * 0.03,
-        mainWindow,
-        {
-          stage: "transcode",
-          stageProgress: progress,
-          processedSeconds: details?.processedSeconds,
-          durationSeconds: details?.durationSeconds,
-          speedMultiplier: details?.speed,
-        },
-      ),
-  }).finally(() => {
-    releaseDestination(outputPath);
-  });
-  return outputPath;
-}
-
-/**
  * Moves the finished temp file into the destination, keeping the container
  * extension yt-dlp produced. Same-drive rename in the common case because the
  * temp directory lives inside the destination.
@@ -1647,82 +1607,147 @@ async function downloadSingleMedia(
   });
   const tempDir = createJobTempDir(item.id);
   // A failed metadata probe leaves only a generic placeholder title; the
-  // extractor-produced temp filename is then the real title source.
+  // produced temp filename (yt-dlp's template or the server's own file name)
+  // is then the real title source.
   const probeIsFallback = !metadata || metadata.fromFallback;
-  let producedByYtDlp = false;
+  let useProducedName = false;
+  const throwIfStopped = () => processRegistry.throwIfStopped(item.id);
+  const onProgress = (downloadedBytes: number, totalBytes?: number) => {
+    const percent = totalBytes
+      ? Math.min(96, (downloadedBytes / totalBytes) * 96)
+      : undefined;
+    publishJobProgress(mainWindow, {
+      jobId: item.id,
+      attemptId: item.attemptId || item.id,
+      jobType: item.jobType || "download",
+      status: "running",
+      stage: "download",
+      patch: {
+        overallProgress: percent,
+        stageProgress: percent,
+        downloadedBytes,
+        totalBytes,
+        estimatedTotalBytes: totalBytes,
+      },
+    });
+  };
   try {
-    const args = baseYtDlpArgs(tempDir, item);
-    args.push(...plan.extraArgs, item.url);
-    try {
-      await runYtDlp(args, item, mainWindow, {
-        expectedStreams: planExpectsTwoStreams(plan) ? 2 : 1,
-        kind: plan.kind,
-        progressStart: 0,
-        progressEnd: 96,
-      });
-      producedByYtDlp = true;
-    } catch (error) {
-      rethrowIfStopped(error);
-      if (
-        !shouldTryGenericFallback(error) ||
-        processRegistry.isCancelled(item.id) ||
-        processRegistry.isPaused(item.id)
-      ) {
-        throw error;
-      }
-
-      if (mode !== "video_audio") {
-        const originalMessage =
-          error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `${originalMessage}\nGeneric fallback: Direct media fallback is unavailable for ${mode} downloads.`,
-        );
-      }
-
-      console.info(`[download] ${item.id} trying generic link fallback`);
-      updateDiagnostics(
-        item.id,
-        {
-          logTail: `yt-dlp could not extract this link. Trying the generic media fallback.\n${error instanceof Error ? error.message : String(error)}`,
-        },
-        mainWindow,
+    // One plain HTTP file (file hosts, direct links): fetch it over parallel
+    // connections instead of yt-dlp's single connection. Anything yt-dlp has
+    // to post-process (trim, subtitles, audio extraction) stays with yt-dlp.
+    const direct =
+      mode === "video_audio" &&
+      !item.trimStart &&
+      !item.trimEnd &&
+      !wantsSubtitles(item)
+        ? metadata?.directFile
+        : undefined;
+    let downloaded = false;
+    if (direct) {
+      const outputPath = path.join(
+        tempDir,
+        `${sanitizeFileName(item.title, "download")}.${direct.ext}`,
       );
       try {
-        await downloadGenericMedia({
-          url: item.url,
-          outputDirectory: tempDir,
-          isCancelled: () => processRegistry.isCancelled(item.id),
-          onProgress: (downloadedBytes, totalBytes) => {
-            const percent = totalBytes
-              ? Math.min(96, (downloadedBytes / totalBytes) * 96)
-              : undefined;
-            publishJobProgress(mainWindow, {
-              jobId: item.id,
-              attemptId: item.attemptId || item.id,
-              jobType: item.jobType || "download",
-              status: "running",
-              stage: "download",
-              patch: {
-                overallProgress: percent,
-                stageProgress: percent,
-                downloadedBytes,
-                totalBytes,
-                estimatedTotalBytes: totalBytes,
-              },
-            });
-          },
+        const file = await downloadFile({
+          url: direct.url,
+          outputPath,
+          headers: direct.headers,
+          connections: getConcurrentFragments(),
+          throwIfStopped,
+          onProgress,
         });
-      } catch (fallbackError) {
-        if (fallbackError instanceof JobCancelledError) throw fallbackError;
-        const fallbackMessage =
-          fallbackError instanceof Error
-            ? fallbackError.message
-            : String(fallbackError);
-        const originalMessage =
-          error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `${originalMessage}\nGeneric fallback: ${fallbackMessage}`,
+        downloaded = true;
+        // yt-dlp's generic extractor titles a file after its URL ("oAMniCjq");
+        // the server's file name is the real title.
+        if (file.filename && metadata?.platform === "Generic") {
+          const named = path.join(
+            tempDir,
+            `${sanitizeFileName(path.basename(file.filename, path.extname(file.filename)))}.${direct.ext}`,
+          );
+          await fs.promises.rename(outputPath, named);
+          useProducedName = true;
+        }
+      } catch (error) {
+        rethrowIfStopped(error);
+        await fs.promises.rm(outputPath, { force: true });
+        await fs.promises.rm(`${outputPath}.prism-parts`, { force: true });
+        updateDiagnostics(
+          item.id,
+          {
+            logTail: `Parallel download failed; retrying with yt-dlp.\n${error instanceof Error ? error.message : String(error)}`,
+          },
+          mainWindow,
         );
+      }
+    }
+    if (!downloaded) {
+      // A paused parallel download that now goes through yt-dlp must not
+      // leave its partial file to be mistaken for the result.
+      for (const entry of await fs.promises.readdir(tempDir)) {
+        if (!entry.endsWith(".prism-parts")) continue;
+        await fs.promises.rm(path.join(tempDir, entry), { force: true });
+        await fs.promises.rm(path.join(tempDir, entry.slice(0, -12)), {
+          force: true,
+        });
+      }
+      const args = baseYtDlpArgs(tempDir, item);
+      args.push(...plan.extraArgs, item.url);
+      try {
+        await runYtDlp(args, item, mainWindow, {
+          expectedStreams: planExpectsTwoStreams(plan) ? 2 : 1,
+          kind: plan.kind,
+          progressStart: 0,
+          progressEnd: 96,
+        });
+        useProducedName = Boolean(probeIsFallback);
+      } catch (error) {
+        rethrowIfStopped(error);
+        if (
+          !shouldTryGenericFallback(error) ||
+          processRegistry.isCancelled(item.id) ||
+          processRegistry.isPaused(item.id)
+        ) {
+          throw error;
+        }
+
+        if (mode !== "video_audio") {
+          const originalMessage =
+            error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `${originalMessage}\nGeneric fallback: Direct media fallback is unavailable for ${mode} downloads.`,
+          );
+        }
+
+        console.info(`[download] ${item.id} trying generic link fallback`);
+        updateDiagnostics(
+          item.id,
+          {
+            logTail: `yt-dlp could not extract this link. Trying the generic media fallback.\n${error instanceof Error ? error.message : String(error)}`,
+          },
+          mainWindow,
+        );
+        try {
+          const result = await downloadGenericMedia({
+            url: item.url,
+            outputDirectory: tempDir,
+            throwIfStopped,
+            connections: getConcurrentFragments(),
+            onProgress,
+          });
+          useProducedName = result.hasServerName;
+        } catch (fallbackError) {
+          rethrowIfStopped(fallbackError);
+          const fallbackMessage =
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : String(fallbackError);
+          const originalMessage =
+            error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `${originalMessage}\nGeneric fallback: ${fallbackMessage}`,
+          );
+        }
       }
     }
 
@@ -1736,14 +1761,14 @@ async function downloadSingleMedia(
     }
     const baseName = resolveDownloadBaseName({
       probeTitle: item.title || "download",
-      probeIsFallback: probeIsFallback && producedByYtDlp,
+      probeIsFallback: useProducedName,
       producedPath: sourcePath,
     });
 
     const subtitleFiles = wantsSubtitles(item) ? subtitleFilesIn(tempDir) : [];
     let preparedSourcePath = sourcePath;
     let subtitleEmbedError: unknown;
-    if (subtitleFiles.length && plan.postProcess !== "prores") {
+    if (subtitleFiles.length) {
       try {
         preparedSourcePath = await embedSubtitleFiles(
           item,
@@ -1758,66 +1783,26 @@ async function downloadSingleMedia(
       }
     }
     const selectedHeight = qualityToHeight(item.quality);
-    let outputPath: string;
-    let containerNote: string | null = null;
-    if (plan.postProcess === "prores") {
-      outputPath = await convertToProRes(
-        item,
-        sourcePath,
-        dest,
-        mainWindow,
-        mode === "video_only" ? "video_only" : "video_audio",
-        baseName,
-      );
-      if (subtitleFiles.length) {
-        try {
-          const embeddedPath = await embedSubtitleFiles(
-            item,
-            outputPath,
-            subtitleFiles,
-            tempDir,
-            mainWindow,
-          );
-          if (!reserveDestination(outputPath)) {
-            throw new Error(
-              `Another job is already writing to "${path.basename(outputPath)}".`,
-            );
-          }
-          try {
-            // The delivered file stays until the embedded replacement commits.
-            await moveFileFast(embeddedPath, outputPath, fs.promises, {
-              overwrite: true,
-            });
-          } finally {
-            releaseDestination(outputPath);
-          }
-        } catch (error) {
-          rethrowIfStopped(error);
-          subtitleEmbedError = error;
-        }
-      }
-    } else {
-      publishJobProgress(mainWindow, {
-        jobId: item.id,
-        attemptId: item.attemptId || item.id,
-        jobType: "download",
-        status: "processing",
-        stage: "finalize",
-        patch: { overallProgress: 97 },
-      });
-      outputPath = await deliverDownloadedFile(
-        preparedSourcePath,
-        dest,
-        baseName,
-        item.conflictAction || "rename",
-        item.id,
-      );
-      containerNote = describeContainerFallback(
-        plan.requestedContainer,
-        path.extname(outputPath),
-      );
-      if (containerNote) console.log(`[download] ${item.id} ${containerNote}`);
-    }
+    publishJobProgress(mainWindow, {
+      jobId: item.id,
+      attemptId: item.attemptId || item.id,
+      jobType: "download",
+      status: "processing",
+      stage: "finalize",
+      patch: { overallProgress: 97 },
+    });
+    const outputPath = await deliverDownloadedFile(
+      preparedSourcePath,
+      dest,
+      baseName,
+      item.conflictAction || "rename",
+      item.id,
+    );
+    const containerNote = describeContainerFallback(
+      plan.requestedContainer,
+      path.extname(outputPath),
+    );
+    if (containerNote) console.log(`[download] ${item.id} ${containerNote}`);
 
     let subtitleOverrides: DownloadCompletionOverrides = {};
     if (wantsSubtitles(item)) {
@@ -1854,6 +1839,9 @@ async function downloadSingleMedia(
     }
 
     const completion: DownloadCompletionOverrides = {
+      // A failed probe leaves a "Video from <site>" placeholder; the
+      // extractor's file name is the real title, so show that in history.
+      title: baseName,
       resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
       format: path.extname(outputPath).replace(/^\./, "") || item.format,
       ...subtitleOverrides,
@@ -1983,7 +1971,7 @@ async function downloadSplitMedia(
       : [];
     let preparedVideoSource = videoSource;
     let subtitleEmbedError: unknown;
-    if (subtitleFiles.length && videoPlan.postProcess !== "prores") {
+    if (subtitleFiles.length) {
       try {
         preparedVideoSource = await embedSubtitleFiles(
           item,
@@ -1998,52 +1986,13 @@ async function downloadSplitMedia(
       }
     }
 
-    let videoPath: string;
-    if (videoPlan.postProcess === "prores") {
-      videoPath = await convertToProRes(
-        item,
-        videoSource,
-        dest,
-        mainWindow,
-        "video_only",
-        videoBase,
-      );
-      if (subtitleFiles.length) {
-        try {
-          const embeddedPath = await embedSubtitleFiles(
-            item,
-            videoPath,
-            subtitleFiles,
-            videoTemp,
-            mainWindow,
-          );
-          if (!reserveDestination(videoPath)) {
-            throw new Error(
-              `Another job is already writing to "${path.basename(videoPath)}".`,
-            );
-          }
-          try {
-            // The delivered file stays until the embedded replacement commits.
-            await moveFileFast(embeddedPath, videoPath, fs.promises, {
-              overwrite: true,
-            });
-          } finally {
-            releaseDestination(videoPath);
-          }
-        } catch (error) {
-          rethrowIfStopped(error);
-          subtitleEmbedError = error;
-        }
-      }
-    } else {
-      videoPath = await deliverDownloadedFile(
-        preparedVideoSource,
-        dest,
-        `${videoBase} video`,
-        item.conflictAction || "rename",
-        item.id,
-      );
-    }
+    const videoPath = await deliverDownloadedFile(
+      preparedVideoSource,
+      dest,
+      `${videoBase} video`,
+      item.conflictAction || "rename",
+      item.id,
+    );
 
     // Pause between split stages: the audio download must not start.
     processRegistry.throwIfStopped(item.id);
@@ -2099,6 +2048,7 @@ async function downloadSplitMedia(
       [videoPath, audioPath],
       mainWindow,
       {
+        title: videoBase,
         resolution: selectedHeight ? `${selectedHeight}p` : item.resolution,
         ...subtitleOverrides,
       },
@@ -2175,7 +2125,7 @@ export async function startDownload(
           item.audioFormat ||
           settings.defaultAudioFormat ||
           "mp3"
-        : item.format || settings.defaultVideoFormat || "auto",
+        : item.format || "auto",
     audioFormat: item.audioFormat || settings.defaultAudioFormat || "mp3",
   };
 

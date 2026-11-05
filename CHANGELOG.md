@@ -2,6 +2,18 @@
 
 All notable changes to Prism will be documented here.
 
+## [0.1.0-alpha.7] - 2026-11-04
+
+- Downloads use the real media title instead of "Video from <site>" (null fields in yt-dlp metadata no longer discard the whole probe).
+- Auto downloads save as MP4 at the best resolution, preferring MP4/AAC streams, instead of WebM.
+- Download options are now Auto, MP4, MOV, MKV (video) and MP3, WAV (audio). WebM, ProRes, AAC, FLAC, and "Source" were removed; old jobs retry with the closest option. Convert and Media Tools keep every format.
+- Added Settings → Cookies (Firefox or a cookies.txt file) for sign-in, age-restricted, and members-only media.
+- Bundled Deno 2.9.8 so yt-dlp can solve YouTube's JavaScript challenges, and updated bundled yt-dlp to 2026.10.26.
+- Updates download in the background; Prism shows "Restart now" when ready and re-checks every 4 hours.
+- Added a default audio format setting; removed the unused default video format setting and the no-op "Custom" download mode.
+- Direct files and file-host links (one plain HTTP file) now download over parallel connections (the Concurrent fragments setting) and resume after a pause. The generic link fallback uses the same downloader and names files after the server's file name.
+- Updated Electron to 43.8.6 and electron-updater to 6.8.11.
+
 ## [0.1.0-alpha.5] - 2026-08-30
 
 - Fixed update check reporting available on latest; restyled update dialog and surfaced update errors as toasts.

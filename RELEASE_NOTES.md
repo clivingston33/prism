@@ -1,38 +1,21 @@
-# Prism 0.1.0-alpha.6
+# Prism 0.1.0-alpha.7
 
-This alpha is a reliability release shaped by a full repository audit: safer download/output handling, honest pause/cancel/timeout behavior, staged local media work, and verified Windows packaging.
+This alpha fixes download naming and formats, adds sign-in support, and makes updates one click.
 
 ## Highlights
 
-- Concurrent downloads and conversions can no longer silently replace each other's output files; each job reserves its destination up front.
-- Failed replacements now preserve the previous complete file instead of risking both copies.
-- Failed or cancelled conversions, remuxes, and transcriptions no longer leave plausible-looking partial files behind.
-- Pause is respected across later processing stages; shutdown terminates all Prism-owned native work (downloads, FFmpeg, Whisper, probes, previews).
-- Download timeouts keep their real cause instead of being relabeled as user cancellation.
-- Duplicate model downloads share one transfer; cancelling blocks later installation/activation steps.
-- Media Tools initializes track/format defaults after the probe arrives and keeps per-file names in batches.
-- History file opening resolves by record ID and refuses executable/script targets.
-- Generated thumbnails are served through a narrow token-authorized channel.
-- The speed limit can be cleared again to disable rate limiting.
-- Only retryable download jobs offer Retry; local conversion/transcription rows no longer pretend to re-download.
+- Downloads are named after the real video title. Previously a metadata hiccup produced files like "Video from youtube.com".
+- Auto now saves YouTube and other streaming sites as MP4 at the best available resolution, without re-encoding, instead of WebM.
+- Download formats are simplified to Auto, MP4, MOV, MKV, MP3, and WAV.
+- Settings → Cookies lets yt-dlp use your Firefox sign-in or a cookies.txt file for age-restricted, members-only, and private media. Chrome and Edge cookies can't be read on Windows.
+- Deno is now bundled so yt-dlp can solve YouTube's JavaScript challenges; the bundled yt-dlp is 2026.10.26.
+- Updates download in the background. When one is ready Prism asks to restart; choosing Later installs it the next time Prism closes.
+- Direct file links and file hosts such as Pixeldrain download over several connections at once and pick up where they left off after a pause. Files are named after the server's file name instead of a URL fragment.
 
-## Fixed
+## Removed
 
-- Release type error that blocked the alpha build.
-- Remux reservation/staging leaks on failure and cancellation.
-- No-overwrite delivery replacing existing files on Windows.
-- Settings and Media Tools runtime regressions from the audit batch.
-- Remux self-output guard releasing another live job's destination reservation.
-- Hosted CI gates: formatting, lint, platform-gated native tests, dependency audit pins.
-
-## Known Issues
-
-- Quitting mid-operation stops all native work, but background settling is not fully drained before exit.
-- A cancelled-then-finishing conversion or remux may briefly display the wrong terminal status; files on disk are safe.
-- `Keep original` off does not yet delete the source after a successful remux.
-- Generated thumbnail/audio-preview caches are bounded, but a single oversized preview can be evicted early (re-request regenerates it).
-- Thumbnails occasionally fail to render in-app while their authorization is being finished; probing and files are unaffected.
-- Release-model cache restores skip checksum re-verification (fresh downloads are always verified).
+- WebM, ProRes, AAC, FLAC, and "Source" download options. Use Convert or Media Tools for those formats. Retrying an older job maps it to the closest remaining option.
+- The unused default video format setting and the "Custom" download mode, which behaved like Original.
 
 ## Important: unsigned Windows alpha
 

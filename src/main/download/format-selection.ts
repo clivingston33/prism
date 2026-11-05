@@ -3,27 +3,22 @@ import { z } from "zod";
 /**
  * Pure format/container selection for the fast download engine.
  *
- * The core rule: ordinary downloads never re-encode. yt-dlp + FFmpeg are only
- * allowed to merge or remux streams (stream copy). The only exception is the
- * explicit ProRes choice, which is a deliberate conversion the user asked for.
+ * Video downloads never re-encode: yt-dlp + FFmpeg only merge or remux
+ * streams (stream copy). Audio downloads are extracted to MP3 or WAV.
  */
 import type { DownloadMode } from "./utils";
 
 /** Container the user picked for a video download. */
-export type ContainerChoice =
-  "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
+export type ContainerChoice = "auto" | "mp4" | "mov" | "mkv";
 
 /** Audio output the user picked for audio-only / split downloads. */
-export type AudioChoice =
-  "source" | "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg";
+export type AudioChoice = "mp3" | "wav";
 
 export interface DownloadPlan {
   /** Value passed to yt-dlp -f */
   formatSelector: string;
-  /** Additional yt-dlp args (merge/remux/extract) — never encoding args. */
+  /** Additional yt-dlp args (merge/remux/extract) — never video encoding args. */
   extraArgs: string[];
-  /** "none" for ordinary downloads; "prores" is the explicit conversion. */
-  postProcess: "none" | "prores";
   kind: "video" | "audio";
   /**
    * The container the user asked for, when it may not be honored without a
@@ -34,30 +29,13 @@ export interface DownloadPlan {
 }
 
 export function normalizeContainerChoice(format?: string): ContainerChoice {
-  if (
-    format === "mp4" ||
-    format === "mov" ||
-    format === "webm" ||
-    format === "mkv" ||
-    format === "prores"
-  ) {
-    return format;
-  }
-  return "auto";
+  return format === "mp4" || format === "mov" || format === "mkv"
+    ? format
+    : "auto";
 }
 
 export function normalizeAudioChoice(format?: string): AudioChoice {
-  if (
-    format === "mp3" ||
-    format === "m4a" ||
-    format === "wav" ||
-    format === "aac" ||
-    format === "flac" ||
-    format === "ogg"
-  ) {
-    return format;
-  }
-  return "source";
+  return format === "wav" ? "wav" : "mp3";
 }
 
 function heightFilter(height: number | null | undefined): string {
@@ -96,20 +74,7 @@ function videoAudioSelector(
     ].join("/");
   }
 
-  if (container === "webm") {
-    return [
-      audioTrackId
-        ? `bestvideo[ext=webm]${h}+${audio}`
-        : `bestvideo[ext=webm]${h}+bestaudio[ext=webm]`,
-      `best[ext=webm]${h}`,
-      `bestvideo${h}+bestaudio`,
-      `best${h}`,
-      "bestvideo+bestaudio",
-      "best",
-    ].join("/");
-  }
-
-  // auto, mkv, prores: take the best source streams as-is.
+  // auto, mkv: take the best source streams as-is.
   return [
     `bestvideo${h}+${audio}`,
     `best${h}`,
@@ -126,9 +91,7 @@ function videoOnlySelector(
   const preferred =
     container === "mp4" || container === "mov"
       ? [`bestvideo[vcodec^=avc1]${h}`, `bestvideo[ext=mp4]${h}`]
-      : container === "webm"
-        ? [`bestvideo[ext=webm]${h}`]
-        : [];
+      : [];
   return [...preferred, `bestvideo${h}`, "bestvideo", `best${h}`, "best"].join(
     "/",
   );
@@ -145,13 +108,12 @@ function mergeContainers(container: ContainerChoice): string {
       return "mp4/mkv";
     case "mov":
       return "mov/mkv";
-    case "webm":
-      return "webm/mkv";
     case "mkv":
       return "mkv";
     default:
-      // Auto: let yt-dlp keep a native compatible container, MKV as fallback.
-      return "mp4/webm/mkv";
+      // Auto: always MP4. ffmpeg stream-copies VP9/AV1/Opus into MP4 fine;
+      // yt-dlp's own compat table would otherwise pick WebM/MKV for them.
+      return "mp4";
   }
 }
 
@@ -162,14 +124,18 @@ function remuxContainers(container: ContainerChoice): string | null {
       return "mp4/mkv";
     case "mov":
       return "mov/mkv";
-    case "webm":
-      return "webm/mkv";
     case "mkv":
       return "mkv";
     default:
-      return null; // auto/prores: keep whatever the source container is
+      return null; // auto: buildDownloadPlan adds "webm>mp4"
   }
 }
+
+/**
+ * Auto: highest resolution first (never trades quality), then prefer MP4/M4A
+ * streams at that resolution so the result plays everywhere.
+ */
+const AUTO_SORT = ["-S", "lang,res,ext:mp4:m4a"];
 
 export interface BuildPlanInput {
   mode: DownloadMode;
@@ -187,16 +153,17 @@ export function buildDownloadPlan(input: BuildPlanInput): DownloadPlan {
   if (input.mode === "audio_only") {
     const audio = normalizeAudioChoice(input.audioFormat || input.container);
     const selector = input.audioTrackId || "bestaudio/best";
-    const extraArgs = ["-f", selector];
-    if (audio !== "source") {
-      // Explicit audio codec choice: yt-dlp handles the (fast, audio-only)
-      // conversion. "source" keeps the native codec via stream copy.
-      extraArgs.push("-x", "--audio-format", audio, "--audio-quality", "0");
-    }
     return {
       formatSelector: selector,
-      extraArgs,
-      postProcess: "none",
+      extraArgs: [
+        "-f",
+        selector,
+        "-x",
+        "--audio-format",
+        audio,
+        "--audio-quality",
+        "0",
+      ],
       kind: "audio",
     };
   }
@@ -206,12 +173,13 @@ export function buildDownloadPlan(input: BuildPlanInput): DownloadPlan {
   if (input.mode === "video_only") {
     const selector = videoOnlySelector(container, height);
     const extraArgs = ["-f", selector];
-    const remux = remuxContainers(container === "prores" ? "auto" : container);
+    if (container === "auto")
+      extraArgs.push(...AUTO_SORT, "--remux-video", "webm>mp4");
+    const remux = remuxContainers(container);
     if (remux) extraArgs.push("--remux-video", remux);
     return {
       formatSelector: selector,
       extraArgs,
-      postProcess: container === "prores" ? "prores" : "none",
       kind: "video",
       requestedContainer: container,
     };
@@ -219,16 +187,15 @@ export function buildDownloadPlan(input: BuildPlanInput): DownloadPlan {
 
   // video_audio (split downloads reuse video_only + audio_only plans)
   const selector = videoAudioSelector(container, height, input.audioTrackId);
-  const extraArgs = [
-    "-f",
-    selector,
-    "--merge-output-format",
-    mergeContainers(container === "prores" ? "auto" : container),
-  ];
   return {
     formatSelector: selector,
-    extraArgs,
-    postProcess: container === "prores" ? "prores" : "none",
+    extraArgs: [
+      "-f",
+      selector,
+      ...(container === "auto" ? AUTO_SORT : []),
+      "--merge-output-format",
+      mergeContainers(container),
+    ],
     kind: "video",
     requestedContainer: container,
   };
@@ -266,7 +233,7 @@ export function describeContainerFallback(
   requested: ContainerChoice | undefined,
   producedExtension: string,
 ): string | null {
-  if (!requested || requested === "auto" || requested === "prores") return null;
+  if (!requested || requested === "auto") return null;
   const produced = producedExtension.replace(/^\./, "").toLowerCase();
   if (produced === requested) return null;
   if (requested === "mov" && produced === "mov") return null;

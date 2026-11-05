@@ -51,7 +51,6 @@ export interface VideoMetadata {
   platform: string;
   duration?: number;
   thumbnail?: string;
-  formats: string[];
   qualities?: string[];
   mediaType?: "video" | "image";
   imageCount?: number;
@@ -99,7 +98,6 @@ export interface EventPayloads {
   "transcription:model-progress": ModelDownloadProgress;
   "update:available": { version: string; releaseDate?: string };
   "update:downloaded": { version: string };
-  "update:error": { message: string };
 }
 
 export interface PrismAPI {
@@ -108,8 +106,8 @@ export interface PrismAPI {
     get(): Promise<AppSettings>;
     update(settings: Partial<AppSettings>): Promise<AppSettings>;
     selectDirectory(): Promise<string | null>;
+    selectCookieFile(): Promise<string | null>;
     checkForUpdates(): Promise<UpdateCheckResult | null>;
-    downloadUpdate(): Promise<void>;
     quitAndInstall(): void;
     hardwareProfile(): Promise<HardwareProfile>;
     optimizeForDevice(): Promise<{

@@ -4,16 +4,13 @@ import { useAppStore } from "../stores/app-store";
 import { useNavigate } from "@tanstack/react-router";
 import { LoadingIndicator } from "./loading-indicator";
 import type {
+  AudioFormat,
   DownloadFormat,
   DownloadMode,
   Quality,
 } from "../../shared/contracts.ts";
 
-type VideoFormat = Extract<
-  DownloadFormat,
-  "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores"
->;
-type AudioFormat = "source" | "mp3" | "wav" | "aac" | "flac";
+type VideoFormat = Exclude<DownloadFormat, AudioFormat>;
 
 const QUALITY_VALUES = [
   "best",
@@ -77,27 +74,19 @@ const VIDEO_FORMATS: { value: VideoFormat; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "mp4", label: "MP4" },
   { value: "mov", label: "MOV" },
-  { value: "webm", label: "WebM" },
   { value: "mkv", label: "MKV" },
-  { value: "prores", label: "ProRes" },
 ];
 
 const AUDIO_FORMATS: { value: AudioFormat; label: string }[] = [
-  { value: "source", label: "Source" },
   { value: "mp3", label: "MP3" },
   { value: "wav", label: "WAV" },
-  { value: "aac", label: "AAC" },
-  { value: "flac", label: "FLAC" },
 ];
 
 const CONTAINER_HINTS = {
-  auto: "Auto — Recommended. Original — Fastest: keeps the source video and audio exactly as published (no re-encoding). Uses a native container, MKV if needed.",
+  auto: "Auto — Recommended. Best resolution with no re-encoding, preferring MP4/AAC streams, saved as MP4 (YouTube and other streaming sites). Direct file links keep their original type.",
   mp4: "MP4 compatibility: picks H.264/AAC source streams and remuxes without re-encoding. If the source has no MP4-compatible streams, Prism saves the original quality as MKV — you can convert it later in Media Tools.",
   mov: "MOV: remuxes H.264/AAC source streams without re-encoding; falls back to MKV when the source is incompatible.",
-  webm: "WebM: picks VP9/Opus source streams when available; falls back to MKV to preserve original quality.",
   mkv: "MKV: stores any source streams without re-encoding. The safest container.",
-  prores:
-    "ProRes converts the download to ProRes video (slow, large files, re-encodes). Only pick this when an editing workflow requires it.",
 } satisfies Record<VideoFormat, string>;
 
 const MODE_OPTIONS: {
@@ -127,7 +116,7 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
     // Auto preserves the source streams and reports the real container after
     // download. A pasted link should never silently inherit an MP4 preference.
     format: "auto",
-    audioFormat: settings?.defaultAudioFormat || "source",
+    audioFormat: settings?.defaultAudioFormat || "mp3",
     audioTrackId: "",
     conflictAction: "rename",
     quality: settings?.defaultQuality || "best",
@@ -143,9 +132,7 @@ function defaultOptions(settings: Settings | null, url: string): QueueOptions {
 }
 
 function containerLabel(format: VideoFormat | AudioFormat) {
-  if (format === "auto") return "Original";
-  if (format === "source") return "Source";
-  return format.toUpperCase();
+  return format === "auto" ? "Original" : format.toUpperCase();
 }
 
 function formatSummary(item: QueueOptions) {
@@ -201,13 +188,7 @@ export function OptionsDrawer({
         };
       }),
     );
-  }, [
-    isOpen,
-    urlsKey,
-    settings?.defaultVideoFormat,
-    settings?.defaultAudioFormat,
-    playlist,
-  ]);
+  }, [isOpen, urlsKey, settings?.defaultAudioFormat, playlist]);
 
   const current = queueOptions[selectedIndex];
   const currentUrl = current?.url;
@@ -293,9 +274,7 @@ export function OptionsDrawer({
           mode: item.mode,
           format:
             item.mode === "audio_only"
-              ? item.audioFormat === "source"
-                ? "auto"
-                : item.audioFormat
+              ? item.audioFormat
               : item.mode === "subtitles_only"
                 ? "auto"
                 : item.format,
@@ -459,7 +438,7 @@ export function OptionsDrawer({
               <label className="text-xs font-medium text-text-secondary">
                 Output container
               </label>
-              <div className="grid grid-cols-6 gap-1">
+              <div className="grid grid-cols-4 gap-1">
                 {VIDEO_FORMATS.map((f) => (
                   <button
                     key={f.value}
@@ -485,7 +464,7 @@ export function OptionsDrawer({
               <label className="text-xs font-medium text-text-secondary">
                 Audio format
               </label>
-              <div className="grid grid-cols-5 gap-1">
+              <div className="grid grid-cols-2 gap-1">
                 {AUDIO_FORMATS.map((f) => (
                   <button
                     key={f.value}

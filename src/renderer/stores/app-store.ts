@@ -28,7 +28,7 @@ interface AppState {
 }
 
 interface UpdateState {
-  status: "idle" | "available" | "downloading" | "downloaded" | "error";
+  status: "idle" | "available" | "downloaded";
   version?: string;
   message?: string;
 }

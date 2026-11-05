@@ -4,6 +4,11 @@ import { once } from "events";
 import { pipeline } from "stream/promises";
 import { JobCancelledError } from "./process-registry.ts";
 import { classifyDownloadError } from "./errors.ts";
+import { sanitizeFileName } from "./naming.ts";
+import {
+  contentDispositionFilename,
+  downloadFile,
+} from "./segmented-download.ts";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
@@ -116,12 +121,11 @@ function responseExtension(response: Response) {
     .toLowerCase();
   if (EXTENSION_BY_TYPE[contentType]) return EXTENSION_BY_TYPE[contentType];
 
-  const disposition = response.headers.get("content-disposition") || "";
-  const filename = disposition.match(
-    /filename\*?=(?:UTF-8'')?["']?([^"';]+)/i,
-  )?.[1];
+  const filename = contentDispositionFilename(
+    response.headers.get("content-disposition"),
+  );
   try {
-    const source = filename ? decodeURIComponent(filename) : response.url;
+    const source = filename ?? response.url;
     const extension = path
       .extname(new URL(source, response.url).pathname)
       .slice(1)
@@ -274,13 +278,20 @@ export async function saveResponse(
 export async function downloadGenericMedia(options: {
   url: string;
   outputDirectory: string;
-  isCancelled: () => boolean;
+  /** Throws JobPausedError/JobCancelledError when the job was stopped. */
+  throwIfStopped: () => void;
+  connections?: number;
   onProgress?: (downloadedBytes: number, totalBytes?: number) => void;
 }) {
-  const pageResponse = await fetchWithCancellation(
-    options.url,
-    options.isCancelled,
-  );
+  const isCancelled = () => {
+    try {
+      options.throwIfStopped();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const pageResponse = await fetchWithCancellation(options.url, isCancelled);
   if (!pageResponse.ok) {
     throw new Error(
       `Fallback request failed with HTTP ${pageResponse.status}.`,
@@ -288,6 +299,7 @@ export async function downloadGenericMedia(options: {
   }
 
   let mediaResponse: Response | null = null;
+  const referer = pageResponse.url || options.url;
   if (isMediaResponse(pageResponse)) {
     mediaResponse = pageResponse;
   } else {
@@ -297,8 +309,8 @@ export async function downloadGenericMedia(options: {
         `Fallback received unsupported content type: ${contentType || "unknown"}.`,
       );
     }
-    const html = await readHtml(pageResponse, options.isCancelled);
-    const candidates = discoverMediaUrls(html, pageResponse.url || options.url);
+    const html = await readHtml(pageResponse, isCancelled);
+    const candidates = discoverMediaUrls(html, referer);
     if (!candidates.length && isRestrictedAccessPage(html)) {
       throw new Error("Fallback page access is restricted in this region.");
     }
@@ -306,8 +318,8 @@ export async function downloadGenericMedia(options: {
       try {
         const response = await fetchWithCancellation(
           candidate,
-          options.isCancelled,
-          pageResponse.url || options.url,
+          isCancelled,
+          referer,
         );
         if (response.ok && isMediaResponse(response)) {
           mediaResponse = response;
@@ -323,19 +335,30 @@ export async function downloadGenericMedia(options: {
   if (!mediaResponse) {
     throw new Error("No direct video or audio file was found on the page.");
   }
+  await mediaResponse.body?.cancel();
   const extension = responseExtension(mediaResponse) || "mp4";
+  // The server's own file name is the real title; the URL rarely is.
+  const filename = contentDispositionFilename(
+    mediaResponse.headers.get("content-disposition"),
+  );
+  const baseName = filename
+    ? sanitizeFileName(path.basename(filename, path.extname(filename)))
+    : "generic-download";
   const outputPath = path.join(
     options.outputDirectory,
-    `generic-download.${extension}`,
+    `${baseName}.${extension}`,
   );
-  await saveResponse(
-    mediaResponse,
+  await downloadFile({
+    url: mediaResponse.url,
     outputPath,
-    options.isCancelled,
-    options.onProgress,
-  );
+    headers: { "User-Agent": USER_AGENT, Referer: referer },
+    connections: options.connections ?? 8,
+    throwIfStopped: options.throwIfStopped,
+    onProgress: options.onProgress,
+  });
   return {
     outputPath,
+    hasServerName: Boolean(filename),
     sourceUrl: mediaResponse.url,
     contentType: mediaResponse.headers.get("content-type") || undefined,
   };

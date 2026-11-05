@@ -3,15 +3,15 @@ import { app } from "electron";
 import type { AppSettings, HistoryRecord } from "../shared/contracts.ts";
 
 export const defaultSettings = {
-  // "auto" = Original — Fastest: keep source codecs, merge/remux only.
-  defaultVideoFormat: "auto",
-  defaultAudioFormat: "source",
+  defaultAudioFormat: "mp3",
   maxConcurrentDownloads: 2,
   // yt-dlp --concurrent-fragments for DASH/HLS downloads (1-16).
   concurrentFragments: 8,
   downloadLocation: app.getPath("downloads"),
   defaultDownloadMode: "original",
   defaultQuality: "best",
+  cookieSource: "none",
+  cookieFile: "",
   retryCount: 10,
   fragmentRetryCount: 10,
   downloadSpeedLimit: "",

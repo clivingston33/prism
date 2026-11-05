@@ -3,32 +3,25 @@ import type { JobError, JobStage, JobStatus, JobType } from "./jobs.ts";
 export type DownloadMode =
   "video_audio" | "video_only" | "audio_only" | "split" | "subtitles_only";
 
-export type DownloadFormat =
-  | "auto"
-  | "mp4"
-  | "mp3"
-  | "wav"
-  | "mov"
-  | "webm"
-  | "mkv"
-  | "aac"
-  | "flac"
-  | "prores";
+export type DownloadFormat = "auto" | "mp4" | "mov" | "mkv" | "mp3" | "wav";
 
-export type AudioFormat = "source" | "mp3" | "wav" | "aac" | "flac";
+export type AudioFormat = "mp3" | "wav";
 export type Quality =
   "best" | "2160p" | "1440p" | "1080p" | "720p" | "480p" | "360p";
 export type TranscriptFormat = "txt" | "srt" | "vtt" | "json";
 export type DownloadConflictAction = "rename" | "overwrite" | "skip";
 export type SubtitleDisposition = "default" | "forced" | "none";
 export interface AppSettings {
-  defaultVideoFormat: "auto" | "mp4" | "mov" | "webm" | "mkv" | "prores";
   defaultAudioFormat: AudioFormat;
   maxConcurrentDownloads: number;
   concurrentFragments: number;
   downloadLocation: string;
-  defaultDownloadMode: "original" | "mp4-compatible" | "custom";
+  defaultDownloadMode: "original" | "mp4-compatible";
   defaultQuality: Quality;
+  /** Login cookies for yt-dlp. Chromium browsers are not offered: their
+   *  Windows cookie store is app-bound encrypted and yt-dlp cannot read it. */
+  cookieSource: "none" | "firefox" | "file";
+  cookieFile: string;
   retryCount: number;
   fragmentRetryCount: number;
   downloadSpeedLimit: string;

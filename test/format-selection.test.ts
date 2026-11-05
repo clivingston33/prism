@@ -20,13 +20,17 @@ const ENCODER_TOKENS = [
   "--recode-video",
 ];
 
-test("Original (auto) plan never re-encodes and merges into a native container", () => {
+test("Original (auto) plan never re-encodes and always merges into MP4", () => {
   const plan = buildDownloadPlan({ mode: "video_audio", container: "auto" });
-  assert.equal(plan.postProcess, "none");
   assert.ok(plan.formatSelector.includes("bestvideo+bestaudio"));
   const merge =
     plan.extraArgs[plan.extraArgs.indexOf("--merge-output-format") + 1];
-  assert.equal(merge, "mp4/webm/mkv");
+  assert.equal(merge, "mp4");
+  // Resolution outranks the MP4 preference so Auto never trades quality.
+  assert.equal(
+    plan.extraArgs[plan.extraArgs.indexOf("-S") + 1],
+    "lang,res,ext:mp4:m4a",
+  );
   for (const token of ENCODER_TOKENS) {
     assert.ok(
       !plan.extraArgs.includes(token),
@@ -53,11 +57,10 @@ test("MP4 compatibility mode prefers H.264/AAC sources and remuxes only", () => 
   const merge =
     plan.extraArgs[plan.extraArgs.indexOf("--merge-output-format") + 1];
   assert.equal(merge, "mp4/mkv");
-  assert.equal(plan.postProcess, "none");
 });
 
-test("MKV is the universal container fallback", () => {
-  for (const container of ["mp4", "mov", "webm", "auto"]) {
+test("MKV is the container fallback for explicit containers", () => {
+  for (const container of ["mp4", "mov"]) {
     const plan = buildDownloadPlan({ mode: "video_audio", container });
     const merge =
       plan.extraArgs[plan.extraArgs.indexOf("--merge-output-format") + 1];
@@ -70,25 +73,34 @@ test("video-only plans remux (stream copy) instead of converting", () => {
   const remuxIndex = plan.extraArgs.indexOf("--remux-video");
   assert.notEqual(remuxIndex, -1);
   assert.equal(plan.extraArgs[remuxIndex + 1], "mp4/mkv");
-  assert.equal(plan.postProcess, "none");
 });
 
-test("video-only auto keeps the native container without remux args", () => {
+test("video-only auto turns WebM sources into MP4 by stream copy", () => {
   const plan = buildDownloadPlan({ mode: "video_only", container: "auto" });
-  assert.ok(!plan.extraArgs.includes("--remux-video"));
+  assert.equal(
+    plan.extraArgs[plan.extraArgs.indexOf("--remux-video") + 1],
+    "webm>mp4",
+  );
 });
 
-test("audio source mode extracts without forcing a codec", () => {
-  const plan = buildDownloadPlan({ mode: "audio_only", audioFormat: "source" });
-  assert.ok(!plan.extraArgs.includes("-x"));
-  assert.ok(!plan.extraArgs.includes("--audio-format"));
+test("audio downloads always extract to MP3 or WAV", () => {
+  const plan = buildDownloadPlan({ mode: "audio_only" });
+  assert.equal(
+    plan.extraArgs[plan.extraArgs.indexOf("--audio-format") + 1],
+    "mp3",
+  );
+  const wav = buildDownloadPlan({ mode: "audio_only", audioFormat: "wav" });
+  assert.equal(
+    wav.extraArgs[wav.extraArgs.indexOf("--audio-format") + 1],
+    "wav",
+  );
   assert.equal(plan.kind, "audio");
 });
 
 test("exact source audio track ids are respected", () => {
   const audio = buildDownloadPlan({
     mode: "audio_only",
-    audioFormat: "source",
+    audioFormat: "mp3",
     audioTrackId: "251-en",
   });
   assert.equal(audio.formatSelector, "251-en");
@@ -100,25 +112,6 @@ test("exact source audio track ids are respected", () => {
   assert.match(combined.formatSelector, /\+251-en/);
 });
 
-test("explicit audio format still uses yt-dlp extraction", () => {
-  const plan = buildDownloadPlan({ mode: "audio_only", audioFormat: "mp3" });
-  assert.ok(plan.extraArgs.includes("-x"));
-  const idx = plan.extraArgs.indexOf("--audio-format");
-  assert.equal(plan.extraArgs[idx + 1], "mp3");
-});
-
-test("ProRes is the only post-process (explicit conversion) plan", () => {
-  const prores = buildDownloadPlan({
-    mode: "video_audio",
-    container: "prores",
-  });
-  assert.equal(prores.postProcess, "prores");
-  for (const container of ["auto", "mp4", "mov", "webm", "mkv"]) {
-    const plan = buildDownloadPlan({ mode: "video_audio", container });
-    assert.equal(plan.postProcess, "none");
-  }
-});
-
 test("two-stream expectation follows the selector", () => {
   assert.ok(
     planExpectsTwoStreams(
@@ -127,7 +120,7 @@ test("two-stream expectation follows the selector", () => {
   );
   assert.ok(
     !planExpectsTwoStreams(
-      buildDownloadPlan({ mode: "audio_only", audioFormat: "source" }),
+      buildDownloadPlan({ mode: "audio_only", audioFormat: "mp3" }),
     ),
   );
 });
@@ -140,19 +133,17 @@ test("container fallback is explained instead of silently transcoded", () => {
   assert.ok(note && note.includes("MKV"));
 });
 
-test("no ordinary download plan ever contains encoder arguments", () => {
+test("no download plan ever contains video encoder arguments", () => {
   const plans = [
     buildDownloadPlan({ mode: "video_audio", container: "auto" }),
     buildDownloadPlan({ mode: "video_audio", container: "mp4" }),
     buildDownloadPlan({ mode: "video_audio", container: "mov" }),
-    buildDownloadPlan({ mode: "video_audio", container: "webm" }),
     buildDownloadPlan({ mode: "video_audio", container: "mkv" }),
     buildDownloadPlan({ mode: "video_only", container: "mp4" }),
     buildDownloadPlan({ mode: "video_only", container: "auto" }),
-    buildDownloadPlan({ mode: "audio_only", audioFormat: "source" }),
+    buildDownloadPlan({ mode: "audio_only", audioFormat: "mp3" }),
   ];
   for (const plan of plans) {
-    assert.equal(plan.postProcess, "none");
     const joined = plan.extraArgs.join(" ");
     for (const token of ENCODER_TOKENS) {
       assert.ok(
@@ -175,9 +166,12 @@ test("concurrent fragments default to 8 and clamp to yt-dlp's 1-16 range", () =>
   assert.equal(clampConcurrentFragments("12"), 12);
 });
 
-test("unknown formats normalize to safe defaults", () => {
+test("unknown and retired formats normalize to safe defaults", () => {
   assert.equal(normalizeContainerChoice("weird"), "auto");
   assert.equal(normalizeContainerChoice(undefined), "auto");
-  assert.equal(normalizeAudioChoice("weird"), "source");
-  assert.equal(normalizeAudioChoice("flac"), "flac");
+  assert.equal(normalizeContainerChoice("webm"), "auto");
+  assert.equal(normalizeContainerChoice("prores"), "auto");
+  assert.equal(normalizeAudioChoice("source"), "mp3");
+  assert.equal(normalizeAudioChoice("flac"), "mp3");
+  assert.equal(normalizeAudioChoice("wav"), "wav");
 });

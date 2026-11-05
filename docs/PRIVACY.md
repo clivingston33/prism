@@ -13,6 +13,8 @@ Prism can contact external services for:
 
 The destination site receives the URL and network information required by the request. Site authentication, cookies, and rate limits are controlled by yt-dlp and the site. Prism does not promise that a site will accept a request.
 
+Cookies are off by default. When Settings → Cookies is set to Firefox or a cookies.txt file, yt-dlp reads those cookies locally and sends them only to the site being downloaded from. Prism stores only the cookies-file path, never cookie values.
+
 ## Local data
 
 Prism stores settings, download history, local file paths, thumbnail cache files, and transcript metadata in the operating system’s per-user application-data directory. Downloaded media and transcripts are written to the locations selected by the user. Whisper models are stored in the same per-user application-data area so they survive application upgrades.

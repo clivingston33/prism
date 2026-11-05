@@ -155,10 +155,40 @@ export function SettingsPage() {
             options={[
               ["original", "Original — fastest"],
               ["mp4-compatible", "MP4 compatible source"],
-              ["custom", "Custom"],
             ]}
             onChange={(v) => void update("defaultDownloadMode", v)}
           />
+          <Select
+            label="Default audio format"
+            value={settings.defaultAudioFormat}
+            options={[
+              ["mp3", "MP3"],
+              ["wav", "WAV"],
+            ]}
+            onChange={(v) => void update("defaultAudioFormat", v)}
+          />
+          <Select
+            label="Cookies"
+            help="For age-restricted, members-only, or sign-in-required videos. Chrome and Edge can't be read on Windows; sign in with Firefox or export a cookies.txt file."
+            value={settings.cookieSource}
+            options={[
+              ["none", "Off"],
+              ["firefox", "Use Firefox cookies"],
+              ["file", "Use a cookies.txt file"],
+            ]}
+            onChange={(v) => void update("cookieSource", v)}
+          />
+          {settings.cookieSource === "file" && (
+            <DirectoryRow
+              label="Cookies file"
+              value={settings.cookieFile || "No file chosen"}
+              onClick={() =>
+                void window.prism.settings.selectCookieFile().then((file) => {
+                  if (file) void update("cookieFile", file);
+                })
+              }
+            />
+          )}
           <Select
             label="Default quality"
             value={settings.defaultQuality}
@@ -575,7 +605,9 @@ export function SettingsPage() {
                   status: "available",
                   version: result.version,
                 });
-                setUpdateMessage(`Update ${result.version} is available.`);
+                setUpdateMessage(
+                  `Update ${result.version} is downloading. Prism will ask you to restart when it's ready.`,
+                );
               } else {
                 setUpdateMessage(
                   result?.status === "up_to_date"

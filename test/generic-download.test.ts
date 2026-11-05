@@ -79,7 +79,7 @@ test("downloads media discovered in Open Graph metadata", async (t) => {
   const result = await downloadGenericMedia({
     url: `http://127.0.0.1:${address.port}/watch`,
     outputDirectory,
-    isCancelled: () => false,
+    throwIfStopped: () => {},
     onProgress: (downloaded) => {
       reportedBytes = downloaded;
     },
@@ -110,7 +110,7 @@ test("reports a restricted page instead of treating it as missing media", async 
     downloadGenericMedia({
       url: `http://127.0.0.1:${address.port}/watch`,
       outputDirectory,
-      isCancelled: () => false,
+      throwIfStopped: () => {},
     }),
     /page access is restricted in this region/i,
   );

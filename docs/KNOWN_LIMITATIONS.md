@@ -1,13 +1,15 @@
 # Known limitations
 
-Prism `0.1.0-alpha.5` is an unsigned Windows x64 public alpha. It is intended
+Prism `0.1.0-alpha.7` is an unsigned Windows x64 public alpha. It is intended
 for testing with media you are authorized to download and process.
 
 - Windows SmartScreen may warn about or block the unsigned installer. Verify
   the published SHA-256 checksum before running it.
 - Website support follows yt-dlp and can change when a site changes. Private,
   authenticated, age-restricted, or DRM-protected media may not work.
-- Prism does not bypass DRM and does not provide cookies or site credentials.
+- Prism does not bypass DRM. Sign-in-only media needs Settings → Cookies set to
+  Firefox or a cookies.txt file; Chrome and Edge cookies cannot be read on
+  Windows because those browsers encrypt them for their own use.
 - Direct media links preserve streams already inside the file. Prism cannot
   recover subtitle tracks that do not exist in the source.
 - Downloadable website captions can be embedded or saved beside the media, but

@@ -3,9 +3,9 @@
   "releasePlatform": "windows-x64",
   "packages": {
     "yt-dlp-win-x64": {
-      "version": "2026.07.04",
-      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.07.04/yt-dlp.exe",
-      "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
+      "version": "2026.10.26",
+      "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe",
+      "sha256": "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
       "type": "file"
     },
     "ffmpeg-win-x64": {
@@ -25,6 +25,18 @@
       "url": "https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.1/LICENSE",
       "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
       "type": "file"
+    },
+    "deno-win-x64": {
+      "version": "2.9.8",
+      "url": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip",
+      "sha256": "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf",
+      "type": "zip"
+    },
+    "deno-license": {
+      "version": "2.9.8",
+      "url": "https://raw.githubusercontent.com/denoland/deno/v2.9.8/LICENSE.md",
+      "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588",
+      "type": "file"
     }
   },
   "resources": [
@@ -33,19 +45,38 @@
       "component": "yt-dlp",
       "platform": "win32",
       "architecture": "x64",
-      "version": "2026.07.04",
+      "version": "2026.10.26",
       "path": "bin/win/yt-dlp.exe",
       "executableName": "yt-dlp.exe",
       "source": "https://github.com/yt-dlp/yt-dlp",
-      "release": "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.07.04",
+      "release": "https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26",
       "license": "Unlicense",
-      "sha256": "52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8",
+      "sha256": "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
       "minimumSize": 18000000,
       "required": true,
       "package": "yt-dlp-win-x64",
       "archivePath": null,
       "versionArgs": ["--version"],
-      "versionPattern": "^2026\\.07\\.04"
+      "versionPattern": "^2026\\.10\\.26"
+    },
+    {
+      "id": "deno-win-x64",
+      "component": "Deno",
+      "platform": "win32",
+      "architecture": "x64",
+      "version": "2.9.8",
+      "path": "bin/win/deno.exe",
+      "executableName": "deno.exe",
+      "source": "https://github.com/denoland/deno",
+      "release": "https://github.com/denoland/deno/releases/tag/v2.9.8",
+      "license": "MIT",
+      "sha256": "924397800533d3eb0ed0c889b20ad70e18b970d93acd8135bc043f425e528266",
+      "minimumSize": 90000000,
+      "required": true,
+      "package": "deno-win-x64",
+      "archivePath": "deno.exe",
+      "versionArgs": ["--version"],
+      "versionPattern": "^deno 2\\.9\\.8"
     },
     {
       "id": "ffmpeg-win-x64",
@@ -327,6 +358,12 @@
       "package": "whisper-license",
       "archivePath": null,
       "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "path": "licenses/Deno-MIT.txt",
+      "package": "deno-license",
+      "archivePath": null,
+      "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588"
     }
   ]
 }

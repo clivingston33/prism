@@ -87,14 +87,6 @@ export function App() {
     const unsubUpdateDownloaded = window.prism.on("update:downloaded", (data) =>
       setUpdate({ status: "downloaded", version: data.version }),
     );
-    const unsubUpdateError = window.prism.on("update:error", (data) => {
-      setUpdate({ status: "error", message: data.message });
-      pushToast({
-        tone: "error",
-        title: "Update check failed",
-        message: data.message,
-      });
-    });
 
     void window.prism.settings.checkForUpdates().then((result) => {
       if (result?.status === "available" && result.version) {
@@ -109,7 +101,6 @@ export function App() {
       unsubUpdate();
       unsubUpdateAvailable();
       unsubUpdateDownloaded();
-      unsubUpdateError();
     };
   }, []);
 
@@ -148,27 +139,11 @@ export function App() {
     <>
       <RouterProvider router={router} />
       <Toasts />
-      {update.status === "available" ||
-      update.status === "downloading" ||
-      update.status === "downloaded" ? (
+      {update.status === "downloaded" ? (
         <UpdateCard
           version={update.version || "latest"}
-          onDownload={() => {
-            setUpdate({ status: "downloading" });
-            void window.prism.settings
-              .downloadUpdate()
-              .catch((error: unknown) =>
-                setUpdate({
-                  status: "error",
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                }),
-              );
-          }}
           onClose={() => setUpdate({ status: "idle" })}
           onInstall={() => window.prism.settings.quitAndInstall()}
-          isDownloading={update.status === "downloading"}
-          isDownloaded={update.status === "downloaded"}
         />
       ) : null}
     </>

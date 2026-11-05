@@ -11,13 +11,18 @@ import type { AppSettings } from "../../shared/contracts.ts";
 
 function cleanSettings(settings: AppSettings): AppSettings {
   return {
-    defaultVideoFormat: settings.defaultVideoFormat,
-    defaultAudioFormat: settings.defaultAudioFormat,
+    // Older versions stored "source"/"aac"/"flac" and a "custom" mode.
+    defaultAudioFormat: settings.defaultAudioFormat === "wav" ? "wav" : "mp3",
     maxConcurrentDownloads: settings.maxConcurrentDownloads,
     concurrentFragments: settings.concurrentFragments,
     downloadLocation: settings.downloadLocation,
-    defaultDownloadMode: settings.defaultDownloadMode,
+    defaultDownloadMode:
+      settings.defaultDownloadMode === "mp4-compatible"
+        ? "mp4-compatible"
+        : "original",
     defaultQuality: settings.defaultQuality,
+    cookieSource: settings.cookieSource,
+    cookieFile: settings.cookieFile,
     retryCount: settings.retryCount,
     fragmentRetryCount: settings.fragmentRetryCount,
     downloadSpeedLimit: settings.downloadSpeedLimit,
@@ -61,8 +66,8 @@ export function setupSettingsIPC() {
     "settings:get",
     "settings:update",
     "settings:selectDirectory",
+    "settings:selectCookieFile",
     "settings:checkForUpdates",
-    "settings:downloadUpdate",
     "settings:quitAndInstall",
     "settings:hardwareProfile",
     "settings:optimizeForDevice",
@@ -120,6 +125,19 @@ export function setupSettingsIPC() {
     return null;
   });
 
+  ipcMain.handle("settings:selectCookieFile", async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return null;
+    const result = await dialog.showOpenDialog(window, {
+      properties: ["openFile"],
+      filters: [
+        { name: "Netscape cookies.txt", extensions: ["txt"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    return result.canceled ? null : result.filePaths[0] || null;
+  });
+
   ipcMain.handle("settings:checkForUpdates", async () => {
     try {
       const result = await autoUpdater.checkForUpdates();
@@ -141,10 +159,6 @@ export function setupSettingsIPC() {
       console.error("[updater] Update check failed:", message);
       return { status: "error" as const, error: message };
     }
-  });
-
-  ipcMain.handle("settings:downloadUpdate", async () => {
-    await autoUpdater.downloadUpdate();
   });
 
   ipcMain.handle("settings:quitAndInstall", async () => {

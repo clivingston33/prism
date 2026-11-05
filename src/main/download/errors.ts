@@ -15,7 +15,7 @@ const PRIORITY_RULES: ErrorRule[] = [
   {
     code: "AUTH_REQUIRED",
     userMessage:
-      "This media requires signing in. Log in in your browser or provide cookies, then retry.",
+      "This media requires signing in. Sign in on the site in Firefox and set Settings → Cookies to Firefox (or choose a cookies.txt file), then retry.",
     pattern:
       /login required|sign in to|logged.?in|--cookies|cookies-from-browser|age.restricted|private video|members.only|premieres in|requires authentication|account associated/i,
     retryable: false,

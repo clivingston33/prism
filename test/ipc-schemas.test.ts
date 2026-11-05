@@ -69,6 +69,14 @@ test("parseDownloadRequest returns a typed request and strips unknown fields", (
 test("parseDownloadRequest defaults format and rejects invalid vocabulary", () => {
   const parsed = parseDownloadRequest({ url: "https://example.com/v" });
   assert.equal(parsed.format, "auto");
+  // Retrying a job saved before WebM/ProRes/"source" were removed still works.
+  const retired = parseDownloadRequest({
+    url: "https://example.com/v",
+    format: "webm",
+    audioFormat: "source",
+  });
+  assert.equal(retired.format, "auto");
+  assert.equal(retired.audioFormat, "mp3");
 
   // Trim accepts plain seconds and clock timestamps.
   for (const good of ["90", "1:30", "00:02:45.5", "3600.25"]) {

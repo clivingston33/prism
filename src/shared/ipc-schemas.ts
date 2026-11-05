@@ -35,22 +35,25 @@ const DOWNLOAD_MODES = [
 const DOWNLOAD_FORMATS = [
   "auto",
   "mp4",
-  "mp3",
-  "wav",
   "mov",
-  "webm",
   "mkv",
-  "aac",
-  "flac",
-  "prores",
-] as const satisfies readonly DownloadFormat[];
-const AUDIO_FORMATS = [
-  "source",
   "mp3",
   "wav",
-  "aac",
-  "flac",
-] as const satisfies readonly AudioFormat[];
+] as const satisfies readonly DownloadFormat[];
+const AUDIO_FORMATS = ["mp3", "wav"] as const satisfies readonly AudioFormat[];
+/**
+ * Retrying a job stored before WebM/ProRes/AAC/FLAC/"source" were removed
+ * replays its saved request; map those to the closest remaining option.
+ */
+const RETIRED_FORMATS: Record<string, string> = {
+  webm: "auto",
+  prores: "auto",
+  source: "mp3",
+  aac: "mp3",
+  flac: "mp3",
+};
+const retiredFormat = (value: unknown) =>
+  typeof value === "string" ? (RETIRED_FORMATS[value] ?? value) : value;
 const QUALITIES = [
   "best",
   "2160p",
@@ -179,9 +182,9 @@ export function parseHttpUrl(value: unknown, name = "URL"): string {
 
 const DOWNLOAD_SCHEMA: z.ZodType<DownloadRequest> = z.object({
   url: requiredString.transform((value) => parseHttpUrl(value)),
-  format: z.enum(DOWNLOAD_FORMATS).default("auto"),
+  format: z.preprocess(retiredFormat, z.enum(DOWNLOAD_FORMATS).default("auto")),
   mode: z.enum(DOWNLOAD_MODES).optional(),
-  audioFormat: z.enum(AUDIO_FORMATS).optional(),
+  audioFormat: z.preprocess(retiredFormat, z.enum(AUDIO_FORMATS).optional()),
   audioTrackId: z.preprocess(
     emptyToUndefined,
     z
@@ -290,13 +293,14 @@ const TRANSCRIPTION_SCHEMA: z.ZodType<TranscriptionRequest> = z.object({
 
 const SETTINGS_SCHEMA: z.ZodType<Partial<AppSettings>> = z
   .object({
-    defaultVideoFormat: z.enum(["auto", "mp4", "mov", "webm", "mkv", "prores"]),
     defaultAudioFormat: z.enum(AUDIO_FORMATS),
     maxConcurrentDownloads: clampedInteger(1, 5),
     concurrentFragments: clampedInteger(1, 16),
     downloadLocation: requiredString,
-    defaultDownloadMode: z.enum(["original", "mp4-compatible", "custom"]),
+    defaultDownloadMode: z.enum(["original", "mp4-compatible"]),
     defaultQuality: z.enum(QUALITIES),
+    cookieSource: z.enum(["none", "firefox", "file"]),
+    cookieFile: z.string(),
     downloadSpeedLimit: emptySpeedLimit,
     scheduledSpeedLimit: optionalString,
     scheduleWindowStart: z.preprocess(

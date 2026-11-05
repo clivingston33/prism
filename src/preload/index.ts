@@ -17,8 +17,8 @@ const prismAPI: PrismAPI = {
     update: (settings: Partial<AppSettings>) =>
       ipcRenderer.invoke("settings:update", settings),
     selectDirectory: () => ipcRenderer.invoke("settings:selectDirectory"),
+    selectCookieFile: () => ipcRenderer.invoke("settings:selectCookieFile"),
     checkForUpdates: () => ipcRenderer.invoke("settings:checkForUpdates"),
-    downloadUpdate: () => ipcRenderer.invoke("settings:downloadUpdate"),
     quitAndInstall: () => ipcRenderer.invoke("settings:quitAndInstall"),
     hardwareProfile: () => ipcRenderer.invoke("settings:hardwareProfile"),
     optimizeForDevice: () => ipcRenderer.invoke("settings:optimizeForDevice"),

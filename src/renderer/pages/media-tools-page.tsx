@@ -297,6 +297,8 @@ export function MediaToolsPage() {
   const dirEdited = useRef(false);
   const probeInitialized = useRef<string | null>(null);
   const activeJob = useRef<string | null>(null);
+  const processingRef = useRef(false);
+  const offAfterBatch = useRef<(() => void) | null>(null);
   const waiters = useRef(
     new Map<string, (result: "completed" | "failed" | "cancelled") => void>(),
   );
@@ -393,62 +395,56 @@ export function MediaToolsPage() {
     [inspect, items, selectedId],
   );
 
+  // Subscribed once and keyed by jobId, never by the `items` closure: a row
+  // removed mid-run must still settle its waiter. A running batch keeps the
+  // listeners past unmount so navigating away does not strand the queue.
   useEffect(() => {
-    const offProgress = window.prism.on("download:progress", (event) => {
-      const item = items.find((entry) => entry.jobId === event.jobId);
-      if (!item) return;
-      setProgressSnapshot(event);
+    const settle = (
+      jobId: string,
+      result: "completed" | "failed" | "cancelled",
+    ) => {
+      waiters.current.get(jobId)?.(result);
+      waiters.current.delete(jobId);
+    };
+    const patch = (jobId: string, change: (entry: QueueItem) => QueueItem) =>
       setItems((current) =>
-        current.map((entry) =>
-          entry.id === item.id
-            ? {
-                ...entry,
-                status:
-                  event.status === "processing" ? "running" : entry.status,
-                progress: event.overallProgress,
-              }
-            : entry,
-        ),
+        current.map((entry) => (entry.jobId === jobId ? change(entry) : entry)),
       );
-      if (event.status === "cancelled") {
-        waiters.current.get(event.jobId)?.("cancelled");
-        waiters.current.delete(event.jobId);
-      }
+    const offProgress = window.prism.on("download:progress", (event) => {
+      if (activeJob.current === event.jobId) setProgressSnapshot(event);
+      patch(event.jobId, (entry) => ({
+        ...entry,
+        status: event.status === "processing" ? "running" : entry.status,
+        progress: event.overallProgress,
+      }));
+      if (event.status === "cancelled") settle(event.jobId, "cancelled");
     });
     const offComplete = window.prism.on("download:complete", (event) => {
-      const item = items.find((entry) => entry.jobId === event.id);
-      if (!item) return;
-      setItems((current) =>
-        current.map((entry) =>
-          entry.id === item.id
-            ? { ...entry, status: "completed", progress: 100 }
-            : entry,
-        ),
-      );
-      waiters.current.get(event.id)?.("completed");
-      waiters.current.delete(event.id);
+      patch(event.id, (entry) => ({
+        ...entry,
+        status: "completed",
+        progress: 100,
+      }));
+      settle(event.id, "completed");
     });
     const offError = window.prism.on("download:error", (event) => {
-      const item = items.find((entry) => entry.jobId === event.id);
-      if (!item) return;
-      setItems((current) =>
-        current.map((entry) =>
-          entry.id === item.id
-            ? { ...entry, status: "failed", error: event.error }
-            : entry,
-        ),
-      );
-      waiters.current.get(event.id)?.(
-        event.code === "JOB_CANCELLED" ? "cancelled" : "failed",
-      );
-      waiters.current.delete(event.id);
+      patch(event.id, (entry) => ({
+        ...entry,
+        status: "failed",
+        error: event.error,
+      }));
+      settle(event.id, event.code === "JOB_CANCELLED" ? "cancelled" : "failed");
     });
-    return () => {
+    const off = () => {
       offProgress();
       offComplete();
       offError();
     };
-  }, [items]);
+    return () => {
+      if (processingRef.current) offAfterBatch.current = off;
+      else off();
+    };
+  }, []);
 
   useEffect(() => {
     if (!selected) return;
@@ -482,10 +478,11 @@ export function MediaToolsPage() {
   const dropFiles = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragging(false);
-    // SAFETY: Electron augments dropped File objects with their absolute path.
+    // The Shell has its own drop handler; keep this drop here.
+    event.stopPropagation();
     const paths = Array.from(event.dataTransfer.files || [])
-      .map((file) => (file as File & { path?: string }).path)
-      .filter((value): value is string => Boolean(value));
+      .map((file) => window.prism.getPathForFile(file))
+      .filter(Boolean);
     addPaths(paths);
   };
   const chooseOutputDirectory = async () => {
@@ -590,7 +587,8 @@ export function MediaToolsPage() {
   };
 
   const startBatch = async (onlyId?: string) => {
-    if (isProcessing) return;
+    if (processingRef.current) return;
+    processingRef.current = true;
     setIsProcessing(true);
     cancelAllRef.current = false;
     const batch = items.filter(
@@ -637,6 +635,8 @@ export function MediaToolsPage() {
       }
     }
     activeJob.current = null;
+    processingRef.current = false;
+    offAfterBatch.current?.();
     setIsProcessing(false);
   };
   const cancelCurrent = async () => {
@@ -1667,6 +1667,7 @@ function QueueRow({
           className="icon-button text-text-tertiary hover:text-error"
           aria-label={`Remove ${fileName(item.path)}`}
           onClick={onRemove}
+          disabled={item.status === "running"}
         >
           <X size={14} />
         </button>

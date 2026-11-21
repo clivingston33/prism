@@ -140,6 +140,7 @@ export async function convertHistoryFile(
         record.mode === "split" || record.mode === "subtitles_only"
           ? "video_audio"
           : record.mode,
+      videoCodec: options.videoCodec,
       audioCodec: options.audioCodec,
       videoHeight: options.videoHeight,
       crf: options.crf,

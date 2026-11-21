@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import packageJson from "../../package.json";
 import type {
   AppSettings,
@@ -12,6 +12,7 @@ import type { EventPayloads, PrismAPI } from "../shared/prism-api.ts";
 // Custom APIs for renderer
 const prismAPI: PrismAPI = {
   version: packageJson.version,
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     update: (settings: Partial<AppSettings>) =>

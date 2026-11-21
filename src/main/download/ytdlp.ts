@@ -1634,13 +1634,29 @@ async function downloadSingleMedia(
   try {
     // One plain HTTP file (file hosts, direct links): fetch it over parallel
     // connections instead of yt-dlp's single connection. Anything yt-dlp has
-    // to post-process (trim, subtitles, audio extraction) stays with yt-dlp.
+    // to post-process (trim, subtitles, audio extraction) or select (another
+    // quality, container, audio track) or rate-limit stays with yt-dlp.
+    const settings = store.get("settings");
+    const candidate = metadata?.directFile;
     const direct =
+      candidate &&
       mode === "video_audio" &&
       !item.trimStart &&
       !item.trimEnd &&
-      !wantsSubtitles(item)
-        ? metadata?.directFile
+      !wantsSubtitles(item) &&
+      !item.audioTrackId &&
+      // The extension is joined into the output path: plain tokens only.
+      /^[a-z0-9]+$/i.test(candidate.ext) &&
+      ((item.quality || "best") === "best" ||
+        (metadata?.qualities?.length ?? 0) <= 1) &&
+      ((item.format || "auto") === "auto" || item.format === candidate.ext) &&
+      !effectiveSpeedLimit(
+        settings.downloadSpeedLimit,
+        settings.scheduledSpeedLimit,
+        settings.scheduleWindowStart,
+        settings.scheduleWindowEnd,
+      )
+        ? candidate
         : undefined;
     let downloaded = false;
     if (direct) {

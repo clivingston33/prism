@@ -317,6 +317,7 @@ const SETTINGS_SCHEMA: z.ZodType<Partial<AppSettings>> = z
         .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
         .optional(),
     ),
+    retryCount: clampedInteger(0, 20),
     fragmentRetryCount: clampedInteger(0, 20),
     lowResourceMode: z.boolean(),
     defaultMediaToolsMode: z.enum(["remux", "convert"]),

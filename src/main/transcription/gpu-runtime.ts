@@ -225,6 +225,9 @@ export async function installGpuRuntime(
 
   const controller = new AbortController();
   activeInstall = controller;
+  // A cancelled earlier install leaves its registry key flagged; without
+  // this every later extraction child is killed on registration.
+  processRegistry.clear("aux:gpu-runtime");
   lastError = undefined;
   const directory = runtimeDirectory();
   const zipPath = path.join(

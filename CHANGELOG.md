@@ -2,6 +2,20 @@
 
 All notable changes to Prism will be documented here.
 
+## [0.1.0-alpha.8] - 2026-11-20
+
+- Convert and Media Tools honor the chosen video codec again (H.265, AV1, VP9, and stream copy were silently encoded as the format default).
+- The download options drawer loads per-link qualities, audio tracks, and subtitles again instead of staying on "Checking available streams…".
+- Drag-and-drop works again on every page (Electron removed `File.path`; paths now come from `webUtils.getPathForFile`).
+- Library "All" shows audio and image items instead of behaving like "Video".
+- Settings: "Retry count" saves, the schedule window and speed limits can be typed (saved on blur or Enter), and a stored 0 no longer displays as 10.
+- Changing the transcription model on the Transcripts page takes effect immediately.
+- Direct-file downloads fall back to yt-dlp when a specific quality, container, or audio track is chosen or a speed limit is active, and only accept plain file extensions.
+- Cancelling a CUDA runtime install no longer breaks later installs until restart.
+- Cancelling a paused download settles as cancelled and cleans up instead of sticking as paused.
+- Media Tools batches no longer hang when the running row is removed or the page is left mid-batch.
+- Media Tools thumbnails display (the content security policy now allows `prism-thumb:`).
+
 ## [0.1.0-alpha.7] - 2026-11-04
 
 - Downloads use the real media title instead of "Video from <site>" (null fields in yt-dlp metadata no longer discard the whole probe).

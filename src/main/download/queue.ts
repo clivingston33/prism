@@ -278,7 +278,10 @@ class DownloadManager {
     } catch (err) {
       const cause = classifyTerminalCause(err, {
         timedOut: processRegistry.isTimedOut(id),
-        paused: err instanceof JobPausedError || processRegistry.isPaused(id),
+        // Cancel after pause wins, even when the worker already threw paused.
+        paused:
+          !processRegistry.isCancelled(id) &&
+          (err instanceof JobPausedError || processRegistry.isPaused(id)),
         cancelled:
           err instanceof JobCancelledError || processRegistry.isCancelled(id),
       });
@@ -410,6 +413,9 @@ class DownloadManager {
       processRegistry.has(id);
     if (!active) return true;
 
+    // Drop any pause intent first: stage gates test paused before cancelled,
+    // and a kept paused flag would skip cleanup and strand the cancel flag.
+    processRegistry.resume(id);
     processRegistry.cancel(id);
     const error = errorFor(
       "JOB_CANCELLED",

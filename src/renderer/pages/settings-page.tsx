@@ -210,12 +210,10 @@ export function SettingsPage() {
                 yt-dlp rate cap, e.g. 5M or 500K. Empty for none.
               </span>
             </span>
-            <input
+            <DraftInput
               className="field-input w-24 text-right"
               value={settings.downloadSpeedLimit}
-              onChange={(e) =>
-                void update("downloadSpeedLimit", e.target.value)
-              }
+              onCommit={(v) => void update("downloadSpeedLimit", v)}
             />
           </label>
           <label className="flex items-center justify-between gap-4 border-b border-border py-3">
@@ -228,12 +226,10 @@ export function SettingsPage() {
                 starts.
               </span>
             </span>
-            <input
+            <DraftInput
               className="field-input w-24 text-right"
               value={settings.scheduledSpeedLimit}
-              onChange={(e) =>
-                void update("scheduledSpeedLimit", e.target.value)
-              }
+              onCommit={(v) => void update("scheduledSpeedLimit", v)}
             />
           </label>
           <div className="flex items-center justify-between gap-4 border-b border-border py-3">
@@ -246,22 +242,18 @@ export function SettingsPage() {
               </span>
             </span>
             <span className="flex items-center gap-2">
-              <input
+              <DraftInput
                 className="field-input w-20 text-right tabular-nums"
                 placeholder="09:00"
                 value={settings.scheduleWindowStart}
-                onChange={(e) =>
-                  void update("scheduleWindowStart", e.target.value)
-                }
+                onCommit={(v) => void update("scheduleWindowStart", v)}
               />
               <span className="text-xs text-text-tertiary">to</span>
-              <input
+              <DraftInput
                 className="field-input w-20 text-right tabular-nums"
                 placeholder="17:00"
                 value={settings.scheduleWindowEnd}
-                onChange={(e) =>
-                  void update("scheduleWindowEnd", e.target.value)
-                }
+                onCommit={(v) => void update("scheduleWindowEnd", v)}
               />
             </span>
           </div>
@@ -287,14 +279,14 @@ export function SettingsPage() {
           />
           <NumberRow
             label="Retry count"
-            value={Number(settings.retryCount || 10)}
+            value={Number(settings.retryCount ?? 10)}
             min={0}
             max={20}
             onChange={(v) => void update("retryCount", v)}
           />
           <NumberRow
             label="Fragment retry count"
-            value={Number(settings.fragmentRetryCount || 10)}
+            value={Number(settings.fragmentRetryCount ?? 10)}
             min={0}
             max={20}
             onChange={(v) => void update("fragmentRetryCount", v)}
@@ -694,6 +686,33 @@ function DirectoryRow({
         <FolderOpen size={14} /> Change
       </button>
     </div>
+  );
+}
+/** Text input that saves on blur or Enter, so partial values never hit IPC. */
+function DraftInput({
+  value,
+  onCommit,
+  ...props
+}: {
+  value: string | undefined;
+  onCommit: (value: string) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(value ?? "");
+  useEffect(() => setDraft(value ?? ""), [value]);
+  return (
+    <input
+      {...props}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft !== (value ?? "")) onCommit(draft);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+    />
   );
 }
 function NumberRow({

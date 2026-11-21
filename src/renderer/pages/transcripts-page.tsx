@@ -47,6 +47,7 @@ function formatBytes(value: number) {
 export function TranscriptsPage() {
   const navigate = useNavigate();
   const settings = useAppStore((state) => state.settings);
+  const setSettings = useAppStore((state) => state.setSettings);
   const [models, setModels] = useState<WhisperModelState[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelsOpen, setModelsOpen] = useState(false);
@@ -112,7 +113,9 @@ export function TranscriptsPage() {
     try {
       const next = await window.prism.transcription.downloadModel(modelId);
       setModels(next);
-      await window.prism.settings.update({ transcriptionModelId: modelId });
+      setSettings(
+        await window.prism.settings.update({ transcriptionModelId: modelId }),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       void refreshModels();
@@ -278,12 +281,11 @@ export function TranscriptsPage() {
               onDragLeave={() => setIsDragging(false)}
               onDrop={(event) => {
                 event.preventDefault();
+                // The Shell has its own drop handler; keep this drop here.
+                event.stopPropagation();
                 setIsDragging(false);
-                // SAFETY: Electron augments dropped File objects with their absolute path.
-                const path = (
-                  event.dataTransfer.files[0] as
-                    (File & { path?: string }) | undefined
-                )?.path;
+                const file = event.dataTransfer.files[0];
+                const path = file && window.prism.getPathForFile(file);
                 if (path) setFilePath(path);
               }}
             >
@@ -422,9 +424,9 @@ export function TranscriptsPage() {
                     value={selectedModel?.id || ""}
                     disabled={needsModel}
                     onChange={(event) =>
-                      void window.prism.settings.update({
-                        transcriptionModelId: event.target.value,
-                      })
+                      void window.prism.settings
+                        .update({ transcriptionModelId: event.target.value })
+                        .then(setSettings)
                     }
                   >
                     {needsModel ? (

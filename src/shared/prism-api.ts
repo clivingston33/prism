@@ -102,6 +102,8 @@ export interface EventPayloads {
 
 export interface PrismAPI {
   version: string;
+  /** Absolute path of a dropped File (Electron removed File.path in v32). */
+  getPathForFile(file: File): string;
   settings: {
     get(): Promise<AppSettings>;
     update(settings: Partial<AppSettings>): Promise<AppSettings>;

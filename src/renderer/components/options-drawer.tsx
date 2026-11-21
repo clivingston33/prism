@@ -208,27 +208,23 @@ export function OptionsDrawer({
       [currentUrl]: { loading: true },
     }));
 
-    let isCurrent = true;
+    // Results are keyed by URL, so a late response is still correct. A
+    // cleanup guard here cancelled the request the effect itself started,
+    // because writing the loading entry re-runs the effect.
     window.prism.download
       .getMetadata(currentUrl)
       .then((data) => {
-        if (!isCurrent) return;
         setMetadataCache((prev) => ({
           ...prev,
           [currentUrl]: { loading: false, data },
         }));
       })
       .catch(() => {
-        if (!isCurrent) return;
         setMetadataCache((prev) => ({
           ...prev,
           [currentUrl]: { loading: false, data: null },
         }));
       });
-
-    return () => {
-      isCurrent = false;
-    };
   }, [isOpen, currentUrl, metadataCache]);
 
   useEffect(() => {

@@ -248,3 +248,7 @@ test("empty download speed limit persists as the none sentinel", () => {
     IpcValidationError,
   );
 });
+
+test("retryCount survives the settings patch", () => {
+  assert.deepEqual(parseSettingsPatch({ retryCount: 3 }), { retryCount: 3 });
+});

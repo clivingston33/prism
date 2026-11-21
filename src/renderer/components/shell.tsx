@@ -78,10 +78,9 @@ export function Shell() {
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        // SAFETY: Electron augments dropped File objects with their absolute path.
         const files = Array.from(event.dataTransfer.files)
-          .map((file) => (file as File & { path?: string }).path)
-          .filter((value): value is string => Boolean(value));
+          .map((file) => window.prism.getPathForFile(file))
+          .filter(Boolean);
         if (files.length) {
           setDroppedFiles(files);
           return;

@@ -212,6 +212,7 @@ export function LibraryPage() {
           .includes(needle);
         if (!inTitle && !inTranscript) return false;
       }
+      if (typeFilter === "all") return true;
       if (typeFilter === "transcripts")
         return Boolean(item.transcriptPath || item.transcriptText);
       const isAudio =

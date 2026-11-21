@@ -1,21 +1,20 @@
-# Prism 0.1.0-alpha.7
+# Prism 0.1.0-alpha.8
 
-This alpha fixes download naming and formats, adds sign-in support, and makes updates one click.
+This alpha fixes a set of features that were silently broken in alpha.7.
 
-## Highlights
+## Fixes
 
-- Downloads are named after the real video title. Previously a metadata hiccup produced files like "Video from youtube.com".
-- Auto now saves YouTube and other streaming sites as MP4 at the best available resolution, without re-encoding, instead of WebM.
-- Download formats are simplified to Auto, MP4, MOV, MKV, MP3, and WAV.
-- Settings → Cookies lets yt-dlp use your Firefox sign-in or a cookies.txt file for age-restricted, members-only, and private media. Chrome and Edge cookies can't be read on Windows.
-- Deno is now bundled so yt-dlp can solve YouTube's JavaScript challenges; the bundled yt-dlp is 2026.10.26.
-- Updates download in the background. When one is ready Prism asks to restart; choosing Later installs it the next time Prism closes.
-- Direct file links and file hosts such as Pixeldrain download over several connections at once and pick up where they left off after a pause. Files are named after the server's file name instead of a URL fragment.
-
-## Removed
-
-- WebM, ProRes, AAC, FLAC, and "Source" download options. Use Convert or Media Tools for those formats. Retrying an older job maps it to the closest remaining option.
-- The unused default video format setting and the "Custom" download mode, which behaved like Original.
+- Convert and Media Tools use the video codec you pick. H.265, AV1, VP9, and stream copy were being encoded as the format default.
+- The download options drawer shows each link's qualities, audio tracks, and subtitles again.
+- Drag-and-drop works again on every page.
+- Library "All" shows audio and image items.
+- Settings: "Retry count" saves, and the schedule window and speed limits can be typed normally.
+- Changing the transcription model on the Transcripts page takes effect immediately.
+- Direct-file downloads respect the chosen quality, container, audio track, and speed limit.
+- Cancelling a CUDA runtime install no longer breaks later installs until restart.
+- Cancelling a paused download cancels it instead of leaving it paused.
+- Media Tools batches no longer hang when the running file is removed or you leave the page.
+- Media Tools thumbnails display.
 
 ## Important: unsigned Windows alpha
 

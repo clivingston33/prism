@@ -119,3 +119,14 @@ test("reports regional or verification restrictions without extractor advice", (
   assert.equal(error.retryable, false);
   assert.match(error.userMessage, /current region|access verification/);
 });
+
+test("a 403 on the media stream is retryable, not an extractor failure", () => {
+  const error = classifyDownloadError(
+    new Error(
+      "ERROR: unable to download video data: HTTP Error 403: Forbidden",
+    ),
+  );
+  // EXTRACTOR_ERROR would send it to the generic page fallback.
+  assert.equal(error.code, "MEDIA_REFUSED");
+  assert.equal(error.retryable, true);
+});

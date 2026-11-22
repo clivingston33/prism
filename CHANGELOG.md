@@ -2,6 +2,10 @@
 
 All notable changes to Prism will be documented here.
 
+## [0.1.0-alpha.9] - 2026-11-21
+
+- A 403 on the media stream (YouTube does this intermittently) is retried with fresh URLs up to twice instead of failing the job, and no longer misreports as "yt-dlp could not read this site".
+
 ## [0.1.0-alpha.8] - 2026-11-20
 
 - Convert and Media Tools honor the chosen video codec again (H.265, AV1, VP9, and stream copy were silently encoded as the format default).

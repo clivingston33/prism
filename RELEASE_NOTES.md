@@ -1,20 +1,11 @@
-# Prism 0.1.0-alpha.8
+# Prism 0.1.0-alpha.9
 
-This alpha fixes a set of features that were silently broken in alpha.7.
+This alpha fixes YouTube downloads failing on an intermittent 403.
 
 ## Fixes
 
-- Convert and Media Tools use the video codec you pick. H.265, AV1, VP9, and stream copy were being encoded as the format default.
-- The download options drawer shows each link's qualities, audio tracks, and subtitles again.
-- Drag-and-drop works again on every page.
-- Library "All" shows audio and image items.
-- Settings: "Retry count" saves, and the schedule window and speed limits can be typed normally.
-- Changing the transcription model on the Transcripts page takes effect immediately.
-- Direct-file downloads respect the chosen quality, container, audio track, and speed limit.
-- Cancelling a CUDA runtime install no longer breaks later installs until restart.
-- Cancelling a paused download cancels it instead of leaving it paused.
-- Media Tools batches no longer hang when the running file is removed or you leave the page.
-- Media Tools thumbnails display.
+- When YouTube (or another site) refuses the media stream with a 403, Prism retries with fresh links up to twice instead of failing the download.
+- If it still fails, the error says the site refused the download and can be retried, instead of "yt-dlp could not read this site".
 
 ## Important: unsigned Windows alpha
 

@@ -32,6 +32,7 @@ import {
   saveResponse,
   shouldTryGenericFallback,
 } from "./generic-download";
+import { classifyDownloadError } from "./errors";
 import { downloadFile } from "./segmented-download";
 import { createJobTempDir, moveFileFast } from "./temp-dirs";
 import {
@@ -1213,7 +1214,29 @@ interface RunYtDlpOptions {
   singleStreamStage?: JobStage;
 }
 
+/**
+ * Signed media URLs occasionally answer 403 (YouTube does this at random);
+ * yt-dlp never retries a 403, but a rerun re-extracts fresh URLs and resumes
+ * the streams already on disk.
+ */
 async function runYtDlp(
+  args: string[],
+  item: HistoryRecord,
+  mainWindow: Electron.BrowserWindow,
+  options: RunYtDlpOptions,
+) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await runYtDlpOnce(args, item, mainWindow, options);
+    } catch (error) {
+      if (attempt >= 3 || classifyDownloadError(error).code !== "MEDIA_REFUSED")
+        throw error;
+      console.warn(`[yt-dlp] id=${item.id} media 403, retry ${attempt}`);
+    }
+  }
+}
+
+async function runYtDlpOnce(
   args: string[],
   item: HistoryRecord,
   mainWindow: Electron.BrowserWindow,

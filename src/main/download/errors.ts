@@ -121,6 +121,15 @@ const RULES: ErrorRule[] = [
     retryable: true,
   },
   {
+    // Extraction succeeded; the media host refused the stream itself. Not an
+    // extractor failure, so the generic page fallback must not run.
+    code: "MEDIA_REFUSED",
+    userMessage:
+      "The site refused the media download. Try again; if it keeps failing, update yt-dlp or set Settings → Cookies.",
+    pattern: /unable to download video data: http error 403/i,
+    retryable: true,
+  },
+  {
     code: "EXTRACTOR_ERROR",
     userMessage:
       "The site could not be read. Open its Activity details to review the site's response.",
